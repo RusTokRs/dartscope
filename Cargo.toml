@@ -13,7 +13,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT"
-repository = "https://github.com/rustok/dartscope"
+repository = "https://github.com/RusTokRs/dartscope"
 description = "Rust toolkit for Dart and Flutter code intelligence"
 
 [workspace.dependencies]
@@ -23,4 +23,3 @@ dartscope-json = { path = "crates/dartscope-json" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-

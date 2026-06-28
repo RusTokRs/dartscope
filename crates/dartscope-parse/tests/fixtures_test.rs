@@ -1,5 +1,5 @@
-use dartscope_core::{DartFileInput, PubspecDependencySection, PubspecInput};
-use dartscope_parse::{analyze_file, parse_pubspec};
+use dartscope_core::{DartFileInput, DartProjectInput, PubspecDependencySection, PubspecInput};
+use dartscope_parse::{analyze_file, analyze_project, parse_pubspec};
 
 #[test]
 fn flutter_fixture_reports_widgets_and_dependencies() {
@@ -43,3 +43,24 @@ fn pure_dart_fixture_does_not_emit_flutter_widgets() {
         .any(|declaration| declaration.name == "add"));
 }
 
+#[test]
+fn flutter_fixture_project_summary_is_stable() {
+    let main = include_str!("fixtures/flutter_app/lib/main.dart");
+    let pubspec = include_str!("fixtures/flutter_app/pubspec.yaml");
+
+    let analysis = analyze_project(DartProjectInput::new(
+        "fixtures/flutter_app",
+        vec![DartFileInput::new("lib\\main.dart", main)],
+        vec![PubspecInput::new("pubspec.yaml", pubspec)],
+    ));
+
+    assert_eq!(analysis.root, "fixtures/flutter_app");
+    assert_eq!(analysis.summary.dart_files, 1);
+    assert_eq!(analysis.summary.pubspecs, 1);
+    assert_eq!(analysis.summary.imports, 2);
+    assert_eq!(analysis.summary.exports, 1);
+    assert_eq!(analysis.summary.parts, 1);
+    assert_eq!(analysis.summary.flutter_widgets, 2);
+    assert_eq!(analysis.summary.package_dependencies, 3);
+    assert_eq!(analysis.summary.diagnostics, analysis.diagnostics.len());
+}

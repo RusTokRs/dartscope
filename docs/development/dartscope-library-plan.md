@@ -22,6 +22,7 @@ DartScope should expose reusable APIs for:
 
 - Dart source parsing and source spans
 - declarations, imports, exports, parts, and part-of discovery
+- Dart-embedded GraphQL operation discovery
 - package metadata and dependency analysis
 - project and package indexing
 - symbol and import/export resolution where feasible
@@ -117,7 +118,7 @@ serialization, and CLI workflows replaceable.
 ## Reference Strategy
 
 DartScope must be built from documented language and framework behavior, not from
-guesses.
+guesses. The living source map is `docs/reference-strategy.md`.
 
 Source classes:
 
@@ -258,13 +259,14 @@ Acceptance:
 
 ### Phase 2: File Analysis MVP
 
-Status: planned.
+Status: in progress.
 
 Scope:
 
 - parse imports, exports, parts, part-of declarations, and top-level declarations
 - detect class inheritance and common Flutter base classes
 - parse `pubspec.yaml` package metadata and dependencies
+- expose a project-level CLI smoke command for real Flutter repositories
 - expose line/column or byte-range spans for every finding
 - report partial parse and unsupported syntax diagnostics
 
@@ -274,6 +276,39 @@ Acceptance:
   dependencies
 - results are deterministic on Windows and Unix path spellings
 - every finding has a source span suitable for downstream source attribution
+- real-project misses are converted into small fixtures before broadening heuristics
+
+Current calibration:
+
+- `dartscope analyze-project D:\RusTok\rustok_mobile\apps\rustok_frontend_mobile`
+  reports 8 Dart files, 1 pubspec, 34 imports, 66 declarations, 10 Flutter widget
+  hints, 6 Flutter route hints, 6 GraphQL operations, 6 GraphQL operation uses, 8
+  package dependencies, and 0 diagnostics after reducing false positives from indented
+  Flutter constructor calls and top-level `const` initializers. Storefront route
+  constants resolve to paths such as `/`, `/catalog`, `/cart`, `/checkout`, `/profile`,
+  and `/modules/:routeSegment`.
+- `dartscope analyze-project D:\RusTok\rustok_mobile` reports 69 Dart files, 10
+  pubspecs, 172 imports, 26 exports, 229 declarations, 22 string constants, 12
+  GraphQL operations, 12 GraphQL operation uses, 36 Flutter widget hints, 10 Flutter
+  route hints, 30 package dependencies, and 0 diagnostics.
+- GraphQL use calibration links operation constants to repository/client call sites:
+  storefront catalog/cart queries and cart mutations map to their repository methods;
+  modules queries and mutations map to `listModules`, `toggleModule`,
+  `failedRecoveryPlans`, `retryFailedPostHook`, and `compensateFailedOperation`.
+  The admin bootstrap query maps to the top-level `authBootstrapProbeProvider`
+  variable initializer through `enclosing_symbol`. `gql(r'''...''')` inline documents
+  are not reported as constant uses.
+- GraphQL variable calibration extracts declared operation variables from Dart-embedded
+  GraphQL documents and supplied top-level client variables from `QueryOptions` /
+  `MutationOptions`. In `D:\RusTok\rustok_mobile`, declared and supplied variable
+  names currently match for all 12 operation uses, including storefront cart mutations
+  and modules recovery mutations.
+- The calibration project is not copied into this repository. Reusable cases are
+  reduced into fixtures, currently covering widget constructor calls, top-level
+  variable initializers, `State`, Riverpod `ConsumerWidget`, and `go_router`
+  `GoRoute` route hints with same-file string constant resolution, plus Dart raw
+  string GraphQL operation documents, declared variables, and client operation
+  constant uses with supplied variables.
 
 ### Phase 3: Project Index
 

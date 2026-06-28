@@ -32,6 +32,27 @@ impl PubspecInput {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartProjectInput {
+    pub root: String,
+    pub files: Vec<DartFileInput>,
+    pub pubspecs: Vec<PubspecInput>,
+}
+
+impl DartProjectInput {
+    pub fn new(
+        root: impl Into<String>,
+        files: Vec<DartFileInput>,
+        pubspecs: Vec<PubspecInput>,
+    ) -> Self {
+        Self {
+            root: normalize_path(root.into()),
+            files,
+            pubspecs,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DartFileAnalysis {
     pub path: String,
     pub language: DartFileLanguage,
@@ -40,6 +61,9 @@ pub struct DartFileAnalysis {
     pub parts: Vec<DartPart>,
     pub part_of: Option<DartPartOf>,
     pub declarations: Vec<DartDeclaration>,
+    pub string_constants: Vec<DartStringConstant>,
+    pub graphql_operations: Vec<DartGraphqlOperation>,
+    pub graphql_operation_uses: Vec<DartGraphqlOperationUse>,
     pub flutter: FlutterFileHints,
     pub diagnostics: Vec<DartDiagnostic>,
 }
@@ -54,10 +78,39 @@ impl DartFileAnalysis {
             parts: Vec::new(),
             part_of: None,
             declarations: Vec::new(),
+            string_constants: Vec::new(),
+            graphql_operations: Vec::new(),
+            graphql_operation_uses: Vec::new(),
             flutter: FlutterFileHints::default(),
             diagnostics: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartProjectAnalysis {
+    pub root: String,
+    pub files: Vec<DartFileAnalysis>,
+    pub pubspecs: Vec<PubspecAnalysis>,
+    pub summary: DartProjectSummary,
+    pub diagnostics: Vec<DartDiagnostic>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
+pub struct DartProjectSummary {
+    pub dart_files: usize,
+    pub pubspecs: usize,
+    pub imports: usize,
+    pub exports: usize,
+    pub parts: usize,
+    pub declarations: usize,
+    pub string_constants: usize,
+    pub graphql_operations: usize,
+    pub graphql_operation_uses: usize,
+    pub flutter_widgets: usize,
+    pub flutter_routes: usize,
+    pub package_dependencies: usize,
+    pub diagnostics: usize,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -123,6 +176,63 @@ pub struct DartDeclaration {
     pub mixes_in: Vec<String>,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartStringConstant {
+    pub name: String,
+    pub value: String,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartGraphqlOperation {
+    pub constant_name: String,
+    pub operation_type: DartGraphqlOperationType,
+    pub operation_name: Option<String>,
+    pub variable_names: Vec<String>,
+    pub root_fields: Vec<String>,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartGraphqlOperationUse {
+    pub constant_name: String,
+    pub client_call: DartGraphqlClientCall,
+    pub variable_names: Vec<String>,
+    pub enclosing_callable: Option<String>,
+    pub enclosing_symbol: Option<DartEnclosingSymbol>,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartEnclosingSymbol {
+    pub name: String,
+    pub kind: DartEnclosingSymbolKind,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartEnclosingSymbolKind {
+    Callable,
+    Variable,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartGraphqlClientCall {
+    Query,
+    Mutation,
+    Subscription,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartGraphqlOperationType {
+    Query,
+    Mutation,
+    Subscription,
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DartDeclarationKind {
@@ -139,6 +249,7 @@ pub enum DartDeclarationKind {
 pub struct FlutterFileHints {
     pub imports_flutter: bool,
     pub widgets: Vec<FlutterWidgetHint>,
+    pub routes: Vec<FlutterRouteHint>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -147,6 +258,24 @@ pub struct FlutterWidgetHint {
     pub base_class: String,
     pub confidence: Confidence,
     pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct FlutterRouteHint {
+    pub constructor: String,
+    pub path: String,
+    pub path_kind: FlutterRoutePathKind,
+    pub resolved_path: Option<String>,
+    pub name: Option<String>,
+    pub confidence: Confidence,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FlutterRoutePathKind {
+    Literal,
+    Expression,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
