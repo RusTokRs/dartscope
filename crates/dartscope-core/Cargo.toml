@@ -1,0 +1,13 @@
+[package]
+name = "dartscope-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core DartScope analysis model, spans, diagnostics, and ports"
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+

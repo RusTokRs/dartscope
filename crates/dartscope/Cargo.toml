@@ -1,0 +1,19 @@
+[package]
+name = "dartscope"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Thin umbrella crate for DartScope"
+
+[features]
+default = ["parse", "json"]
+parse = ["dep:dartscope-parse"]
+json = ["dep:dartscope-json"]
+
+[dependencies]
+dartscope-core.workspace = true
+dartscope-parse = { workspace = true, optional = true }
+dartscope-json = { workspace = true, optional = true }
+

@@ -1,0 +1,16 @@
+[package]
+name = "dartscope-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Small CLI wrapper for DartScope local workflows"
+
+[[bin]]
+name = "dartscope"
+path = "src/main.rs"
+
+[dependencies]
+dartscope = { path = "../dartscope", features = ["parse", "json"] }
+
