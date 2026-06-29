@@ -1,12 +1,16 @@
 [package]
-name = "dartscope-parse"
+name = "dartscope-index"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Conservative Dart and Flutter file analysis for DartScope"
+description = "Project indexing and cross-file analysis for DartScope"
 
 [dependencies]
 dartscope-core.workspace = true
 dartscope-resolve.workspace = true
+
+[dev-dependencies]
+dartscope-parse.workspace = true
+serde_json.workspace = true

@@ -312,7 +312,7 @@ Current calibration:
 
 ### Phase 3: Project Index
 
-Status: planned.
+Status: in progress.
 
 Scope:
 
@@ -321,12 +321,85 @@ Scope:
 - connect `part` and `part of` files
 - expose stable JSON export for CLI and downstream tooling
 - preserve omitted or unresolved edges explicitly
+- link Dart-embedded GraphQL operation constants to client uses without depending on
+  parser-specific AST nodes
+- compare declared and supplied GraphQL variables and operation/client call kinds
 
 Acceptance:
 
 - graph output is deterministic and independent from any consumer-specific graph model
 - unresolved imports and missing part files are diagnostics, not silent gaps
 - monorepo-style package fixtures can be analyzed
+
+Current implementation:
+
+- `build_uri_graph` resolves direct relative `import`, `export`, and `part` URIs and
+  `package:` URIs for package roots represented by indexed pubspecs. SDK URIs and
+  unindexed packages remain explicit instead of being treated as missing local files.
+- calibration on `D:\RusTok\rustok_mobile` currently reports 198 URI references: 123
+  resolved project files, 3 external `dart:` libraries, and 72 package references whose
+  source packages are not in the loaded project index. No indexed target is missing.
+- `analyze_part_links` checks URI-based and legacy named `part of` ownership using the
+  resolved graph and parsed `library` directive. It preserves both directive spans and
+  distinguishes missing, unresolved, missing-`part of`, and different-library cases.
+- imports preserve `as`, `deferred`, `show`, and `hide`; exports preserve `show` and
+  `hide`. The normalized model no longer reduces namespace directives to URI strings.
+- `dartscope-index` accepts the normalized `DartProjectAnalysis` model and does not
+  parse source directly.
+- `analyze_graphql_contracts` resolves only through Dart visibility: an unambiguous
+  same-file declaration, a direct import, or a transitive re-export. Project-wide name
+  uniqueness is not treated as symbol visibility. Missing, non-visible, and ambiguous
+  declarations produce explicit unresolved uses with source evidence and candidate
+  paths.
+- each binding reports operation and use paths/spans, enclosing symbol, call-kind
+  compatibility, declared and supplied variables, missing or unexpected variables, and
+  a resolution basis: `same_file`, `direct_import`, or `re_export`.
+- direct resolved imports can now produce `direct_import` GraphQL bindings when the
+  import is unprefixed, non-deferred, and its `show`/`hide` combinators expose the
+  operation constant. Prefixes and hidden names are covered by negative fixtures.
+- transitive export namespaces honor `show`/`hide`, protect against cycles, reject
+  private names, and preserve ambiguous imported declarations instead of selecting one.
+- validated part files now participate in the owner's namespace. Sibling parts resolve
+  as `same_library`, while importing the owner exposes public operations declared in a
+  matched part. Invalid parts and legacy named parts claimed by multiple owners are
+  excluded from membership.
+- conditional imports and exports preserve their default URI and all configured
+  alternatives. Multi-line directives retain a complete source span, and the URI graph
+  resolves each branch without selecting an environment. GraphQL resolution reports
+  `conditional_environment_required` rather than choosing a branch implicitly.
+- `DartCompilationEnvironment` and `DartIndexOptions` let callers opt into exact
+  conditional URI selection. The default remains conservative and resolves every
+  branch for inspection; the environment-aware APIs select the first matching
+  configured URI in source order and let GraphQL namespace resolution follow that
+  selected import/export.
+- `dartscope-resolve::parse_package_config` parses package configuration v2 from an
+  in-memory input using Serde and RFC 3986 URI validation. It preserves optional
+  generator metadata, ignores extension fields, validates names, package-root
+  containment, and language versions, and rejects unsupported format versions.
+- `DartProjectInput::with_package_configs` keeps package configuration optional and
+  backwards-compatible for callers that only provide source files and pubspecs.
+- no generated package configurations are currently present under `D:\RusTok`, so the
+  Rustok calibration correctly reports 0 configs. Real-project package resolution is
+  not claimed until a generated configuration is available.
+- `dartscope-resolve::resolve_package_uri` resolves relative and absolute config entries
+  using RFC 3986 semantics and returns a project path only for URIs inside the synthetic
+  project root.
+- `build_uri_graph` selects the nearest config scope for each source file. Local entries
+  can become `resolved` or `missing_target`; configured cache entries become
+  `resolved_external` with a `target_uri`. Invalid nearest configs are not bypassed by
+  pubspec fallback.
+- stable project-index JSON fixtures lock the serialized URI graph, part-link analysis,
+  and GraphQL contract analysis shapes before the public schema hardens.
+- `dartscope uri-graph` and `dartscope graphql-contracts` accept repeated
+  `--env key=value` pairs so the CLI can exercise the same environment-aware
+  conditional URI selection as the library API.
+- Flutter route hints now cover both `GoRoute(path: ...)` and literal
+  `MaterialApp(routes: { ... })` maps. Rustok currently still contributes 10
+  production route hints, all from `GoRoute`; app-specific module manifest route
+  synthesis remains out of the core library model.
+- `dartscope graphql-contracts D:\RusTok\rustok_mobile` currently reports 12 bindings,
+  all with `same_file` resolution, 0 unresolved uses, 0 variable mismatches, and 0
+  call-kind mismatches.
 
 ### Phase 4: Flutter Conventions
 
@@ -382,8 +455,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ## Current Recommended Next Step
 
-1. Add the root README and Rust workspace.
-2. Add `dartscope-core`, `dartscope-parse`, `dartscope-json`, `dartscope-cli`, and
-   umbrella `dartscope`.
-3. Implement file-level imports/declarations and `pubspec.yaml` dependency parsing.
-4. Add fixtures tied to the reference strategy.
+1. Keep reducing real Rustok misses and ambiguities into focused fixtures without
+   turning app-specific conventions into core Dart/Flutter semantics.
+2. Calibrate configured package resolution when a real generated config is available.
+3. Add more Flutter convention fixtures once the pure Dart index surface settles.

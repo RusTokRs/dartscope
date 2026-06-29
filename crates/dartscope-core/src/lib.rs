@@ -32,10 +32,27 @@ impl PubspecInput {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PackageConfigInput {
+    pub path: String,
+    pub source: String,
+}
+
+impl PackageConfigInput {
+    pub fn new(path: impl Into<String>, source: impl Into<String>) -> Self {
+        Self {
+            path: normalize_path(path.into()),
+            source: source.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DartProjectInput {
     pub root: String,
     pub files: Vec<DartFileInput>,
     pub pubspecs: Vec<PubspecInput>,
+    #[serde(default)]
+    pub package_configs: Vec<PackageConfigInput>,
 }
 
 impl DartProjectInput {
@@ -48,7 +65,13 @@ impl DartProjectInput {
             root: normalize_path(root.into()),
             files,
             pubspecs,
+            package_configs: Vec::new(),
         }
+    }
+
+    pub fn with_package_configs(mut self, package_configs: Vec<PackageConfigInput>) -> Self {
+        self.package_configs = package_configs;
+        self
     }
 }
 
@@ -56,6 +79,7 @@ impl DartProjectInput {
 pub struct DartFileAnalysis {
     pub path: String,
     pub language: DartFileLanguage,
+    pub library: Option<DartLibraryDirective>,
     pub imports: Vec<DartImport>,
     pub exports: Vec<DartExport>,
     pub parts: Vec<DartPart>,
@@ -73,6 +97,7 @@ impl DartFileAnalysis {
         Self {
             path: normalize_path(path.into()),
             language: DartFileLanguage::Dart,
+            library: None,
             imports: Vec::new(),
             exports: Vec::new(),
             parts: Vec::new(),
@@ -92,6 +117,7 @@ pub struct DartProjectAnalysis {
     pub root: String,
     pub files: Vec<DartFileAnalysis>,
     pub pubspecs: Vec<PubspecAnalysis>,
+    pub package_configs: Vec<PackageConfigAnalysis>,
     pub summary: DartProjectSummary,
     pub diagnostics: Vec<DartDiagnostic>,
 }
@@ -100,6 +126,7 @@ pub struct DartProjectAnalysis {
 pub struct DartProjectSummary {
     pub dart_files: usize,
     pub pubspecs: usize,
+    pub package_configs: usize,
     pub imports: usize,
     pub exports: usize,
     pub parts: usize,
@@ -146,13 +173,76 @@ impl SourceSpan {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DartImport {
     pub uri: String,
+    pub configurations: Vec<DartUriConfiguration>,
+    pub is_deferred: bool,
+    pub prefix: Option<String>,
+    pub combinators: Vec<DartNamespaceCombinator>,
     pub span: SourceSpan,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DartExport {
     pub uri: String,
+    pub configurations: Vec<DartUriConfiguration>,
+    pub combinators: Vec<DartNamespaceCombinator>,
     pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartUriConfiguration {
+    pub condition: String,
+    pub uri: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
+pub struct DartCompilationEnvironment {
+    pub entries: Vec<DartCompilationEnvironmentEntry>,
+}
+
+impl DartCompilationEnvironment {
+    pub fn new(entries: Vec<DartCompilationEnvironmentEntry>) -> Self {
+        Self { entries }
+    }
+
+    pub fn from_pairs(
+        pairs: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+    ) -> Self {
+        Self {
+            entries: pairs
+                .into_iter()
+                .map(|(key, value)| DartCompilationEnvironmentEntry {
+                    key: key.into(),
+                    value: value.into(),
+                })
+                .collect(),
+        }
+    }
+
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.entries
+            .iter()
+            .find(|entry| entry.key == key)
+            .map(|entry| entry.value.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartCompilationEnvironmentEntry {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartNamespaceCombinator {
+    pub kind: DartNamespaceCombinatorKind,
+    pub names: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartNamespaceCombinatorKind {
+    Show,
+    Hide,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -164,7 +254,21 @@ pub struct DartPart {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DartPartOf {
     pub library: String,
+    pub kind: DartPartOfKind,
     pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartLibraryDirective {
+    pub name: Option<String>,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartPartOfKind {
+    Uri,
+    LibraryName,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -201,6 +305,140 @@ pub struct DartGraphqlOperationUse {
     pub enclosing_callable: Option<String>,
     pub enclosing_symbol: Option<DartEnclosingSymbol>,
     pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
+pub struct DartGraphqlContractAnalysis {
+    pub bindings: Vec<DartGraphqlOperationBinding>,
+    pub unresolved_uses: Vec<DartGraphqlUnresolvedOperationUse>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
+pub struct DartUriGraph {
+    pub references: Vec<DartUriReference>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
+pub struct DartPartLinkAnalysis {
+    pub links: Vec<DartPartLink>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartPartLink {
+    pub owner_path: String,
+    pub part_uri: String,
+    pub part_path: Option<String>,
+    pub declared_owner: Option<String>,
+    pub status: DartPartLinkStatus,
+    pub part_span: SourceSpan,
+    pub part_of_span: Option<SourceSpan>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartPartLinkStatus {
+    Matched,
+    MissingTarget,
+    UnresolvedTarget,
+    MissingPartOf,
+    DifferentLibrary,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartUriReference {
+    pub source_path: String,
+    pub source_span: SourceSpan,
+    pub uri: String,
+    pub condition: Option<String>,
+    pub kind: DartUriReferenceKind,
+    pub resolution: DartUriResolution,
+    pub target_path: Option<String>,
+    pub target_uri: Option<String>,
+    pub candidate_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartUriReferenceKind {
+    Import,
+    Export,
+    Part,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartUriResolution {
+    Resolved,
+    ResolvedExternal,
+    External,
+    MissingTarget,
+    UnindexedPackage,
+    AmbiguousPackage,
+    UnsupportedScheme,
+    InvalidConfiguration,
+    InvalidUri,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartGraphqlOperationBinding {
+    pub constant_name: String,
+    pub resolution_basis: DartGraphqlBindingResolution,
+    pub operation_name: Option<String>,
+    pub operation_type: DartGraphqlOperationType,
+    pub client_call: DartGraphqlClientCall,
+    pub call_compatibility: DartGraphqlCallCompatibility,
+    pub declared_variable_names: Vec<String>,
+    pub supplied_variable_names: Vec<String>,
+    pub missing_variable_names: Vec<String>,
+    pub unexpected_variable_names: Vec<String>,
+    pub variable_compatibility: DartGraphqlVariableCompatibility,
+    pub operation_path: String,
+    pub operation_span: SourceSpan,
+    pub use_path: String,
+    pub use_span: SourceSpan,
+    pub enclosing_symbol: Option<DartEnclosingSymbol>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartGraphqlBindingResolution {
+    SameFile,
+    SameLibrary,
+    DirectImport,
+    ReExport,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartGraphqlUnresolvedOperationUse {
+    pub constant_name: String,
+    pub reason: DartGraphqlUnresolvedReason,
+    pub use_path: String,
+    pub use_span: SourceSpan,
+    pub candidate_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartGraphqlUnresolvedReason {
+    MissingDeclaration,
+    AmbiguousDeclaration,
+    NotVisibleDeclaration,
+    ConditionalEnvironmentRequired,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartGraphqlCallCompatibility {
+    Match,
+    Mismatch,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartGraphqlVariableCompatibility {
+    Match,
+    Mismatch,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -307,6 +545,19 @@ impl DartDiagnostic {
             span,
         }
     }
+
+    pub fn error(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        span: Option<SourceSpan>,
+    ) -> Self {
+        Self {
+            code: code.into(),
+            severity: DiagnosticSeverity::Error,
+            message: message.into(),
+            span,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -315,6 +566,31 @@ pub enum DiagnosticSeverity {
     Info,
     Warning,
     Error,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PackageConfigAnalysis {
+    pub path: String,
+    pub config_version: Option<u64>,
+    pub packages: Vec<DartPackageConfigEntry>,
+    pub generator: Option<String>,
+    pub generator_version: Option<String>,
+    pub diagnostics: Vec<DartDiagnostic>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartPackageConfigEntry {
+    pub name: String,
+    pub root_uri: String,
+    pub package_uri: Option<String>,
+    pub language_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartResolvedPackageUri {
+    pub package_name: String,
+    pub resolved_uri: String,
+    pub project_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]

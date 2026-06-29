@@ -8,12 +8,15 @@ repository.workspace = true
 description = "Thin umbrella crate for DartScope"
 
 [features]
-default = ["parse", "json"]
+default = ["parse", "resolve", "index", "json"]
 parse = ["dep:dartscope-parse"]
+resolve = ["dep:dartscope-resolve"]
+index = ["dep:dartscope-index"]
 json = ["dep:dartscope-json"]
 
 [dependencies]
 dartscope-core.workspace = true
 dartscope-parse = { workspace = true, optional = true }
+dartscope-resolve = { workspace = true, optional = true }
+dartscope-index = { workspace = true, optional = true }
 dartscope-json = { workspace = true, optional = true }
-

@@ -12,5 +12,4 @@ name = "dartscope"
 path = "src/main.rs"
 
 [dependencies]
-dartscope = { path = "../dartscope", features = ["parse", "json"] }
-
+dartscope = { path = "../dartscope", features = ["parse", "index", "json"] }

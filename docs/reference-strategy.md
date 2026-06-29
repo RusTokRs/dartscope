@@ -31,7 +31,14 @@ Dart packages and tooling:
 - [pubspec file documentation](https://dart.dev/tools/pub/pubspec)
 - [Package dependencies](https://dart.dev/tools/pub/dependencies)
 - [Package layout conventions](https://dart.dev/tools/pub/package-layout)
+- [Resolving package URIs](https://api.dart.dev/dart-isolate/Isolate/resolvePackageUriSync.html)
+- [Package Configuration File v2 specification](https://github.com/dart-lang/language/blob/main/accepted/2.8/language-versioning/package-config-file-v2.md)
+- [`package_config` reference implementation](https://github.com/dart-lang/tools/tree/main/pkgs/package_config)
 - [dart analyze](https://dart.dev/tools/dart-analyze)
+- [`part_of_non_part` analyzer diagnostic](https://dart.dev/tools/diagnostics/part_of_non_part)
+- [`part_of_different_library` analyzer diagnostic](https://dart.dev/tools/diagnostics/part_of_different_library)
+- [`ambiguous_import` analyzer diagnostic](https://dart.dev/tools/diagnostics/ambiguous_import)
+- [`ambiguous_export` analyzer diagnostic](https://dart.dev/tools/diagnostics/ambiguous_export)
 
 Flutter framework:
 
@@ -77,6 +84,20 @@ For each pass, record what was correct, what was missed, what was falsely inferr
 where a diagnostic would be better than a confident finding. Each reusable case should
 be reduced to a small fixture in DartScope before broadening the parser or Flutter
 heuristics.
+
+Project URI resolution must distinguish indexed source knowledge from Dart package
+configuration knowledge. A `package:` URI whose package is absent from the loaded
+pubspecs is unindexed, not proven invalid. Full package resolution should consume the
+official package configuration in a later phase rather than infer dependency locations.
+
+Configurable import/export URI selection follows the Dart language specification:
+conditions are looked up in the compilation environment, a condition without `==`
+compares against `"true"`, configuration clauses are evaluated in source order, and
+the default URI is used when nothing matches.
+
+Part ownership follows the analyzer distinction between a missing part file, a target
+without `part of`, and a target that names a different owner. A package target outside
+the loaded index is unresolved, not proven missing.
 
 ## Consumer Boundary
 

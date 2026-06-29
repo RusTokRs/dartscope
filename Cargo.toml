@@ -4,6 +4,8 @@ members = [
     "crates/dartscope",
     "crates/dartscope-core",
     "crates/dartscope-parse",
+    "crates/dartscope-index",
+    "crates/dartscope-resolve",
     "crates/dartscope-json",
     "crates/dartscope-cli",
 ]
@@ -19,7 +21,11 @@ description = "Rust toolkit for Dart and Flutter code intelligence"
 [workspace.dependencies]
 dartscope-core = { path = "crates/dartscope-core" }
 dartscope-parse = { path = "crates/dartscope-parse" }
+dartscope-index = { path = "crates/dartscope-index" }
+dartscope-resolve = { path = "crates/dartscope-resolve" }
 dartscope-json = { path = "crates/dartscope-json" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+uriparse = "0.6.4"
+percent-encoding = "2"

@@ -3,5 +3,14 @@ pub use dartscope_core::*;
 #[cfg(feature = "parse")]
 pub use dartscope_parse::{analyze_file, analyze_project, parse_pubspec};
 
+#[cfg(feature = "resolve")]
+pub use dartscope_resolve::{parse_package_config, resolve_package_uri, PackageUriResolutionError};
+
+#[cfg(feature = "index")]
+pub use dartscope_index::{
+    analyze_graphql_contracts, analyze_graphql_contracts_with_options, analyze_part_links,
+    build_uri_graph, build_uri_graph_with_options, DartIndexOptions,
+};
+
 #[cfg(feature = "json")]
 pub use dartscope_json::{to_json, to_json_pretty};

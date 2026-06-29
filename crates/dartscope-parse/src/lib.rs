@@ -2,19 +2,29 @@ use dartscope_core::{
     normalize_path, Confidence, DartDeclaration, DartDeclarationKind, DartDiagnostic,
     DartEnclosingSymbol, DartEnclosingSymbolKind, DartExport, DartFileAnalysis, DartFileInput,
     DartGraphqlClientCall, DartGraphqlOperation, DartGraphqlOperationType, DartGraphqlOperationUse,
-    DartImport, DartPart, DartPartOf, DartProjectAnalysis, DartProjectInput, DartProjectSummary,
-    DartStringConstant, FlutterRouteHint, FlutterRoutePathKind, FlutterWidgetHint, PubspecAnalysis,
-    PubspecDependency, PubspecDependencySection, PubspecInput, SourceSpan,
+    DartImport, DartLibraryDirective, DartNamespaceCombinator, DartNamespaceCombinatorKind,
+    DartPart, DartPartOf, DartPartOfKind, DartProjectAnalysis, DartProjectInput,
+    DartProjectSummary, DartStringConstant, DartUriConfiguration, FlutterRouteHint,
+    FlutterRoutePathKind, FlutterWidgetHint, PubspecAnalysis, PubspecDependency,
+    PubspecDependencySection, PubspecInput, SourceSpan,
 };
 
 use std::collections::HashMap;
+
+use dartscope_resolve::parse_package_config;
 
 pub fn analyze_file(input: DartFileInput) -> DartFileAnalysis {
     let mut analysis = DartFileAnalysis::empty(input.path);
     analysis.graphql_operations = extract_graphql_operations(&input.source);
     analysis.graphql_operation_uses = extract_graphql_operation_uses(&input.source);
+    let (imports, exports, directive_diagnostics) = extract_namespace_directives(&input.source);
+    analysis.flutter.imports_flutter = imports.iter().any(|import| is_flutter_import(&import.uri));
+    analysis.imports = imports;
+    analysis.exports = exports;
+    analysis.diagnostics = directive_diagnostics;
     let mut byte_offset = 0usize;
     let mut pending_route: Option<PendingRouteHint> = None;
+    let mut material_routes_depth: Option<usize> = None;
     let mut string_constants = HashMap::new();
 
     for (index, line) in input.source.lines().enumerate() {
@@ -29,6 +39,20 @@ pub fn analyze_file(input: DartFileInput) -> DartFileAnalysis {
                 "source contains a merge conflict marker",
                 Some(span.clone()),
             ));
+        }
+
+        if let Some(depth) = material_routes_depth.as_mut() {
+            if let Some(route_hint) = material_route_from_line(trimmed, span.clone()) {
+                analysis.flutter.routes.push(route_hint);
+            }
+            *depth = depth.saturating_add(count_char(trimmed, '{'));
+            *depth = depth.saturating_sub(count_char(trimmed, '}'));
+            if *depth == 0 {
+                material_routes_depth = None;
+            }
+        } else if starts_material_routes_map(trimmed) {
+            material_routes_depth =
+                Some(count_char(trimmed, '{').saturating_sub(count_char(trimmed, '}')));
         }
 
         if pending_route.is_none() {
@@ -48,27 +72,20 @@ pub fn analyze_file(input: DartFileInput) -> DartFileAnalysis {
             }
         }
 
-        if let Some(uri) = directive_uri(trimmed, "import") {
-            if is_flutter_import(&uri) {
-                analysis.flutter.imports_flutter = true;
-            }
-            analysis.imports.push(DartImport {
-                uri,
+        if let Some(name) = library_directive_name(trimmed) {
+            analysis.library = Some(DartLibraryDirective {
+                name,
                 span: span.clone(),
             });
-        } else if let Some(uri) = directive_uri(trimmed, "export") {
-            analysis.exports.push(DartExport {
-                uri,
+        } else if let Some((library, kind)) = part_of_value(trimmed) {
+            analysis.part_of = Some(DartPartOf {
+                library,
+                kind,
                 span: span.clone(),
             });
         } else if let Some(uri) = directive_uri(trimmed, "part") {
             analysis.parts.push(DartPart {
                 uri,
-                span: span.clone(),
-            });
-        } else if let Some(library) = part_of_value(trimmed) {
-            analysis.part_of = Some(DartPartOf {
-                library,
                 span: span.clone(),
             });
         } else if let Some(declaration) = declaration_from_line(trimmed, indent, span.clone()) {
@@ -111,10 +128,137 @@ pub fn analyze_file(input: DartFileInput) -> DartFileAnalysis {
     analysis
 }
 
+struct PendingNamespaceDirective {
+    keyword: &'static str,
+    text: String,
+    start_line: usize,
+    start_byte: usize,
+}
+
+#[derive(Default)]
+struct NamespaceDirectiveOutput {
+    imports: Vec<DartImport>,
+    exports: Vec<DartExport>,
+    diagnostics: Vec<DartDiagnostic>,
+}
+
+fn extract_namespace_directives(
+    source: &str,
+) -> (Vec<DartImport>, Vec<DartExport>, Vec<DartDiagnostic>) {
+    let mut output = NamespaceDirectiveOutput::default();
+    let mut pending: Option<PendingNamespaceDirective> = None;
+    let mut byte_offset = 0usize;
+    let mut last_line = 1usize;
+    let mut last_text = "";
+
+    for (index, line) in source.lines().enumerate() {
+        let line_number = index + 1;
+        let trimmed = line.trim();
+        last_line = line_number;
+        last_text = line;
+
+        if let Some(directive) = pending.as_mut() {
+            directive.text.push(' ');
+            directive.text.push_str(trimmed);
+        } else if trimmed.starts_with("import ") {
+            pending = Some(PendingNamespaceDirective {
+                keyword: "import",
+                text: trimmed.to_string(),
+                start_line: line_number,
+                start_byte: byte_offset,
+            });
+        } else if trimmed.starts_with("export ") {
+            pending = Some(PendingNamespaceDirective {
+                keyword: "export",
+                text: trimmed.to_string(),
+                start_line: line_number,
+                start_byte: byte_offset,
+            });
+        }
+
+        if trimmed.contains(';') {
+            if let Some(directive) = pending.take() {
+                finish_namespace_directive(
+                    directive,
+                    line_number,
+                    byte_offset + line.len(),
+                    line,
+                    true,
+                    &mut output,
+                );
+            }
+        }
+
+        byte_offset += line.len() + 1;
+    }
+
+    if let Some(directive) = pending {
+        finish_namespace_directive(
+            directive,
+            last_line,
+            byte_offset.saturating_sub(1),
+            last_text,
+            false,
+            &mut output,
+        );
+    }
+
+    (output.imports, output.exports, output.diagnostics)
+}
+
+fn finish_namespace_directive(
+    pending: PendingNamespaceDirective,
+    end_line: usize,
+    end_byte: usize,
+    end_text: &str,
+    terminated: bool,
+    output: &mut NamespaceDirectiveOutput,
+) {
+    let span = SourceSpan {
+        byte_start: pending.start_byte,
+        byte_end: end_byte,
+        start_line: pending.start_line,
+        start_column: 1,
+        end_line,
+        end_column: end_text.chars().count() + 1,
+    };
+    if let Some(directive) = namespace_directive(&pending.text, pending.keyword) {
+        if pending.keyword == "import" {
+            output.imports.push(DartImport {
+                uri: directive.uri,
+                configurations: directive.configurations,
+                is_deferred: directive.is_deferred,
+                prefix: directive.prefix,
+                combinators: directive.combinators,
+                span: span.clone(),
+            });
+        } else {
+            output.exports.push(DartExport {
+                uri: directive.uri,
+                configurations: directive.configurations,
+                combinators: directive.combinators,
+                span: span.clone(),
+            });
+        }
+    }
+    if !terminated {
+        output.diagnostics.push(DartDiagnostic::warning(
+            "directive_missing_semicolon",
+            "Dart import/export directive appears to be missing a semicolon",
+            Some(span),
+        ));
+    }
+}
+
 pub fn analyze_project(input: DartProjectInput) -> DartProjectAnalysis {
     let root = normalize_path(input.root);
     let files: Vec<_> = input.files.into_iter().map(analyze_file).collect();
     let pubspecs: Vec<_> = input.pubspecs.into_iter().map(parse_pubspec).collect();
+    let package_configs: Vec<_> = input
+        .package_configs
+        .into_iter()
+        .map(parse_package_config)
+        .collect();
 
     let file_diagnostics = files
         .iter()
@@ -122,11 +266,18 @@ pub fn analyze_project(input: DartProjectInput) -> DartProjectAnalysis {
     let pubspec_diagnostics = pubspecs
         .iter()
         .flat_map(|analysis| analysis.diagnostics.iter().cloned());
-    let diagnostics: Vec<_> = file_diagnostics.chain(pubspec_diagnostics).collect();
+    let package_config_diagnostics = package_configs
+        .iter()
+        .flat_map(|analysis| analysis.diagnostics.iter().cloned());
+    let diagnostics: Vec<_> = file_diagnostics
+        .chain(pubspec_diagnostics)
+        .chain(package_config_diagnostics)
+        .collect();
 
     let summary = DartProjectSummary {
         dart_files: files.len(),
         pubspecs: pubspecs.len(),
+        package_configs: package_configs.len(),
         imports: files.iter().map(|analysis| analysis.imports.len()).sum(),
         exports: files.iter().map(|analysis| analysis.exports.len()).sum(),
         parts: files.iter().map(|analysis| analysis.parts.len()).sum(),
@@ -165,6 +316,7 @@ pub fn analyze_project(input: DartProjectInput) -> DartProjectAnalysis {
         root,
         files,
         pubspecs,
+        package_configs,
         summary,
         diagnostics,
     }
@@ -262,6 +414,120 @@ fn directive_uri(trimmed: &str, keyword: &str) -> Option<String> {
     quoted_value(rest)
 }
 
+#[derive(Debug, Default)]
+struct ParsedNamespaceDirective {
+    uri: String,
+    configurations: Vec<DartUriConfiguration>,
+    is_deferred: bool,
+    prefix: Option<String>,
+    combinators: Vec<DartNamespaceCombinator>,
+}
+
+fn namespace_directive(trimmed: &str, keyword: &str) -> Option<ParsedNamespaceDirective> {
+    let rest = trimmed.strip_prefix(keyword)?.trim_start();
+    let (uri, suffix) = quoted_value_with_suffix(rest)?;
+    let (configurations, suffix) = uri_configurations(suffix);
+    let tokens = directive_suffix_tokens(suffix);
+    let mut directive = ParsedNamespaceDirective {
+        uri,
+        configurations,
+        ..ParsedNamespaceDirective::default()
+    };
+    let mut index = 0;
+
+    while index < tokens.len() {
+        match tokens[index] {
+            "deferred" if keyword == "import" => {
+                directive.is_deferred = true;
+                index += 1;
+            }
+            "as" if keyword == "import" => {
+                directive.prefix = tokens
+                    .get(index + 1)
+                    .filter(|name| is_identifier(name))
+                    .map(|name| (*name).to_string());
+                index += 2;
+            }
+            "show" | "hide" => {
+                let kind = if tokens[index] == "show" {
+                    DartNamespaceCombinatorKind::Show
+                } else {
+                    DartNamespaceCombinatorKind::Hide
+                };
+                index += 1;
+                let start = index;
+                while index < tokens.len() && !matches!(tokens[index], "show" | "hide") {
+                    index += 1;
+                }
+                let names = tokens[start..index]
+                    .iter()
+                    .filter(|name| is_identifier(name))
+                    .map(|name| (*name).to_string())
+                    .collect();
+                directive
+                    .combinators
+                    .push(DartNamespaceCombinator { kind, names });
+            }
+            _ => index += 1,
+        }
+    }
+
+    Some(directive)
+}
+
+fn uri_configurations(mut suffix: &str) -> (Vec<DartUriConfiguration>, &str) {
+    let mut configurations = Vec::new();
+    loop {
+        suffix = suffix.trim_start();
+        let Some(after_if) = suffix.strip_prefix("if") else {
+            break;
+        };
+        if !after_if.starts_with(char::is_whitespace) && !after_if.starts_with('(') {
+            break;
+        }
+        let after_if = after_if.trim_start();
+        let Some(condition_start) = after_if.strip_prefix('(') else {
+            break;
+        };
+        let Some(condition_end) = condition_start.find(')') else {
+            break;
+        };
+        let condition = condition_start[..condition_end].trim();
+        if condition.is_empty() {
+            break;
+        }
+        let after_condition = &condition_start[condition_end + 1..];
+        let Some((uri, remaining)) = quoted_value_with_suffix(after_condition) else {
+            break;
+        };
+        configurations.push(DartUriConfiguration {
+            condition: condition.to_string(),
+            uri,
+        });
+        suffix = remaining;
+    }
+    (configurations, suffix)
+}
+
+fn quoted_value_with_suffix(input: &str) -> Option<(String, &str)> {
+    let input = input.trim_start();
+    let quote_index = usize::from(input.starts_with('r'));
+    let quote = *input.as_bytes().get(quote_index)?;
+    if !matches!(quote, b'\'' | b'"') {
+        return None;
+    }
+    let rest = &input[quote_index + 1..];
+    let end = rest.find(quote as char)?;
+    Some((rest[..end].to_string(), &rest[end + 1..]))
+}
+
+fn directive_suffix_tokens(suffix: &str) -> Vec<&str> {
+    suffix
+        .split(|ch: char| ch.is_whitespace() || matches!(ch, ',' | ';'))
+        .filter(|token| !token.is_empty())
+        .collect()
+}
+
 fn pending_route_from_line(
     trimmed: &str,
     span: SourceSpan,
@@ -292,6 +558,28 @@ fn route_name_argument(trimmed: &str) -> Option<String> {
     named_argument_value(trimmed, "name").map(|value| {
         quoted_value(value).unwrap_or_else(|| value.trim_end_matches(',').trim().to_string())
     })
+}
+
+fn starts_material_routes_map(trimmed: &str) -> bool {
+    trimmed.starts_with("routes:") && trimmed.contains('{')
+}
+
+fn material_route_from_line(trimmed: &str, span: SourceSpan) -> Option<FlutterRouteHint> {
+    let (key, _) = trimmed.split_once(':')?;
+    let path = quoted_value(key.trim())?;
+    Some(FlutterRouteHint {
+        constructor: "MaterialApp.routes".to_string(),
+        path: path.clone(),
+        path_kind: FlutterRoutePathKind::Literal,
+        resolved_path: Some(path),
+        name: None,
+        confidence: Confidence::High,
+        span,
+    })
+}
+
+fn count_char(value: &str, needle: char) -> usize {
+    value.chars().filter(|ch| *ch == needle).count()
 }
 
 fn named_argument_value<'a>(trimmed: &'a str, name: &str) -> Option<&'a str> {
@@ -782,14 +1070,30 @@ fn top_level_variable_owner_from_line(trimmed: &str) -> Option<String> {
         .filter(|name| is_identifier(name))
 }
 
-fn part_of_value(trimmed: &str) -> Option<String> {
+fn library_directive_name(trimmed: &str) -> Option<Option<String>> {
+    let rest = trimmed.strip_prefix("library")?;
+    if !rest.is_empty() && !rest.starts_with(char::is_whitespace) && !rest.starts_with(';') {
+        return None;
+    }
+    let name = rest.trim().trim_end_matches(';').trim();
+    if name.is_empty() {
+        Some(None)
+    } else {
+        is_library_name(name).then(|| Some(name.to_string()))
+    }
+}
+
+fn part_of_value(trimmed: &str) -> Option<(String, DartPartOfKind)> {
     let rest = trimmed.strip_prefix("part of")?.trim();
-    quoted_value(rest).or_else(|| {
-        rest.trim_end_matches(';')
-            .split_whitespace()
-            .next()
-            .map(str::to_string)
-    })
+    quoted_value(rest)
+        .map(|uri| (uri, DartPartOfKind::Uri))
+        .or_else(|| {
+            rest.trim_end_matches(';')
+                .split_whitespace()
+                .next()
+                .filter(|name| is_library_name(name))
+                .map(|name| (name.to_string(), DartPartOfKind::LibraryName))
+        })
 }
 
 fn quoted_value(input: &str) -> Option<String> {
@@ -984,6 +1288,10 @@ fn is_identifier(value: &str) -> bool {
         && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
+fn is_library_name(value: &str) -> bool {
+    value.split('.').all(is_identifier)
+}
+
 fn is_flutter_base(base: &str) -> bool {
     matches!(
         base,
@@ -1001,11 +1309,7 @@ fn is_flutter_import(uri: &str) -> bool {
 }
 
 fn directive_like_without_semicolon(trimmed: &str) -> bool {
-    (trimmed.starts_with("import ")
-        || trimmed.starts_with("export ")
-        || trimmed.starts_with("part ")
-        || trimmed.starts_with("part of "))
-        && !trimmed.ends_with(';')
+    (trimmed.starts_with("part ") || trimmed.starts_with("part of ")) && !trimmed.ends_with(';')
 }
 
 fn key_value<'a>(trimmed: &'a str, key: &str) -> Option<&'a str> {
@@ -1032,7 +1336,7 @@ mod tests {
     use super::*;
     use dartscope_core::{
         Confidence, DartDeclarationKind, DartEnclosingSymbolKind, DartGraphqlClientCall,
-        DartProjectInput, FlutterRoutePathKind, PubspecDependencySection,
+        DartProjectInput, FlutterRoutePathKind, PackageConfigInput, PubspecDependencySection,
     };
 
     #[test]
@@ -1062,6 +1366,116 @@ typedef Mapper = String Function(int value);
             .iter()
             .any(|declaration| declaration.name == "Mapper"
                 && declaration.kind == DartDeclarationKind::Typedef));
+    }
+
+    #[test]
+    fn parses_import_and_export_namespace_controls() {
+        let source = r#"
+import 'src/generated.dart' as generated show operation, model hide internal;
+import 'src/lazy.dart' deferred as lazy;
+export 'src/public.dart' show PublicApi hide InternalApi;
+"#;
+
+        let analysis = analyze_file(DartFileInput::new("lib/api.dart", source));
+
+        assert_eq!(analysis.imports[0].prefix.as_deref(), Some("generated"));
+        assert!(!analysis.imports[0].is_deferred);
+        assert_eq!(analysis.imports[0].combinators.len(), 2);
+        assert_eq!(
+            analysis.imports[0].combinators[0].kind,
+            DartNamespaceCombinatorKind::Show
+        );
+        assert_eq!(
+            analysis.imports[0].combinators[0].names,
+            ["operation", "model"]
+        );
+        assert_eq!(analysis.imports[0].combinators[1].names, ["internal"]);
+        assert!(analysis.imports[1].is_deferred);
+        assert_eq!(analysis.imports[1].prefix.as_deref(), Some("lazy"));
+        assert_eq!(analysis.exports[0].combinators.len(), 2);
+        assert_eq!(analysis.exports[0].combinators[0].names, ["PublicApi"]);
+        assert_eq!(analysis.exports[0].combinators[1].names, ["InternalApi"]);
+    }
+
+    #[test]
+    fn parses_conditional_imports_and_exports_without_selecting_a_platform() {
+        let source = r#"
+import 'src/stub.dart'
+  if (dart.library.io) 'src/io.dart'
+  if (dart.library.js_interop) 'src/web.dart' show PlatformApi;
+export 'src/default.dart' if (dart.library.io) 'src/native.dart' hide Internal;
+"#;
+
+        let analysis = analyze_file(DartFileInput::new("lib/platform.dart", source));
+
+        assert_eq!(analysis.imports.len(), 1);
+        assert_eq!(analysis.imports[0].configurations.len(), 2);
+        assert_eq!(analysis.imports[0].span.start_line, 2);
+        assert_eq!(analysis.imports[0].span.end_line, 4);
+        assert_eq!(analysis.imports[0].combinators[0].names, ["PlatformApi"]);
+        assert_eq!(analysis.exports.len(), 1);
+        assert_eq!(analysis.exports[0].configurations.len(), 1);
+        assert_eq!(
+            analysis.exports[0].configurations[0].condition,
+            "dart.library.io"
+        );
+        assert_eq!(analysis.exports[0].configurations[0].uri, "src/native.dart");
+        assert_eq!(analysis.exports[0].combinators[0].names, ["Internal"]);
+        assert!(analysis.diagnostics.is_empty());
+
+        let single_line = analyze_file(DartFileInput::new(
+            "lib/platform_single_line.dart",
+            "import 'src/stub.dart' if (dart.library.io) 'src/io.dart' if (dart.library.js_interop) 'src/web.dart' show PlatformApi;",
+        ));
+        assert_eq!(single_line.imports[0].configurations.len(), 2);
+        assert_eq!(
+            single_line.imports[0].configurations[1].condition,
+            "dart.library.js_interop"
+        );
+        assert_eq!(single_line.imports[0].configurations[1].uri, "src/web.dart");
+        assert_eq!(single_line.imports[0].combinators[0].names, ["PlatformApi"]);
+    }
+
+    #[test]
+    fn distinguishes_part_of_from_part_directives() {
+        let analysis = analyze_file(DartFileInput::new(
+            "lib/src/model.dart",
+            "part of '../models.dart';\n",
+        ));
+
+        assert!(analysis.parts.is_empty());
+        assert_eq!(
+            analysis.part_of.as_ref().map(|part| part.library.as_str()),
+            Some("../models.dart")
+        );
+        assert_eq!(
+            analysis.part_of.as_ref().map(|part| part.kind),
+            Some(DartPartOfKind::Uri)
+        );
+    }
+
+    #[test]
+    fn parses_library_name_and_named_part_of_directive() {
+        let library = analyze_file(DartFileInput::new(
+            "lib/models.dart",
+            "library app.models;\npart 'src/model.dart';\n",
+        ));
+        let part = analyze_file(DartFileInput::new(
+            "lib/src/model.dart",
+            "part of app.models;\n",
+        ));
+
+        assert_eq!(
+            library
+                .library
+                .as_ref()
+                .and_then(|value| value.name.as_deref()),
+            Some("app.models")
+        );
+        assert_eq!(
+            part.part_of.as_ref().map(|value| value.kind),
+            Some(DartPartOfKind::LibraryName)
+        );
     }
 
     #[test]
@@ -1105,15 +1519,23 @@ dependencies:
     sdk: flutter
 "#;
 
-        let analysis = analyze_project(DartProjectInput::new(
-            "D:\\apps\\demo_app",
-            vec![DartFileInput::new("lib\\main.dart", dart)],
-            vec![PubspecInput::new("pubspec.yaml", pubspec)],
-        ));
+        let analysis = analyze_project(
+            DartProjectInput::new(
+                "D:\\apps\\demo_app",
+                vec![DartFileInput::new("lib\\main.dart", dart)],
+                vec![PubspecInput::new("pubspec.yaml", pubspec)],
+            )
+            .with_package_configs(vec![PackageConfigInput::new(
+                ".dart_tool/package_config.json",
+                r#"{"configVersion":2,"packages":[]}"#,
+            )]),
+        );
 
         assert_eq!(analysis.root, "D:/apps/demo_app");
         assert_eq!(analysis.summary.dart_files, 1);
         assert_eq!(analysis.summary.pubspecs, 1);
+        assert_eq!(analysis.summary.package_configs, 1);
+        assert_eq!(analysis.package_configs[0].config_version, Some(2));
         assert_eq!(analysis.summary.imports, 1);
         assert_eq!(analysis.summary.flutter_widgets, 1);
         assert_eq!(analysis.summary.package_dependencies, 1);
@@ -1250,6 +1672,41 @@ GoRouter buildRouter() {
             route.path == "profilePath"
                 && route.resolved_path.as_deref() == Some("/profile")
                 && route.confidence == Confidence::High
+        }));
+    }
+
+    #[test]
+    fn extracts_material_app_routes_map_hints() {
+        let source = r#"
+import 'package:flutter/material.dart';
+
+class App extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      routes: <String, WidgetBuilder>{
+        '/': (context) => const HomePage(),
+        '/settings': (context) => const SettingsPage(),
+      },
+    );
+  }
+}
+"#;
+
+        let analysis = analyze_file(DartFileInput::new("lib/main.dart", source));
+
+        assert_eq!(analysis.flutter.routes.len(), 2);
+        assert!(analysis.flutter.routes.iter().any(|route| {
+            route.constructor == "MaterialApp.routes"
+                && route.path == "/"
+                && route.path_kind == FlutterRoutePathKind::Literal
+                && route.resolved_path.as_deref() == Some("/")
+                && route.confidence == Confidence::High
+        }));
+        assert!(analysis.flutter.routes.iter().any(|route| {
+            route.constructor == "MaterialApp.routes"
+                && route.path == "/settings"
+                && route.resolved_path.as_deref() == Some("/settings")
         }));
     }
 
