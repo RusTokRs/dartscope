@@ -16,6 +16,21 @@ fn flutter_fixture_reports_widgets_and_dependencies() {
         .declarations
         .iter()
         .any(|declaration| declaration.name == "LabelBuilder"));
+    assert!(analysis
+        .flutter
+        .assets
+        .iter()
+        .any(|asset| asset.path == "assets/images/logo.png"));
+    assert!(analysis
+        .flutter
+        .assets
+        .iter()
+        .any(|asset| asset.path == "assets/config/app.json"));
+    assert!(analysis
+        .flutter
+        .localizations
+        .iter()
+        .any(|localization| localization.key == "homeTitle"));
 
     let pubspec = include_str!("fixtures/flutter_app/pubspec.yaml");
     let pubspec = parse_pubspec(PubspecInput::new("pubspec.yaml", pubspec));
@@ -57,10 +72,12 @@ fn flutter_fixture_project_summary_is_stable() {
     assert_eq!(analysis.root, "fixtures/flutter_app");
     assert_eq!(analysis.summary.dart_files, 1);
     assert_eq!(analysis.summary.pubspecs, 1);
-    assert_eq!(analysis.summary.imports, 2);
+    assert_eq!(analysis.summary.imports, 4);
     assert_eq!(analysis.summary.exports, 1);
     assert_eq!(analysis.summary.parts, 1);
     assert_eq!(analysis.summary.flutter_widgets, 2);
+    assert_eq!(analysis.summary.flutter_assets, 2);
+    assert_eq!(analysis.summary.flutter_localizations, 1);
     assert_eq!(analysis.summary.package_dependencies, 3);
     assert_eq!(analysis.summary.diagnostics, analysis.diagnostics.len());
 }

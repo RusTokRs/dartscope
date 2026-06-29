@@ -136,6 +136,8 @@ pub struct DartProjectSummary {
     pub graphql_operation_uses: usize,
     pub flutter_widgets: usize,
     pub flutter_routes: usize,
+    pub flutter_assets: usize,
+    pub flutter_localizations: usize,
     pub package_dependencies: usize,
     pub diagnostics: usize,
 }
@@ -488,6 +490,8 @@ pub struct FlutterFileHints {
     pub imports_flutter: bool,
     pub widgets: Vec<FlutterWidgetHint>,
     pub routes: Vec<FlutterRouteHint>,
+    pub assets: Vec<FlutterAssetHint>,
+    pub localizations: Vec<FlutterLocalizationHint>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -507,6 +511,37 @@ pub struct FlutterRouteHint {
     pub name: Option<String>,
     pub confidence: Confidence,
     pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct FlutterAssetHint {
+    pub path: String,
+    pub source: FlutterAssetSource,
+    pub confidence: Confidence,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FlutterAssetSource {
+    ImageAsset,
+    AssetImage,
+    RootBundleLoadString,
+    DefaultAssetBundleLoadString,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct FlutterLocalizationHint {
+    pub key: String,
+    pub source: FlutterLocalizationSource,
+    pub confidence: Confidence,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FlutterLocalizationSource {
+    AppLocalizationsOf,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]

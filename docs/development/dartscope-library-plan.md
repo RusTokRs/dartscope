@@ -403,7 +403,7 @@ Current implementation:
 
 ### Phase 4: Flutter Conventions
 
-Status: planned.
+Status: started.
 
 Scope:
 
@@ -412,6 +412,15 @@ Scope:
   high-confidence patterns only
 - detect asset and localization usage where syntax is direct
 - expose confidence or diagnostic metadata for heuristics
+
+Current implementation has a conservative first slice for direct Flutter asset and
+localization references:
+
+- `Image.asset('...')`
+- `AssetImage('...')`
+- `rootBundle.loadString('...')`
+- `DefaultAssetBundle.of(...).loadString('...')`
+- `AppLocalizations.of(context)!.key`
 
 Acceptance:
 

@@ -4,7 +4,8 @@ use dartscope_core::{
     DartGraphqlClientCall, DartGraphqlOperation, DartGraphqlOperationType, DartGraphqlOperationUse,
     DartImport, DartLibraryDirective, DartNamespaceCombinator, DartNamespaceCombinatorKind,
     DartPart, DartPartOf, DartPartOfKind, DartProjectAnalysis, DartProjectInput,
-    DartProjectSummary, DartStringConstant, DartUriConfiguration, FlutterRouteHint,
+    DartProjectSummary, DartStringConstant, DartUriConfiguration, FlutterAssetHint,
+    FlutterAssetSource, FlutterLocalizationHint, FlutterLocalizationSource, FlutterRouteHint,
     FlutterRoutePathKind, FlutterWidgetHint, PubspecAnalysis, PubspecDependency,
     PubspecDependencySection, PubspecInput, SourceSpan,
 };
@@ -39,6 +40,13 @@ pub fn analyze_file(input: DartFileInput) -> DartFileAnalysis {
                 "source contains a merge conflict marker",
                 Some(span.clone()),
             ));
+        }
+
+        if let Some(asset) = flutter_asset_from_line(trimmed, span.clone()) {
+            analysis.flutter.assets.push(asset);
+        }
+        if let Some(localization) = flutter_localization_from_line(trimmed, span.clone()) {
+            analysis.flutter.localizations.push(localization);
         }
 
         if let Some(depth) = material_routes_depth.as_mut() {
@@ -304,6 +312,14 @@ pub fn analyze_project(input: DartProjectInput) -> DartProjectAnalysis {
         flutter_routes: files
             .iter()
             .map(|analysis| analysis.flutter.routes.len())
+            .sum(),
+        flutter_assets: files
+            .iter()
+            .map(|analysis| analysis.flutter.assets.len())
+            .sum(),
+        flutter_localizations: files
+            .iter()
+            .map(|analysis| analysis.flutter.localizations.len())
             .sum(),
         package_dependencies: pubspecs
             .iter()
@@ -576,6 +592,63 @@ fn material_route_from_line(trimmed: &str, span: SourceSpan) -> Option<FlutterRo
         confidence: Confidence::High,
         span,
     })
+}
+
+fn flutter_asset_from_line(trimmed: &str, span: SourceSpan) -> Option<FlutterAssetHint> {
+    let (source, marker) = if trimmed.contains("Image.asset(") {
+        (FlutterAssetSource::ImageAsset, "Image.asset(")
+    } else if trimmed.contains("AssetImage(") {
+        (FlutterAssetSource::AssetImage, "AssetImage(")
+    } else if trimmed.contains("rootBundle.loadString(") {
+        (
+            FlutterAssetSource::RootBundleLoadString,
+            "rootBundle.loadString(",
+        )
+    } else if trimmed.contains("DefaultAssetBundle.of(") && trimmed.contains(".loadString(") {
+        (
+            FlutterAssetSource::DefaultAssetBundleLoadString,
+            ".loadString(",
+        )
+    } else {
+        return None;
+    };
+
+    let value = value_after_marker(trimmed, marker).and_then(quoted_value)?;
+    Some(FlutterAssetHint {
+        path: value,
+        source,
+        confidence: Confidence::High,
+        span,
+    })
+}
+
+fn flutter_localization_from_line(
+    trimmed: &str,
+    span: SourceSpan,
+) -> Option<FlutterLocalizationHint> {
+    let marker = "AppLocalizations.of(";
+    let index = trimmed.find(marker)?;
+    let after_context = &trimmed[index + marker.len()..];
+    let close = after_context.find(')')?;
+    let after_call = after_context[close + 1..].trim_start();
+    let after_nullability = after_call
+        .strip_prefix('!')
+        .or_else(|| after_call.strip_prefix('?'))
+        .unwrap_or(after_call)
+        .trim_start();
+    let key = after_nullability.strip_prefix('.')?;
+    let key = next_identifier(key)?;
+    Some(FlutterLocalizationHint {
+        key,
+        source: FlutterLocalizationSource::AppLocalizationsOf,
+        confidence: Confidence::High,
+        span,
+    })
+}
+
+fn value_after_marker<'a>(trimmed: &'a str, marker: &str) -> Option<&'a str> {
+    let index = trimmed.find(marker)?;
+    Some(&trimmed[index + marker.len()..])
 }
 
 fn count_char(value: &str, needle: char) -> usize {
@@ -1617,6 +1690,43 @@ class StorefrontHomePage extends ConsumerWidget {
             widget.class_name == "StorefrontHomePage" && widget.base_class == "ConsumerWidget"
         }));
         assert!(analysis.flutter.imports_flutter);
+    }
+
+    #[test]
+    fn extracts_direct_flutter_asset_and_localization_hints() {
+        let source = r#"
+import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+
+Widget logo(BuildContext context) {
+  return DecoratedBox(
+    decoration: const BoxDecoration(
+      image: DecorationImage(image: AssetImage('assets/brand/logo.png')),
+    ),
+    child: Text(AppLocalizations.of(context)!.welcomeMessage),
+  );
+}
+
+Future<String> loadCopy(BuildContext context) {
+  return DefaultAssetBundle.of(context).loadString('assets/copy/welcome.txt');
+}
+"#;
+
+        let analysis = analyze_file(DartFileInput::new("lib/widgets/logo.dart", source));
+
+        assert!(analysis.flutter.assets.iter().any(|asset| {
+            asset.path == "assets/brand/logo.png"
+                && asset.source == dartscope_core::FlutterAssetSource::AssetImage
+        }));
+        assert!(analysis.flutter.assets.iter().any(|asset| {
+            asset.path == "assets/copy/welcome.txt"
+                && asset.source == dartscope_core::FlutterAssetSource::DefaultAssetBundleLoadString
+        }));
+        assert!(analysis
+            .flutter
+            .localizations
+            .iter()
+            .any(|localization| localization.key == "welcomeMessage"));
     }
 
     #[test]

@@ -9,7 +9,7 @@ It is a community-facing library ecosystem, not an Athanor adapter. Downstream t
 This repository is in the first bootstrap stage:
 
 - `dartscope-core` owns stable analysis types, spans, diagnostics, and pubspec models.
-- `dartscope-parse` provides a conservative file-level MVP for imports, exports, parts, declarations, simple Flutter widget hints, Dart-embedded GraphQL operations and uses, and `pubspec.yaml` dependency discovery.
+- `dartscope-parse` provides a conservative file-level MVP for imports, exports, parts, declarations, simple Flutter widget, route, asset, and localization hints, Dart-embedded GraphQL operations and uses, and `pubspec.yaml` dependency discovery.
 - `dartscope-index` performs project-level linking over normalized analysis results. Its
   first API resolves GraphQL operation uses conservatively and compares operation,
   client-call, and variable contracts without depending on parser internals.
@@ -44,9 +44,12 @@ plus per-file analysis output. Current output includes top-level string constant
 GraphQL operation documents from Dart raw string constants, declared operation
 variables, client uses such as `gql(operationConstant)` inside
 `query`/`mutate`/`subscribe` calls, supplied client variable names, conservative Flutter
-widget hints, and `GoRoute` hints with `resolved_path` when a route path can be resolved
-from same-file string constants. Use it as the first real-project feedback loop before
-adding broader parser or Flutter convention support.
+widget hints, `GoRoute` hints with `resolved_path` when a route path can be resolved
+from same-file string constants, and high-confidence direct Flutter asset/localization
+references such as `Image.asset(...)`, `AssetImage(...)`, `rootBundle.loadString(...)`,
+`DefaultAssetBundle.of(...).loadString(...)`, and `AppLocalizations.of(context)!.key`.
+Use it as the first real-project feedback loop before adding broader parser or Flutter
+convention support.
 
 `graphql-contracts` links a `gql(operationConstant)` use only through Dart visibility:
 an unambiguous same-file declaration, direct import, or transitive re-export. Each
