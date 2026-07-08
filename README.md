@@ -15,6 +15,8 @@ This repository is in the first bootstrap stage:
   client-call, and variable contracts without depending on parser internals.
 - `dartscope-resolve` parses official package configuration v2 inputs and owns package
   and URI resolution primitives without performing filesystem I/O.
+- `dartscope-flutter` aggregates project-level Flutter inventory (widgets, routes, assets,
+  localizations) from the normalized analysis model. It is optional for pure Dart consumers.
 - `dartscope-json` provides stable JSON serialization helpers.
 - `dartscope-cli` exposes a small command-line wrapper for local smoke testing.
 - `dartscope` is a thin umbrella crate with feature-gated re-exports.
@@ -36,6 +38,7 @@ cargo run -p dartscope-cli -- analyze-project path\to\flutter_project
 cargo run -p dartscope-cli -- graphql-contracts path\to\flutter_project
 cargo run -p dartscope-cli -- uri-graph path\to\flutter_project
 cargo run -p dartscope-cli -- uri-graph path\to\flutter_project --env dart.library.io=true
+cargo run -p dartscope-cli -- flutter-inventory path\to\flutter_project
 ```
 
 `analyze-project` recursively scans `.dart` files and `pubspec.yaml` files, skips

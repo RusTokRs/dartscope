@@ -14,3 +14,9 @@ pub use dartscope_index::{
 
 #[cfg(feature = "json")]
 pub use dartscope_json::{to_json, to_json_pretty};
+
+#[cfg(feature = "flutter")]
+pub use dartscope_flutter::{
+    extract_flutter_inventory, FlutterAssetEntry, FlutterInventory, FlutterInventorySummary,
+    FlutterLocalizationEntry, FlutterRouteEntry, FlutterWidgetEntry,
+};

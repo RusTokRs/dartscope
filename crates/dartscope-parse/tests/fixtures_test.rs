@@ -81,3 +81,70 @@ fn flutter_fixture_project_summary_is_stable() {
     assert_eq!(analysis.summary.package_dependencies, 3);
     assert_eq!(analysis.summary.diagnostics, analysis.diagnostics.len());
 }
+
+#[test]
+fn navigation_fixture_reports_go_routes_with_resolved_paths() {
+    let source = include_str!("fixtures/flutter_app/lib/navigation.dart");
+    let analysis = analyze_file(DartFileInput::new("lib/navigation.dart", source));
+
+    assert!(analysis.flutter.imports_flutter);
+
+    // Three GoRoute hints should be detected.
+    let routes = &analysis.flutter.routes;
+    assert_eq!(routes.len(), 3, "expected 3 GoRoute hints, got {routes:?}");
+
+    // All routes use GoRoute constructor.
+    assert!(routes.iter().all(|r| r.constructor == "GoRoute"));
+
+    // Home route: path constant resolves to '/'.
+    let home_route = routes
+        .iter()
+        .find(|r| r.resolved_path.as_deref() == Some("/"))
+        .expect("home route with resolved_path='/' not found");
+    assert_eq!(home_route.name.as_deref(), Some("home"));
+
+    // Settings route: path constant resolves to '/settings'.
+    let settings_route = routes
+        .iter()
+        .find(|r| r.resolved_path.as_deref() == Some("/settings"))
+        .expect("settings route with resolved_path='/settings' not found");
+    assert_eq!(settings_route.name.as_deref(), Some("settings"));
+
+    // Profile route: path constant resolves to '/profile/:id'.
+    assert!(
+        routes
+            .iter()
+            .any(|r| r.resolved_path.as_deref() == Some("/profile/:id")),
+        "profile route with resolved_path='/profile/:id' not found"
+    );
+
+    // Three string constants for route paths.
+    assert!(
+        analysis
+            .string_constants
+            .iter()
+            .any(|c| c.name == "homeRoute" && c.value == "/"),
+        "homeRoute constant not found"
+    );
+    assert!(
+        analysis
+            .string_constants
+            .iter()
+            .any(|c| c.name == "settingsRoute" && c.value == "/settings"),
+        "settingsRoute constant not found"
+    );
+    assert!(
+        analysis
+            .string_constants
+            .iter()
+            .any(|c| c.name == "profileRoute" && c.value == "/profile/:id"),
+        "profileRoute constant not found"
+    );
+
+    // Three widget classes.
+    let widgets = &analysis.flutter.widgets;
+    assert_eq!(widgets.len(), 3, "expected 3 widget hints, got {widgets:?}");
+    assert!(widgets.iter().any(|w| w.class_name == "HomeScreen"));
+    assert!(widgets.iter().any(|w| w.class_name == "SettingsScreen"));
+    assert!(widgets.iter().any(|w| w.class_name == "ProfileScreen"));
+}

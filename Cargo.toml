@@ -6,6 +6,7 @@ members = [
     "crates/dartscope-parse",
     "crates/dartscope-index",
     "crates/dartscope-resolve",
+    "crates/dartscope-flutter",
     "crates/dartscope-json",
     "crates/dartscope-cli",
 ]
@@ -23,6 +24,7 @@ dartscope-core = { path = "crates/dartscope-core" }
 dartscope-parse = { path = "crates/dartscope-parse" }
 dartscope-index = { path = "crates/dartscope-index" }
 dartscope-resolve = { path = "crates/dartscope-resolve" }
+dartscope-flutter = { path = "crates/dartscope-flutter" }
 dartscope-json = { path = "crates/dartscope-json" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
