@@ -1,7 +1,11 @@
 pub use dartscope_core::*;
 
 #[cfg(feature = "parse")]
-pub use dartscope_parse::{analyze_file, analyze_project, parse_pubspec};
+pub use dartscope_parse::{
+    analyze_file, analyze_project, analyze_project_with_parser, parse_pubspec,
+    DartLanguageVersionCoverage, DartParser, DartParserCapability, DartParserCapabilityStatus,
+    DartParserCapabilitySupport, DartParserMetadata, HeuristicDartParser,
+};
 
 #[cfg(feature = "resolve")]
 pub use dartscope_resolve::{parse_package_config, resolve_package_uri, PackageUriResolutionError};

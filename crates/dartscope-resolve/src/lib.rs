@@ -59,11 +59,14 @@ pub fn parse_package_config(input: PackageConfigInput) -> PackageConfigAnalysis 
     let raw: RawPackageConfig = match serde_json::from_str(&input.source) {
         Ok(raw) => raw,
         Err(error) => {
-            analysis.diagnostics.push(DartDiagnostic::error(
-                "package_config_invalid_json",
-                format!("invalid package configuration JSON: {error}"),
-                None,
-            ));
+            analysis.diagnostics.push(
+                DartDiagnostic::error(
+                    "package_config_invalid_json",
+                    format!("invalid package configuration JSON: {error}"),
+                    None,
+                )
+                .with_path(analysis.path.clone()),
+            );
             return analysis;
         }
     };
@@ -93,6 +96,11 @@ pub fn parse_package_config(input: PackageConfigInput) -> PackageConfigAnalysis 
         });
     }
 
+    for diagnostic in &mut analysis.diagnostics {
+        if diagnostic.path.is_none() {
+            diagnostic.path = Some(analysis.path.clone());
+        }
+    }
     analysis
 }
 
@@ -356,6 +364,7 @@ mod tests {
         assert_eq!(invalid.diagnostics.len(), 1);
         assert_eq!(invalid.diagnostics[0].severity, DiagnosticSeverity::Error);
         assert_eq!(invalid.diagnostics[0].code, "package_config_invalid_json");
+        assert_eq!(invalid.diagnostics[0].path.as_deref(), Some("config.json"));
 
         let unsupported = parse_package_config(PackageConfigInput::new(
             "config.json",
@@ -365,6 +374,10 @@ mod tests {
         assert_eq!(
             unsupported.diagnostics[0].code,
             "package_config_unsupported_version"
+        );
+        assert_eq!(
+            unsupported.diagnostics[0].path.as_deref(),
+            Some("config.json")
         );
     }
 

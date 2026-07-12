@@ -480,6 +480,7 @@ pub enum DartDeclarationKind {
     Mixin,
     Enum,
     Extension,
+    ExtensionType,
     Typedef,
     Function,
     Variable,
@@ -561,6 +562,8 @@ pub enum Confidence {
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DartDiagnostic {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
     pub code: String,
     pub severity: DiagnosticSeverity,
     pub message: String,
@@ -574,6 +577,7 @@ impl DartDiagnostic {
         span: Option<SourceSpan>,
     ) -> Self {
         Self {
+            path: None,
             code: code.into(),
             severity: DiagnosticSeverity::Warning,
             message: message.into(),
@@ -587,11 +591,17 @@ impl DartDiagnostic {
         span: Option<SourceSpan>,
     ) -> Self {
         Self {
+            path: None,
             code: code.into(),
             severity: DiagnosticSeverity::Error,
             message: message.into(),
             span,
         }
+    }
+
+    pub fn with_path(mut self, path: impl Into<String>) -> Self {
+        self.path = Some(normalize_path(path.into()));
+        self
     }
 }
 

@@ -3,468 +3,616 @@ id: doc://docs/development/dartscope-library-plan.md
 kind: development_plan
 language: en
 source_language: en
-status: draft
+status: active
 ---
 
-# DartScope Library Plan
+# DartScope Library Development Plan
 
-DartScope is a standalone Rust toolkit for Dart and Flutter code intelligence.
-It is not an Athanor adapter and must not depend on Athanor crates or Athanor
-domain types.
+This is the executable roadmap for the standalone DartScope Rust workspace at
+`D:\DartScope`. It records verified implementation state, architectural boundaries,
+ordered tasks, acceptance criteria, and commands that an implementation agent must run.
 
-The repository lives at `D:\DartScope` and should be developed as a community-facing
-library ecosystem that can be used by CLI tools, CI checks, editors, code review bots,
-migration tools, graph exporters, and downstream products.
+DartScope is a community-facing Dart and Flutter code-intelligence toolkit. It is not
+an Athanor adapter and must not depend on Athanor crates or Athanor domain types.
 
-## Purpose
+## How To Use This Plan
 
-DartScope should expose reusable APIs for:
+An agent should:
 
-- Dart source parsing and source spans
-- declarations, imports, exports, parts, and part-of discovery
-- Dart-embedded GraphQL operation discovery
-- package metadata and dependency analysis
-- project and package indexing
-- symbol and import/export resolution where feasible
-- Flutter-aware inventory and convention extraction
-- optional lint/rule engines over the normalized model
-- optional macro-aware analysis
-- stable JSON output for external tools
+1. Read `AGENTS.md`, `README.md`, this plan,
+   `docs/development/rust-code-standards.md`, and `docs/reference-strategy.md`.
+2. Select the first `ready` task in the Ordered Work Queue.
+3. Read the task's files and official references before editing.
+4. Add a failing focused test or fixture that reproduces the task.
+5. Implement only the behavior required by that task.
+6. Update this plan and user-facing docs in the same change.
+7. Run the task checks and the repository Definition Of Done.
 
-DartScope output is a DartScope-owned analysis model. It should not emit any
-consumer-specific graph model as its primary API.
+Do not start a later task because it looks easier while an earlier `ready` task is
+unfinished. A task may be skipped only when it is marked `blocked` with a concrete
+reason in this file.
 
-## Product Shape
+Status vocabulary:
 
-DartScope should be a modular Rust workspace with narrow crates for focused community
-use and one wide umbrella crate for full-pipeline consumers.
+| Status | Meaning |
+| --- | --- |
+| `verified` | Implemented and covered by the listed repository checks |
+| `implemented` | Code exists, but one or more acceptance checks are still missing |
+| `in_progress` | A bounded part exists and the remaining work is listed |
+| `ready` | Defined well enough for the next agent to implement |
+| `planned` | Ordered later; prerequisites are not complete |
+| `blocked` | Cannot proceed until the named blocker changes |
+| `deferred` | Explicitly outside the current release target |
 
-Recommended crate layout:
+## Product Boundary
+
+DartScope owns:
+
+- Dart source and package analysis;
+- source paths, spans, diagnostics, confidence, and normalized analysis types;
+- imports, exports, parts, declarations, packages, and project relationships;
+- optional Dart-embedded GraphQL discovery and contract analysis;
+- optional Flutter conventions and inventory;
+- optional lints over normalized analysis;
+- Rust APIs, CLI workflows, and general-purpose JSON output.
+
+DartScope does not own:
+
+- Athanor entities, evidence, ownership, stable keys, or query contracts;
+- Rustok-specific route manifests or product rules;
+- a general graph database or visualization frontend;
+- implicit execution of `dart`, `flutter`, build scripts, or network requests;
+- claims of analyzer-equivalent type checking from the heuristic backend.
+
+The Athanor integration plan remains in
+`D:\Athanor\docs\development\dart-flutter-adapter-plan.md`. Athanor may consume a
+stable DartScope API, but DartScope must never import Athanor.
+
+## Source And Evidence Policy
+
+Every supported construct must be classified as one of:
+
+- `normative`: official specification, language docs, framework API docs;
+- `behavioral`: observed output from official Dart, pub, analyzer, or Flutter tools;
+- `implementation`: parser grammar or analyzer implementation detail;
+- `ecosystem`: package convention such as `go_router` or Riverpod;
+- `heuristic`: a DartScope approximation with explicit limits;
+- `consumer`: a downstream need that may motivate output but cannot define semantics.
+
+Normative and behavioral sources define semantics. Ecosystem and heuristic support must
+include confidence metadata or diagnostics, a positive fixture, and a nearby negative
+fixture. The living source map is `docs/reference-strategy.md`.
+
+## Verified Baseline
+
+Baseline reviewed on 2026-07-10.
+
+| Area | Status | Evidence in repository |
+| --- | --- | --- |
+| Rust workspace and eight crates | verified | root `Cargo.toml`, workspace tests |
+| Core normalized model | implemented | `dartscope-core`; pre-1.0 compatibility work remains |
+| File and pubspec heuristic analysis | in_progress | `dartscope-parse`, unit and project fixtures |
+| Package config v2 and package URI resolution | in_progress | `dartscope-resolve`, six resolver tests |
+| URI graph, parts, and GraphQL linking | in_progress | `dartscope-index`, deterministic JSON contract tests |
+| Flutter project inventory | in_progress | `dartscope-flutter`, optional umbrella feature |
+| JSON helpers | implemented | `dartscope-json`; versioned schema is not implemented |
+| CLI smoke workflows | implemented | `dartscope-cli`; CLI integration tests are missing |
+| Hosted CI | implemented | Linux quality gates and Linux/Windows tests configured; first hosted run pending |
+| Contributor and agent workflow | verified | `AGENTS.md`, `CONTRIBUTING.md`, Rust code standard |
+| Lint/rule engine | planned | crate not created |
+| Parser backend port | planned | current backend is directly implemented in parse crate |
+
+Current verified behaviors include:
+
+- normalized LF/CRLF byte spans and source paths on diagnostics;
+- imports, exports, namespace combinators, conditional URIs, parts, and part ownership;
+- top-level class, modified class, mixin, mixin-class, enum, extension, extension-type,
+  typedef, function, and variable findings;
+- pubspec dependency sections with flexible direct-child indentation;
+- package configuration v2 parsing and nearest-config package URI resolution;
+- deterministic project ordering, URI graphs, and GraphQL contract results;
+- direct and re-export GraphQL visibility, part-library membership, client-call and
+  variable compatibility;
+- high-confidence widget, route, asset, and localization hints;
+- deterministic Flutter inventory that preserves route path kind and confidence.
+
+## Known Architectural Debt
+
+The following are known facts, not hidden assumptions:
+
+1. `dartscope-parse` currently extracts Flutter hints and stores them in
+   `DartFileAnalysis.flutter`. `dartscope-flutter` aggregates those hints but does not
+   yet own convention extraction. This is transitional and does not fully satisfy the
+   target optional-boundary design.
+2. `dartscope-core` contains Flutter hint types because they are embedded in the file
+   model. A compatibility-safe separation needs a generic normalized invocation model
+   before moving extraction.
+3. The heuristic parser scans lines and is not a complete lexer or AST. Complex block
+   comments, strings, annotations, multi-line declarations, records, patterns, and
+   recent language syntax can create misses or false positives.
+4. `dartscope-json` serializes public structs directly. There is no schema name,
+   schema version, capability list, or migration test for whole CLI payloads.
+5. Project diagnostics now carry paths, but diagnostic codes do not yet have a public
+   registry documenting severity, source class, and stability.
+
+Do not conceal these limits by changing README wording. Close them through the tasks
+below.
+
+## Target Architecture
 
 ```text
-D:\DartScope\
-  Cargo.toml
-  README.md
-  LICENSE
-  docs\
-    development\
-      dartscope-library-plan.md
-  crates\
-    dartscope\
-    dartscope-core\
-    dartscope-parse\
-    dartscope-resolve\
-    dartscope-index\
-    dartscope-flutter\
-    dartscope-lints\
-    dartscope-json\
-    dartscope-cli\
-    dartscope-macros\
+filesystem / editor / caller
+          |
+          v
+  input adapters and CLI
+          |
+          v
+  parser backend port ---- optional official analyzer bridge
+          |
+          v
+ normalized Dart syntax and semantic facts
+       |          |             |
+       v          v             v
+   resolver    project index   optional Flutter conventions
+       |          |             |
+       +----------+-------------+
+                  |
+                  v
+       optional lints and JSON adapters
 ```
 
 Crate responsibilities:
 
-```text
-dartscope-core      domain model, spans, symbols, diagnostics, ports
-dartscope-parse     parser facade and parser backend adapters
-dartscope-resolve   imports, exports, packages, parts, symbol resolution
-dartscope-index     project/package index and cross-file lookup
-dartscope-flutter   Flutter-specific conventions and framework hints
-dartscope-lints     optional lint/rule engine over the normalized model
-dartscope-macros    optional future macro expansion or macro-aware analysis
-dartscope-json      stable JSON serialization boundary for tools
-dartscope-cli       command line wrapper for community workflows
-dartscope           thin umbrella crate with feature-gated re-exports
-```
+| Crate | Responsibility | Must not do |
+| --- | --- | --- |
+| `dartscope-core` | stable generic inputs, spans, diagnostics, normalized contracts | I/O, parser backend logic, consumer mapping |
+| `dartscope-parse` | parser port, heuristic backend, normalized Dart facts | project graph policy, Athanor mapping |
+| `dartscope-resolve` | package config and URI/symbol resolution primitives | filesystem scans, source parsing |
+| `dartscope-index` | deterministic cross-file and package analysis | parse raw Dart source |
+| `dartscope-flutter` | optional Flutter and supported ecosystem conventions | pure Dart semantics, Athanor entities |
+| `dartscope-lints` | optional rules over normalized models | raw source parsing |
+| `dartscope-json` | versioned serialization boundary | business logic |
+| `dartscope-cli` | filesystem/process adapter and human workflows | own analysis semantics |
+| `dartscope` | feature-gated re-exports and high-level composition | duplicate implementation |
 
-Focused community use:
+## Public Contract Rules
 
-```toml
-[dependencies]
-dartscope-parse = "0.x"
-```
+- Paths use `/` separators in public output.
+- Byte spans are zero-based half-open ranges. Lines and columns are one-based.
+- Findings retain their source path either through the containing analysis or directly
+  where they can appear in project-level output.
+- Project and inventory outputs are sorted deterministically inside library APIs, not
+  only by the CLI scanner.
+- Heuristic output includes `Confidence` or a diagnostic.
+- Unresolved references remain explicit; absence from the loaded index is not proof
+  that an external package or file is invalid.
+- New serialized fields should use backwards-compatible Serde defaults when possible.
+- Renames or removals require a schema migration note and fixture update.
 
-Full-pipeline use:
+## Ordered Work Queue
 
-```toml
-[dependencies]
-dartscope = { version = "0.x", features = ["parse", "resolve", "index", "flutter", "json"] }
-```
+### DS-MAINT-001: Split Oversized Parse And Index Modules
 
-## Architecture
+Status: verified. Priority: P0. Owner crates: `dartscope-parse`, `dartscope-index`.
 
-DartScope should use ports-and-adapters architecture.
+Problem:
 
-Core boundaries:
+The production roots currently combine too many responsibilities:
 
-- `dartscope-core` owns stable DartScope types and traits only.
-- Parser backends implement a `ParserPort` or equivalent trait outside core.
-- Package and symbol resolution consume normalized parse output and should not depend
-  on a specific parser backend.
-- Linters consume the normalized project model and emit DartScope diagnostics; they
-  should not parse source files directly.
-- Macro support should be optional and isolated behind a macro expansion or
-  macro-aware analysis port.
-- Flutter conventions should live outside pure Dart core so non-Flutter users can
-  avoid Flutter-specific dependencies.
-- JSON and CLI output are adapters around the DartScope model, not the primary
-  internal representation.
-- The umbrella `dartscope` crate should stay thin and should not become a second
-  implementation location.
+- `dartscope-parse/src/lib.rs` is about 2,386 lines;
+- `dartscope-index/src/lib.rs` is about 2,013 lines;
+- `analyze_file` is 115 lines with Clippy cognitive complexity 26;
+- `analyze_graphql_contracts_with_options` is 154 lines.
 
-This split keeps parser backends, lint rules, macro handling, Flutter heuristics,
-serialization, and CLI workflows replaceable.
+These exceed the mandatory refactor triggers in
+`docs/development/rust-code-standards.md`. Adding lexical recovery or broader symbol
+resolution directly to these roots would make ownership less clear.
 
-## Reference Strategy
+Result:
 
-DartScope must be built from documented language and framework behavior, not from
-guesses. The living source map is `docs/reference-strategy.md`.
+- `dartscope-parse/src/lib.rs` is now a 15-line crate boundary with private modules
+  for analysis, declarations, Flutter hints, GraphQL, namespace directives, pubspec,
+  and source lines;
+- `dartscope-index/src/lib.rs` is now a 13-line crate boundary with private URI graph,
+  part, GraphQL, and path modules;
+- tests are split by behavior under each crate's `src/tests/` directory;
+- public re-exports, JSON shapes, fixtures, diagnostics, confidence, paths, and ordering
+  remain unchanged;
+- the selected Clippy maintainability audit is clean, including test targets.
 
-Source classes:
+Required work:
 
-```text
-normative      official specifications, official docs, official API docs
-behavioral     Dart analyzer, dart/pub/flutter tool behavior
-implementation parser crates, analyzer bridges, tree-sitter grammars
-ecosystem      community tools and conventions
-consumer       downstream integration needs such as Athanor
-```
-
-Use normative and behavioral sources to define semantics. Use implementation and
-ecosystem sources as references for practical coverage, not as sources of truth.
-
-Initial required references:
-
-- Dart language specification
-- official Dart language tour and feature docs
-- official docs for libraries, imports, exports, parts, and packages
-- official `pubspec.yaml` and package layout docs
-- official Dart analyzer behavior where command output is relevant
-- official Flutter API docs for core widgets and navigation primitives
-- official Flutter docs for assets, localization, routing, themes, and widget structure
-- official package docs for widely used routing packages only when DartScope explicitly
-  supports those package conventions
-
-Implementation references can include parser crates, tree-sitter grammars, analyzer
-bridges, `custom_lint`, `build_runner`, `melos`, and other ecosystem tools, but each
-adopted behavior should be traceable to a documented source or explicitly marked as a
-heuristic.
-
-## Core Model
-
-DartScope should expose stable analysis types rather than parser-specific AST nodes as
-the main public API.
-
-Candidate top-level API:
-
-```rust
-pub fn analyze_file(input: DartFileInput) -> DartFileAnalysis;
-pub fn analyze_project(input: DartProjectInput) -> DartProjectAnalysis;
-pub fn parse_pubspec(input: PubspecInput) -> PubspecAnalysis;
-pub fn build_import_graph(project: &DartProjectAnalysis) -> ImportGraph;
-pub fn extract_flutter_inventory(project: &DartProjectAnalysis) -> FlutterInventory;
-```
-
-Candidate file analysis output:
-
-```rust
-pub struct DartFileAnalysis {
-    pub path: String,
-    pub language: DartFileLanguage,
-    pub imports: Vec<DartImport>,
-    pub exports: Vec<DartExport>,
-    pub parts: Vec<DartPart>,
-    pub part_of: Option<DartPartOf>,
-    pub declarations: Vec<DartDeclaration>,
-    pub flutter: FlutterFileHints,
-    pub diagnostics: Vec<DartDiagnostic>,
-}
-```
-
-Initial declaration kinds:
-
-- class
-- mixin
-- enum
-- extension
-- typedef
-- top-level function
-- method
-- constructor
-- field
-- variable
-
-Diagnostics should represent uncertainty explicitly. The library should not silently
-pretend that a heuristic result is complete.
-
-## Parser Strategy
-
-The public model should stay backend-independent.
-
-Implementation stages:
-
-1. Start with a conservative Rust implementation for high-confidence declarations,
-   imports, exports, parts, and simple Flutter patterns.
-2. Add a parser backend abstraction before the first public API hardens.
-3. Evaluate `tree-sitter-dart`, native Rust parsers, or an official analyzer bridge as
-   optional backends for deeper coverage.
-4. Keep any official analyzer bridge optional because it likely runs an external Dart
-   process and has a different deployment shape than a pure Rust library.
-
-The public positioning should remain `DartScope: a Dart and Flutter code intelligence
-toolkit`, not "a lightweight parser".
-
-## Community Use Cases
-
-DartScope should support:
-
-- Rust tools that need to parse or inspect Dart source
-- package and import/export graph generation
-- Flutter inventory tools for widgets, screens, routes, assets, localization, and themes
-- architecture checks for layers, forbidden imports, naming, and package boundaries
-- CI checks for orphan files, unresolved parts, missing route coverage, and deprecated
-  API usage
-- code review bots that summarize public API, dependency, route, widget, and screen
-  changes
-- migration and codemod tools that need a project index before rewriting code
-- code generation for route manifests, package manifests, docs, widget catalogs, and
-  test plans
-- security and compliance scanners for platform channels, permissions, storage,
-  analytics SDKs, logging, and possible secret handling
-- editor, IDE, LSP, and analyzer-adjacent tooling
-- stable JSON export for graph visualizers and other external tools
-
-Visualization is not a primary DartScope responsibility. DartScope should provide
-structured data that visualizers can consume.
-
-## Development Phases
-
-### Phase 1: Repository Bootstrap
-
-Status: planned.
-
-Scope:
-
-- add a Rust workspace
-- add a root README, license, contribution notes, and package metadata
-- add initial fixtures for Dart libraries and Flutter apps
-- set up formatting, tests, clippy, and CI
-- document reference strategy and non-goals
+1. Add or retain characterization tests before moving implementation.
+2. Split `dartscope-parse` by stable responsibility, initially targeting modules such
+   as `source_lines`, `namespace`, `declarations`, `graphql`, `pubspec`, and the
+   transitional `flutter_hints` boundary.
+3. Split `dartscope-index` into URI graph, part membership, GraphQL visibility/contracts,
+   and shared namespace resolution modules.
+4. Keep crate-root public functions and public paths compatible through thin wrappers
+   or re-exports.
+5. Reduce orchestration functions below Clippy's 100-line and 25-complexity defaults;
+   target 60 lines and complexity 20 where the stage boundaries remain meaningful.
+6. Move unit tests next to their owning private modules or split integration tests by
+   behavior. Do not create `utils`, `common`, numbered, or catch-all modules.
+7. Do not change Rust output, JSON shape, diagnostics, confidence, ordering, or paths in
+   this task.
 
 Acceptance:
 
-- repository builds independently
-- README explains community use cases
-- initial API is shaped around analysis results, not parser internals
+- each new module has one domain responsibility and a clear private/public boundary;
+- `lib.rs` files contain crate docs, module declarations, re-exports, and thin
+  orchestration rather than the complete implementation;
+- all existing tests pass without fixture-output changes;
+- the selected maintainability audit reports no production function above 100 lines or
+  cognitive complexity 25:
 
-### Phase 2: File Analysis MVP
+```powershell
+cargo clippy -p dartscope-parse -p dartscope-index --all-targets --locked -- `
+  -W clippy::too_many_lines `
+  -W clippy::cognitive_complexity `
+  -W clippy::too_many_arguments `
+  -W clippy::type_complexity
+```
 
-Status: in progress.
+- the full Definition Of Done passes.
 
-Scope:
+### DS-PARSE-004: Lexical Masking And Recovery
 
-- parse imports, exports, parts, part-of declarations, and top-level declarations
-- detect class inheritance and common Flutter base classes
-- parse `pubspec.yaml` package metadata and dependencies
-- expose a project-level CLI smoke command for real Flutter repositories
-- expose line/column or byte-range spans for every finding
-- report partial parse and unsupported syntax diagnostics
+Status: verified. Priority: P0. Owner crate: `dartscope-parse`.
 
-Acceptance:
+Problem:
 
-- fixtures cover pure Dart, Flutter widgets, syntax errors, parts, exports, and package
-  dependencies
-- results are deterministic on Windows and Unix path spellings
-- every finding has a source span suitable for downstream source attribution
-- real-project misses are converted into small fixtures before broadening heuristics
+The line-oriented backend can report declarations, imports, Flutter calls, and route
+hints from block comments or string bodies. Broadening more heuristics before this is
+fixed increases false positives.
 
-Current calibration:
+Required work:
 
-- `dartscope analyze-project D:\RusTok\rustok_mobile\apps\rustok_frontend_mobile`
-  reports 8 Dart files, 1 pubspec, 34 imports, 66 declarations, 10 Flutter widget
-  hints, 6 Flutter route hints, 6 GraphQL operations, 6 GraphQL operation uses, 8
-  package dependencies, and 0 diagnostics after reducing false positives from indented
-  Flutter constructor calls and top-level `const` initializers. Storefront route
-  constants resolve to paths such as `/`, `/catalog`, `/cart`, `/checkout`, `/profile`,
-  and `/modules/:routeSegment`.
-- `dartscope analyze-project D:\RusTok\rustok_mobile` reports 69 Dart files, 10
-  pubspecs, 172 imports, 26 exports, 229 declarations, 22 string constants, 12
-  GraphQL operations, 12 GraphQL operation uses, 36 Flutter widget hints, 10 Flutter
-  route hints, 30 package dependencies, and 0 diagnostics.
-- GraphQL use calibration links operation constants to repository/client call sites:
-  storefront catalog/cart queries and cart mutations map to their repository methods;
-  modules queries and mutations map to `listModules`, `toggleModule`,
-  `failedRecoveryPlans`, `retryFailedPostHook`, and `compensateFailedOperation`.
-  The admin bootstrap query maps to the top-level `authBootstrapProbeProvider`
-  variable initializer through `enclosing_symbol`. `gql(r'''...''')` inline documents
-  are not reported as constant uses.
-- GraphQL variable calibration extracts declared operation variables from Dart-embedded
-  GraphQL documents and supplied top-level client variables from `QueryOptions` /
-  `MutationOptions`. In `D:\RusTok\rustok_mobile`, declared and supplied variable
-  names currently match for all 12 operation uses, including storefront cart mutations
-  and modules recovery mutations.
-- The calibration project is not copied into this repository. Reusable cases are
-  reduced into fixtures, currently covering widget constructor calls, top-level
-  variable initializers, `State`, Riverpod `ConsumerWidget`, and `go_router`
-  `GoRoute` route hints with same-file string constant resolution, plus Dart raw
-  string GraphQL operation documents, declared variables, and client operation
-  constant uses with supplied variables.
-
-### Phase 3: Project Index
-
-Status: in progress.
-
-Scope:
-
-- build a package-level import/export graph
-- resolve project-relative Dart file references where straightforward
-- connect `part` and `part of` files
-- expose stable JSON export for CLI and downstream tooling
-- preserve omitted or unresolved edges explicitly
-- link Dart-embedded GraphQL operation constants to client uses without depending on
-  parser-specific AST nodes
-- compare declared and supplied GraphQL variables and operation/client call kinds
+1. Add a backend-internal lexical pass that distinguishes code, line comments, block
+   comments, normal strings, raw strings, and triple-quoted strings while preserving
+   original byte offsets.
+2. Feed masked code to line heuristics while retaining original text for spans and
+   GraphQL document extraction.
+3. Emit `unterminated_block_comment` and `unterminated_string` diagnostics with path
+   and best available span.
+4. Add positive and negative LF/CRLF tests.
 
 Acceptance:
 
-- graph output is deterministic and independent from any consumer-specific graph model
-- unresolved imports and missing part files are diagnostics, not silent gaps
-- monorepo-style package fixtures can be analyzed
+- `class`, `import`, `GoRoute`, `Image.asset`, and `AppLocalizations.of` text inside
+  comments or unrelated strings produces no finding;
+- real directives and declarations around comments retain exact spans;
+- GraphQL raw triple strings still produce GraphQL operations;
+- no parser-specific token type leaks into `dartscope-core`.
 
-Current implementation:
+Required references: Dart lexical rules and string documentation. Required checks:
+`cargo test -p dartscope-parse --quiet`, then full Definition Of Done.
 
-- `build_uri_graph` resolves direct relative `import`, `export`, and `part` URIs and
-  `package:` URIs for package roots represented by indexed pubspecs. SDK URIs and
-  unindexed packages remain explicit instead of being treated as missing local files.
-- calibration on `D:\RusTok\rustok_mobile` currently reports 198 URI references: 123
-  resolved project files, 3 external `dart:` libraries, and 72 package references whose
-  source packages are not in the loaded project index. No indexed target is missing.
-- `analyze_part_links` checks URI-based and legacy named `part of` ownership using the
-  resolved graph and parsed `library` directive. It preserves both directive spans and
-  distinguishes missing, unresolved, missing-`part of`, and different-library cases.
-- imports preserve `as`, `deferred`, `show`, and `hide`; exports preserve `show` and
-  `hide`. The normalized model no longer reduces namespace directives to URI strings.
-- `dartscope-index` accepts the normalized `DartProjectAnalysis` model and does not
-  parse source directly.
-- `analyze_graphql_contracts` resolves only through Dart visibility: an unambiguous
-  same-file declaration, a direct import, or a transitive re-export. Project-wide name
-  uniqueness is not treated as symbol visibility. Missing, non-visible, and ambiguous
-  declarations produce explicit unresolved uses with source evidence and candidate
-  paths.
-- each binding reports operation and use paths/spans, enclosing symbol, call-kind
-  compatibility, declared and supplied variables, missing or unexpected variables, and
-  a resolution basis: `same_file`, `direct_import`, or `re_export`.
-- direct resolved imports can now produce `direct_import` GraphQL bindings when the
-  import is unprefixed, non-deferred, and its `show`/`hide` combinators expose the
-  operation constant. Prefixes and hidden names are covered by negative fixtures.
-- transitive export namespaces honor `show`/`hide`, protect against cycles, reject
-  private names, and preserve ambiguous imported declarations instead of selecting one.
-- validated part files now participate in the owner's namespace. Sibling parts resolve
-  as `same_library`, while importing the owner exposes public operations declared in a
-  matched part. Invalid parts and legacy named parts claimed by multiple owners are
-  excluded from membership.
-- conditional imports and exports preserve their default URI and all configured
-  alternatives. Multi-line directives retain a complete source span, and the URI graph
-  resolves each branch without selecting an environment. GraphQL resolution reports
-  `conditional_environment_required` rather than choosing a branch implicitly.
-- `DartCompilationEnvironment` and `DartIndexOptions` let callers opt into exact
-  conditional URI selection. The default remains conservative and resolves every
-  branch for inspection; the environment-aware APIs select the first matching
-  configured URI in source order and let GraphQL namespace resolution follow that
-  selected import/export.
-- `dartscope-resolve::parse_package_config` parses package configuration v2 from an
-  in-memory input using Serde and RFC 3986 URI validation. It preserves optional
-  generator metadata, ignores extension fields, validates names, package-root
-  containment, and language versions, and rejects unsupported format versions.
-- `DartProjectInput::with_package_configs` keeps package configuration optional and
-  backwards-compatible for callers that only provide source files and pubspecs.
-- no generated package configurations are currently present under `D:\RusTok`, so the
-  Rustok calibration correctly reports 0 configs. Real-project package resolution is
-  not claimed until a generated configuration is available.
-- `dartscope-resolve::resolve_package_uri` resolves relative and absolute config entries
-  using RFC 3986 semantics and returns a project path only for URIs inside the synthetic
-  project root.
-- `build_uri_graph` selects the nearest config scope for each source file. Local entries
-  can become `resolved` or `missing_target`; configured cache entries become
-  `resolved_external` with a `target_uri`. Invalid nearest configs are not bypassed by
-  pubspec fallback.
-- stable project-index JSON fixtures lock the serialized URI graph, part-link analysis,
-  and GraphQL contract analysis shapes before the public schema hardens.
-- `dartscope uri-graph` and `dartscope graphql-contracts` accept repeated
-  `--env key=value` pairs so the CLI can exercise the same environment-aware
-  conditional URI selection as the library API.
-- Flutter route hints now cover both `GoRoute(path: ...)` and literal
-  `MaterialApp(routes: { ... })` maps. Rustok currently still contributes 10
-  production route hints, all from `GoRoute`; app-specific module manifest route
-  synthesis remains out of the core library model.
-- `dartscope graphql-contracts D:\RusTok\rustok_mobile` currently reports 12 bindings,
-  all with `same_file` resolution, 0 unresolved uses, 0 variable mismatches, and 0
-  call-kind mismatches.
+### DS-PARSE-005: Parser Backend Port
 
-### Phase 4: Flutter Conventions
+Status: verified. Priority: P0. Prerequisite: DS-PARSE-004.
 
-Status: started.
+Required work:
 
-Scope:
-
-- extract widgets, screens, common route declarations, route names, and route targets
-- detect common state-management declarations as optional conventions, starting with
-  high-confidence patterns only
-- detect asset and localization usage where syntax is direct
-- expose confidence or diagnostic metadata for heuristics
-
-Current implementation has a conservative first slice for direct Flutter asset and
-localization references:
-
-- `Image.asset('...')`
-- `AssetImage('...')`
-- `rootBundle.loadString('...')`
-- `DefaultAssetBundle.of(...).loadString('...')`
-- `AppLocalizations.of(context)!.key`
+1. Define an object-safe parser capability contract without filesystem I/O.
+2. Wrap the current heuristic parser as the default backend.
+3. Add capability metadata such as declarations, directives, members, recovery, and
+   language-version coverage.
+4. Keep existing convenience functions source-compatible where practical.
+5. Document how a future tree-sitter or official analyzer bridge plugs in.
 
 Acceptance:
 
-- fixtures cover `MaterialApp.routes`, `Navigator`, and `GoRouter` style declarations
-  where feasible
-- uncertain dynamic routing is reported as uncertain output
-- Flutter-specific output remains optional for pure Dart consumers
+- the existing fixture suite runs through the default backend;
+- consumers can inject a backend without depending on backend AST types;
+- unsupported capabilities are explicit rather than silently empty.
 
-### Phase 5: Lints And Rules
+Implementation note: `DartParser` and `DartParserMetadata` live in `dartscope-parse`;
+`HeuristicDartParser` is the default behind the existing convenience functions.
+Alternative backends map their internal syntax trees to `dartscope-core` facts through
+`analyze_project_with_parser`. See `docs/development/parser-backends.md`.
 
-Status: planned.
+### DS-PARSE-006: Complete Declaration Inventory
 
-Scope:
+Status: planned. Priority: P1. Prerequisite: DS-PARSE-005.
 
-- add an optional rule engine over the normalized project model
-- support architecture rules, forbidden imports, naming conventions, and layer policies
-- keep rules independent from parser backend internals
+Add normalized methods, constructors, fields, getters, setters, operators, and local
+scope ownership. Add enclosing symbol IDs and declaration spans covering the complete
+declaration, not only its first line. Include modern primary and concise constructor
+syntax only after official language-version references are recorded.
 
 Acceptance:
 
-- users can run rules without depending on Athanor or another downstream product
-- diagnostics include source spans and rule ids
+- fixtures cover class, mixin, enum, extension, and extension-type members;
+- declarations have stable parent relationships;
+- constructor calls are not reported as declarations;
+- unsupported recent syntax emits a diagnostic rather than a fabricated symbol.
 
-## Verification
+### DS-PUB-002: Structured Pubspec Model
 
-Run in `D:\DartScope`:
+Status: ready. Priority: P1. Owner crates: `dartscope-core`, `dartscope-parse`.
 
-```bash
-cargo fmt --all
+Current parser supports package name and direct dependencies but is not a complete YAML
+parser.
+
+Required work:
+
+1. Evaluate a maintained Rust YAML parser against MSRV 1.85 and record the decision.
+2. Preserve source spans for dependency keys even if structured parsing is adopted.
+3. Add SDK, path, git, hosted, and workspace dependency source variants.
+4. Parse environment constraints and Flutter `assets`, `fonts`, and localization
+   configuration into normalized pubspec-owned types.
+5. Diagnose invalid YAML and unsupported aliases/merge keys.
+
+Acceptance:
+
+- indentation and comments do not change dependency identity;
+- nested `sdk`, `path`, `git`, and `hosted` fields are attached to their dependency and
+  never emitted as packages;
+- malformed YAML produces a path-attributed diagnostic;
+- serialization fixtures cover every dependency source variant.
+
+### DS-RESOLVE-003: Package Config Completeness
+
+Status: ready. Priority: P1. Owner crate: `dartscope-resolve`.
+
+Required work:
+
+1. Preserve and validate optional `generated`, `generator`, and `generatorVersion`
+   metadata according to the official format.
+2. Validate duplicate/overlapping roots and package-URI containment across entries.
+3. Add absolute file URI, percent escape, nested root, and Windows URI fixtures.
+4. Document whether one invalid entry invalidates the complete configuration.
+
+Acceptance:
+
+- official package-config v2 examples parse;
+- every normative invalid case has a diagnostic code and test;
+- resolution never escapes a package root or synthetic project root;
+- extension fields remain ignored for forward compatibility.
+
+### DS-JSON-001: Versioned JSON Contracts
+
+Status: ready. Priority: P1. Owner crates: `dartscope-json`, `dartscope-cli`.
+
+Required work:
+
+1. Define envelopes with `schema`, `version`, and `data` for each CLI command family.
+2. Add checked-in golden fixtures for file analysis, project analysis, URI graph,
+   GraphQL contracts, and Flutter inventory.
+3. Add a documented compatibility policy for additive and breaking changes.
+4. Keep low-level generic Serde helpers available but stop calling them stable schemas.
+
+Acceptance:
+
+- every CLI JSON command emits a named versioned envelope;
+- fixture ordering is deterministic on Windows and Linux;
+- schema changes fail a focused test until the fixture and migration note are updated.
+
+### DS-CLI-002: CLI Contract And Integration Tests
+
+Status: ready. Priority: P1. Owner crate: `dartscope-cli`.
+
+Required work:
+
+1. Add `--help`, `--version`, command-specific usage, and stable exit-code behavior.
+2. Add integration tests for each command, invalid arguments, missing paths, and
+   environment pairs.
+3. Test project discovery with nested packages and nearest package configurations.
+4. Decide and document symlink behavior and additional ignored generated directories.
+
+Acceptance:
+
+- no command panics on malformed input;
+- stdout contains JSON only for JSON commands and errors go to stderr;
+- tests pass on Windows and Linux with paths containing spaces.
+
+### DS-FLUTTER-002: Move Convention Extraction Behind Optional Boundary
+
+Status: planned. Priority: P1. Prerequisites: DS-PARSE-005, DS-JSON-001.
+
+Migration sequence:
+
+1. Add parser-independent normalized invocation and named-argument facts.
+2. Make the parser backend emit those generic facts.
+3. Make `dartscope-flutter` derive widget, route, asset, and localization findings from
+   generic facts plus imports and declarations.
+4. Add a high-level composition API in the umbrella crate.
+5. Deprecate direct parser-populated Flutter fields with a documented JSON migration.
+
+Acceptance:
+
+- pure Dart parsing does not execute Flutter convention rules;
+- disabling the `flutter` feature removes Flutter extraction code;
+- existing Flutter fixtures retain findings, paths, spans, confidence, and ordering;
+- `dartscope-index` remains independent from Flutter internals.
+
+### DS-FLUTTER-003: Declared Assets And Localization Catalogs
+
+Status: planned. Priority: P2. Prerequisite: DS-PUB-002.
+
+Link direct asset uses to `flutter.assets` declarations. Parse `l10n.yaml` and ARB keys
+through explicit input types. Report used-but-undeclared assets, declared-but-unused
+assets, referenced-but-missing localization keys, and unresolved generated-localization
+classes as diagnostics with confidence.
+
+### DS-FLUTTER-004: Routes, Themes, And State Conventions
+
+Status: planned. Priority: P2. Prerequisite: DS-FLUTTER-002.
+
+Add official `MaterialApp`, `WidgetsApp`, and `Navigator` patterns first. Maintain a
+versioned support table for `go_router` and selected state-management packages. Keep
+package conventions opt-in and never reinterpret application-specific manifests as
+Flutter semantics.
+
+### DS-INDEX-004: General Symbol And Namespace Resolution
+
+Status: planned. Priority: P2. Prerequisite: DS-PARSE-006.
+
+Generalize the proven import/export/part visibility machinery beyond GraphQL constants.
+Resolve declarations with prefixes, combinators, privacy, re-exports, parts, and
+conditional environments. Preserve ambiguous candidates and evidence.
+
+### DS-LINT-001: Optional Rule Engine
+
+Status: planned. Priority: P3. Prerequisite: DS-INDEX-004.
+
+Create `dartscope-lints` with rule IDs, severity, configuration, deterministic execution,
+and diagnostics over normalized project analysis. First rules: forbidden imports,
+package/layer boundaries, naming, unresolved parts, and orphan files. Rules must not
+parse source directly.
+
+### DS-RELEASE-001: Publishable 0.1 Release
+
+Status: planned. Priority: P3. Prerequisites: DS-JSON-001, DS-CLI-002.
+
+Add complete package metadata, rustdoc coverage, changelog, security policy, crate
+publish order, `cargo package` checks, release CI, and an explicit support matrix for
+Rust, Dart, Flutter, and ecosystem conventions.
+
+## Completed Tasks
+
+### DS-BOOT-001: Workspace Bootstrap
+
+Status: implemented; hosted MSRV verification pending.
+
+Eight crates, MIT license, root README, fixtures, formatting, tests, clippy, lockfile,
+Linux quality CI, Linux/Windows test CI, contribution guide, agent entrypoint, and
+reference strategy exist. The repository builds independently and has no Athanor
+dependency. Local gates pass on Rust 1.95; the first hosted Rust 1.85 Linux/Windows run
+is still required before this task becomes `verified`.
+
+### DS-PARSE-001: File Analysis MVP
+
+Status: implemented.
+
+Imports, exports, conditional URIs, parts, part-of, library directives, top-level
+declarations, string constants, GraphQL documents/uses, direct Flutter hints, spans,
+and diagnostics exist. Full completion depends on DS-MAINT-001 and DS-PARSE-004 through
+DS-PARSE-006.
+
+### DS-PARSE-002: Cross-Platform Span And Diagnostic Attribution
+
+Status: verified.
+
+LF and CRLF byte starts are derived from original source segments. File, pubspec, and
+package-config diagnostics carry normalized paths. Regression tests cover CRLF GraphQL,
+part directives, and flattened project diagnostics.
+
+### DS-PARSE-003: Modern Top-Level Type Forms
+
+Status: verified.
+
+The heuristic backend distinguishes modified classes, mixin classes, base mixins,
+named and unnamed extensions, extension types, and prefixed Flutter base classes.
+
+### DS-INDEX-001: URI Graph And Part Links
+
+Status: verified for current model.
+
+Relative, package, SDK, conditional, and unsupported URI outcomes are explicit and
+sorted. Part ownership distinguishes matched, missing target, unresolved target,
+missing part-of, and different library.
+
+### DS-INDEX-002: GraphQL Contract Linking
+
+Status: verified for current model.
+
+Same-file, same-library, direct-import, and re-export visibility are supported with
+combinators, privacy, cycles, conditional environments, call compatibility, and
+variable compatibility.
+
+### DS-FLUTTER-001: Inventory Aggregation
+
+Status: verified for current input model.
+
+The optional crate aggregates and deterministically sorts widgets, routes, assets,
+localizations, and Flutter-related files. Route output preserves literal/expression
+kind, resolved path, confidence, and source span.
+
+## Calibration Protocol
+
+Use a real Flutter repository only after focused tests pass:
+
+```powershell
+cargo run -p dartscope-cli -- analyze-project D:\path\to\flutter_project
+cargo run -p dartscope-cli -- uri-graph D:\path\to\flutter_project
+cargo run -p dartscope-cli -- graphql-contracts D:\path\to\flutter_project
+cargo run -p dartscope-cli -- flutter-inventory D:\path\to\flutter_project
+```
+
+For each discrepancy, record:
+
+1. expected behavior and source class;
+2. actual JSON finding or miss;
+3. whether the problem is parser, resolver, index, Flutter convention, or consumer
+   mapping;
+4. the reduced synthetic fixture added to DartScope;
+5. the verification command that proves the correction.
+
+Do not paste calibration counts into this plan as permanent truth. Counts drift with
+the external repository. Keep only reusable behavior and reduced fixtures here.
+
+## Definition Of Done
+
+A task is complete only when all applicable items pass:
+
+- focused positive and negative tests exist;
+- paths and spans are asserted for new findings;
+- heuristic confidence or diagnostics are asserted;
+- output ordering is deterministic;
+- public Rust and JSON changes are documented;
+- `README.md`, this plan, and `docs/reference-strategy.md` are synchronized;
+- no Athanor or Rustok-specific domain logic was added;
+- no unrelated working-tree changes were reverted;
+- the following commands pass from `D:\DartScope`:
+
+```powershell
+cargo fmt --all -- --check
 cargo test --workspace --quiet
 cargo clippy --workspace --all-targets -- -D warnings
+$env:RUSTDOCFLAGS = "-D warnings"
+cargo doc --workspace --no-deps
 ```
 
-## Open Decisions
+For umbrella feature changes, also run:
 
-- exact first-release crate set
-- license and contribution model
-- initial parser backend
-- initial Flutter package conventions to support beyond Flutter SDK APIs
-- whether the CLI ships before or after the library API stabilizes
+```powershell
+cargo check -p dartscope --no-default-features
+cargo check -p dartscope --all-features
+```
+
+For CLI changes, run at least one successful command and one expected failure. For
+package or release changes, run `cargo package` for the affected crate without
+publishing.
+
+## Stop And Escalate Conditions
+
+Stop the current task and report the blocker when:
+
+- official sources conflict or do not define the intended behavior;
+- the change requires a breaking public-model or JSON migration not named by the task;
+- a parser backend dependency raises an unresolved license, MSRV, maintenance, or
+  process-execution concern;
+- a real-project case cannot be reduced without exposing private source;
+- the same finding requires consumer-specific semantics to become meaningful;
+- unrelated user changes overlap the same code and cannot be preserved.
+
+Do not resolve these conditions by silently expanding scope.
+
+## Release Milestones
+
+| Milestone | Exit condition |
+| --- | --- |
+| M0 trustworthy bootstrap | implementation complete; first hosted Rust 1.85 CI run pending |
+| M1 dependable heuristic toolkit | DS-MAINT-001, DS-PARSE-004, DS-PARSE-005, DS-PUB-002, DS-RESOLVE-003 |
+| M2 stable tool boundary | DS-JSON-001, DS-CLI-002, compatibility policy |
+| M3 optional Flutter pipeline | DS-FLUTTER-002 and declared asset/localization slice |
+| M4 semantic project model | complete declarations and general symbol resolution |
+| M5 community release | lint engine baseline and DS-RELEASE-001 |
 
 ## Current Recommended Next Step
 
-1. Keep reducing real Rustok misses and ambiguities into focused fixtures without
-   turning app-specific conventions into core Dart/Flutter semantics.
-2. Calibrate configured package resolution when a real generated config is available.
-3. Add more Flutter convention fixtures once the pure Dart index surface settles.
+Implement DS-PUB-002. The parser backend boundary is verified; the next ready task is
+the structured pubspec model, which should replace remaining line-oriented YAML heuristics
+without affecting the parser contract.

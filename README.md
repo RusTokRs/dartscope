@@ -6,9 +6,10 @@ It is a community-facing library ecosystem, not an Athanor adapter. Downstream t
 
 ## Current Scope
 
-This repository is in the first bootstrap stage:
+This repository is in early pre-1.0 development. The workspace bootstrap and first
+file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices exist:
 
-- `dartscope-core` owns stable analysis types, spans, diagnostics, and pubspec models.
+- `dartscope-core` owns normalized analysis types, spans, diagnostics, and pubspec models.
 - `dartscope-parse` provides a conservative file-level MVP for imports, exports, parts, declarations, simple Flutter widget, route, asset, and localization hints, Dart-embedded GraphQL operations and uses, and `pubspec.yaml` dependency discovery.
 - `dartscope-index` performs project-level linking over normalized analysis results. Its
   first API resolves GraphQL operation uses conservatively and compares operation,
@@ -17,7 +18,8 @@ This repository is in the first bootstrap stage:
   and URI resolution primitives without performing filesystem I/O.
 - `dartscope-flutter` aggregates project-level Flutter inventory (widgets, routes, assets,
   localizations) from the normalized analysis model. It is optional for pure Dart consumers.
-- `dartscope-json` provides stable JSON serialization helpers.
+- `dartscope-json` provides JSON serialization helpers. A versioned stable schema is
+  still planned and current pre-1.0 shapes can change with documented migrations.
 - `dartscope-cli` exposes a small command-line wrapper for local smoke testing.
 - `dartscope` is a thin umbrella crate with feature-gated re-exports.
 
@@ -27,6 +29,24 @@ This repository is in the first bootstrap stage:
 - Do not expose parser-specific AST nodes as the main public API.
 - Do not pretend heuristic findings are complete.
 - Do not run `dart` or `flutter` commands during normal analysis.
+
+## Current Limitations
+
+- The first parser backend is line-oriented and conservative. It does not yet provide
+  a complete Dart AST or type system; lexical masking prevents findings inside comments
+  and strings, but complex annotations and multi-line declarations remain limited.
+- Flutter hints are currently detected during file analysis and aggregated by the
+  optional `dartscope-flutter` crate. Moving convention extraction fully behind the
+  Flutter boundary requires a normalized, parser-independent call-expression model.
+- Declaration coverage is top-level only. Methods, constructors, fields, getters,
+  setters, operators, and local symbols are roadmap work.
+- JSON output is deterministic for implemented APIs but is not yet wrapped in a
+  versioned schema envelope.
+
+`dartscope-parse` also exposes an object-safe `DartParser` contract for callers that
+need a different source-only parser backend. The built-in `HeuristicDartParser` remains
+the default; capability metadata makes unavailable facts explicit. See
+[`docs/development/parser-backends.md`](docs/development/parser-backends.md).
 
 ## Quick Start
 
@@ -53,6 +73,10 @@ references such as `Image.asset(...)`, `AssetImage(...)`, `rootBundle.loadString
 `DefaultAssetBundle.of(...).loadString(...)`, and `AppLocalizations.of(context)!.key`.
 Use it as the first real-project feedback loop before adding broader parser or Flutter
 convention support.
+
+File, pubspec, and package-configuration diagnostics include their normalized source
+path. Byte spans account for both LF and CRLF input, so downstream evidence can use the
+reported offsets without platform-specific correction.
 
 `graphql-contracts` links a `gql(operationConstant)` use only through Dart visibility:
 an unambiguous same-file declaration, direct import, or transitive re-export. Each
@@ -113,3 +137,6 @@ DartScope behavior should be traceable to official Dart and Flutter sources firs
 
 - [Reference strategy](docs/reference-strategy.md)
 - [Library development plan](docs/development/dartscope-library-plan.md)
+- [Rust code standards](docs/development/rust-code-standards.md)
+- [Agent workflow](AGENTS.md)
+- [Contributing](CONTRIBUTING.md)

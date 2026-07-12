@@ -25,6 +25,11 @@ Dart language and libraries:
 - [Dart language specification](https://dart.dev/resources/language/spec)
 - [Dart language documentation](https://dart.dev/language)
 - [Libraries and imports](https://dart.dev/language/libraries)
+- [Class modifiers](https://dart.dev/language/class-modifiers)
+- [Class modifier reference](https://dart.dev/language/modifier-reference)
+- [Mixins](https://dart.dev/language/mixins)
+- [Extension methods](https://dart.dev/language/extension-methods)
+- [Extension types](https://dart.dev/language/extension-types)
 
 Dart packages and tooling:
 
@@ -48,6 +53,7 @@ Flutter framework:
 - [MaterialApp API](https://api.flutter.dev/flutter/material/MaterialApp-class.html)
 - [WidgetsApp API](https://api.flutter.dev/flutter/widgets/WidgetsApp-class.html)
 - [Navigator API](https://api.flutter.dev/flutter/widgets/Navigator-class.html)
+- [`go_router` package](https://pub.dev/packages/go_router)
 
 ## Implementation References
 
@@ -72,6 +78,25 @@ Every new supported syntax or Flutter convention should have a fixture that name
 reference class it relies on. Heuristic fixtures should assert diagnostics or confidence
 metadata instead of pretending the result is complete.
 
+Every parser fixture should identify its source class in a nearby test name, comment,
+or support-ledger entry. A normative fixture needs an official specification or API
+reference. An ecosystem fixture needs the package and supported version range. A
+heuristic fixture needs both a positive case and a nearby negative case.
+
+## Current Support Ledger
+
+| Surface | Source class | Current status | Important limit |
+| --- | --- | --- | --- |
+| import, export, part, part-of | normative | implemented heuristic backend | not a full lexer/AST |
+| class, mixin, enum, extension, extension type, typedef | normative | top-level slice | members not indexed |
+| class modifiers and mixin class | normative | implemented | validity combinations not diagnosed |
+| pubspec dependency sections | normative YAML/pub behavior | implemented subset | no complete YAML model |
+| package configuration v2 | normative format | implemented | generated metadata and overlap validation incomplete |
+| conditional URI selection | normative | implemented | caller must provide environment |
+| GraphQL documents in Dart strings | ecosystem heuristic | implemented | not Dart or Flutter language semantics |
+| `GoRoute` and Riverpod widget bases | ecosystem convention | implemented heuristic | package/version matrix not yet explicit |
+| Flutter assets and localization calls | official API plus generated convention | implemented direct syntax | declarations and ARB files not linked |
+
 ## Real-Project Feedback Loop
 
 Use at least one real Flutter frontend as a calibration target outside this repository:
@@ -85,10 +110,10 @@ where a diagnostic would be better than a confident finding. Each reusable case 
 be reduced to a small fixture in DartScope before broadening the parser or Flutter
 heuristics.
 
-Project URI resolution must distinguish indexed source knowledge from Dart package
-configuration knowledge. A `package:` URI whose package is absent from the loaded
-pubspecs is unindexed, not proven invalid. Full package resolution should consume the
-official package configuration in a later phase rather than infer dependency locations.
+Project URI resolution distinguishes indexed source knowledge from Dart package
+configuration knowledge. When a nearest valid `.dart_tool/package_config.json` is
+provided, DartScope uses it. Without one, a `package:` URI whose package is absent from
+loaded pubspecs is unindexed, not proven invalid.
 
 Configurable import/export URI selection follows the Dart language specification:
 conditions are looked up in the compilation environment, a condition without `==`

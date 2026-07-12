@@ -20,7 +20,7 @@
 
 use dartscope_core::{
     Confidence, DartProjectAnalysis, FlutterAssetHint, FlutterLocalizationHint, FlutterRouteHint,
-    FlutterWidgetHint, SourceSpan,
+    FlutterRoutePathKind, FlutterWidgetHint, SourceSpan,
 };
 use serde::{Deserialize, Serialize};
 
@@ -70,6 +70,8 @@ pub struct FlutterRouteEntry {
     pub constructor: String,
     /// The route path literal or expression.
     pub path: String,
+    /// Whether `path` is a literal or an unresolved expression.
+    pub path_kind: FlutterRoutePathKind,
     /// The resolved route path when the path was a same-file string constant reference.
     pub resolved_path: Option<String>,
     /// Optional route name.
@@ -85,7 +87,7 @@ pub struct FlutterRouteEntry {
 pub struct FlutterAssetEntry {
     /// File path (normalized, relative to project root).
     pub file_path: String,
-    /// Asset path or URL referenced in source.
+    /// Asset path referenced in source.
     pub asset_path: String,
     /// The call site kind (e.g. `Image.asset`, `AssetImage`).
     pub source: dartscope_core::FlutterAssetSource,
@@ -132,7 +134,7 @@ pub struct FlutterInventorySummary {
 ///
 /// # Arguments
 ///
-/// * `project` — A completed [`DartProjectAnalysis`] produced by
+/// * `project` - A completed [`DartProjectAnalysis`] produced by
 ///   `dartscope_parse::analyze_project`.
 ///
 /// # Returns
@@ -167,6 +169,37 @@ pub fn extract_flutter_inventory(project: &DartProjectAnalysis) -> FlutterInvent
         }
     }
 
+    widgets.sort_by(|left, right| {
+        (&left.file_path, left.span.byte_start, &left.class_name).cmp(&(
+            &right.file_path,
+            right.span.byte_start,
+            &right.class_name,
+        ))
+    });
+    routes.sort_by(|left, right| {
+        (&left.file_path, left.span.byte_start, &left.path).cmp(&(
+            &right.file_path,
+            right.span.byte_start,
+            &right.path,
+        ))
+    });
+    assets.sort_by(|left, right| {
+        (&left.file_path, left.span.byte_start, &left.asset_path).cmp(&(
+            &right.file_path,
+            right.span.byte_start,
+            &right.asset_path,
+        ))
+    });
+    localizations.sort_by(|left, right| {
+        (&left.file_path, left.span.byte_start, &left.key).cmp(&(
+            &right.file_path,
+            right.span.byte_start,
+            &right.key,
+        ))
+    });
+    flutter_file_paths.sort();
+    flutter_file_paths.dedup();
+
     let summary = FlutterInventorySummary {
         flutter_files: flutter_file_paths.len(),
         widgets: widgets.len(),
@@ -200,6 +233,7 @@ fn flutter_route_entry(file_path: &str, hint: &FlutterRouteHint) -> FlutterRoute
         file_path: file_path.to_string(),
         constructor: hint.constructor.clone(),
         path: hint.path.clone(),
+        path_kind: hint.path_kind,
         resolved_path: hint.resolved_path.clone(),
         name: hint.name.clone(),
         confidence: hint.confidence,
@@ -359,8 +393,37 @@ mod tests {
         let inventory = extract_flutter_inventory(&project);
         assert_eq!(inventory.routes.len(), 1);
         assert_eq!(inventory.routes[0].path, "/home");
+        assert_eq!(inventory.routes[0].path_kind, FlutterRoutePathKind::Literal);
         assert_eq!(inventory.routes[0].name.as_deref(), Some("home"));
         assert_eq!(inventory.summary.routes, 1);
+    }
+
+    #[test]
+    fn inventory_order_is_deterministic_for_unsorted_project_input() {
+        let mut project = empty_project();
+        let mut z_file = DartFileAnalysis::empty("lib/z.dart");
+        z_file.flutter.imports_flutter = true;
+        z_file.flutter.widgets.push(FlutterWidgetHint {
+            class_name: "ZWidget".to_string(),
+            base_class: "StatelessWidget".to_string(),
+            confidence: Confidence::High,
+            span: dummy_span(),
+        });
+        let mut a_file = DartFileAnalysis::empty("lib/a.dart");
+        a_file.flutter.imports_flutter = true;
+        a_file.flutter.widgets.push(FlutterWidgetHint {
+            class_name: "AWidget".to_string(),
+            base_class: "StatelessWidget".to_string(),
+            confidence: Confidence::High,
+            span: dummy_span(),
+        });
+        project.files = vec![z_file, a_file];
+
+        let inventory = extract_flutter_inventory(&project);
+
+        assert_eq!(inventory.flutter_file_paths, ["lib/a.dart", "lib/z.dart"]);
+        assert_eq!(inventory.widgets[0].class_name, "AWidget");
+        assert_eq!(inventory.widgets[1].class_name, "ZWidget");
     }
 
     #[test]

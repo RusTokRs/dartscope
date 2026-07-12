@@ -10,6 +10,7 @@ description = "Small CLI wrapper for DartScope local workflows"
 [[bin]]
 name = "dartscope"
 path = "src/main.rs"
+doc = false
 
 [dependencies]
 dartscope = { path = "../dartscope", features = ["parse", "index", "json", "flutter"] }
