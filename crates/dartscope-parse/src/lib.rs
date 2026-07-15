@@ -8,6 +8,7 @@ mod graphql;
 mod lexical;
 mod namespace;
 mod pubspec;
+mod pubspec_source;
 mod source_lines;
 
 pub use analysis::{analyze_file, analyze_project};
@@ -17,6 +18,10 @@ pub use backend::{
     HeuristicDartParser,
 };
 pub use pubspec::parse_pubspec;
+pub use pubspec_source::{
+    parse_normalized_dependency_source, PubspecDependencySource, PubspecDependencySourceExt,
+    PubspecDependencySourceField,
+};
 
 #[cfg(test)]
 mod tests;
