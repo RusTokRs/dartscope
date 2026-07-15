@@ -2,9 +2,11 @@ pub use dartscope_core::*;
 
 #[cfg(feature = "parse")]
 pub use dartscope_parse::{
-    analyze_file, analyze_project, analyze_project_with_parser, parse_pubspec,
-    DartLanguageVersionCoverage, DartParser, DartParserCapability, DartParserCapabilityStatus,
-    DartParserCapabilitySupport, DartParserMetadata, HeuristicDartParser,
+    analyze_file, analyze_project, analyze_project_with_parser, parse_normalized_dependency_source,
+    parse_pubspec, DartLanguageVersionCoverage, DartParser, DartParserCapability,
+    DartParserCapabilityStatus, DartParserCapabilitySupport, DartParserMetadata,
+    HeuristicDartParser, PubspecDependencySource, PubspecDependencySourceExt,
+    PubspecDependencySourceField,
 };
 
 #[cfg(feature = "resolve")]
