@@ -10,3 +10,7 @@ description = "Conservative Dart and Flutter file analysis for DartScope"
 [dependencies]
 dartscope-core.workspace = true
 dartscope-resolve.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
