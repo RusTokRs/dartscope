@@ -68,6 +68,7 @@ version = "0.1.0"
 dependencies = [
  "dartscope-core",
  "dartscope-resolve",
+ "serde",
  "yaml-rust2",
 ]
 
@@ -169,7 +170,7 @@ dependencies = [
 name = "serde_core"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41d385c7d4ca58e59fc732af25c3983b67ac852c1a25000afe1175de458b67ad"
+checksum = "41d385c7d4ca58e59fc732af25c3983b67c6574e925011a9353e4badda91d79"
 dependencies = [
  "serde_derive",
 ]
