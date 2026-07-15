@@ -8,8 +8,9 @@ pub use dartscope_parse::{
     DartParserCapability, DartParserCapabilityStatus, DartParserCapabilitySupport,
     DartParserMetadata, HeuristicDartParser, PubspecConfigurationAnalysis,
     PubspecDependencySource, PubspecDependencySourceExt, PubspecDependencySourceField,
-    PubspecEnvironmentConstraint, PubspecFlutterAsset, PubspecFlutterConfiguration,
-    PubspecFlutterFont, PubspecFlutterFontFamily,
+    PubspecEnvironmentConstraint, PubspecFlutterAsset, PubspecFlutterAssetConfiguration,
+    PubspecFlutterAssetTransformer, PubspecFlutterConfiguration, PubspecFlutterFont,
+    PubspecFlutterFontFamily,
 };
 
 #[cfg(feature = "resolve")]
