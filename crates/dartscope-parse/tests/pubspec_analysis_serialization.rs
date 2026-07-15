@@ -37,6 +37,11 @@ fn defaults_configuration_when_deserializing_legacy_json() {
 
     assert!(analysis.configuration.environment.is_empty());
     assert!(analysis.configuration.flutter.assets.is_empty());
+    assert!(analysis
+        .configuration
+        .flutter
+        .asset_configurations
+        .is_empty());
     assert!(analysis.configuration.flutter.fonts.is_empty());
 }
 
@@ -56,5 +61,13 @@ fn project_analysis_uses_the_complete_pubspec_parser() {
             .flutter
             .generate_localizations,
         Some(true)
+    );
+    assert_eq!(
+        project.pubspecs[0]
+            .configuration
+            .flutter
+            .asset_configurations
+            .len(),
+        1
     );
 }
