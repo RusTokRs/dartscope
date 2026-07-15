@@ -151,14 +151,15 @@ mod tests {
 
     #[test]
     fn exposes_typed_sources_from_legacy_normalized_values() {
-        let dependency = PubspecDependency {
-            name: "remote_package".to_string(),
-            section: PubspecDependencySection::Dependencies,
-            version_or_source: Some(
-                "git:ref=stable;url=https://example.com/repo.git;version=^1.0.0".to_string(),
-            ),
-            span: SourceSpan::line(1, 0, "remote_package"),
-        };
+        let version_or_source =
+            "git:ref=stable;url=https://example.com/repo.git;version=^1.0.0".to_string();
+        let dependency = PubspecDependency::new(
+            "remote_package",
+            PubspecDependencySection::Dependencies,
+            Some(version_or_source.clone()),
+            Some(parse_normalized_dependency_source(&version_or_source)),
+            SourceSpan::line(1, 0, "remote_package"),
+        );
 
         assert_eq!(
             dependency.structured_source(),
