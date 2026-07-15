@@ -7,7 +7,11 @@ clear behavioral source.
 
 The repository requires Rust 1.95. The exact Rust 1.95.0 toolchain, including `rustfmt`
 and Clippy, is pinned in `rust-toolchain.toml`; workspace packages inherit
-`rust-version = "1.95"` from the root `Cargo.toml`.
+`rust-version = "1.95"` and `edition = "2024"` from the root `Cargo.toml`.
+
+The hosted CI has a dedicated Rust 2024 edition matrix covering Linux and Windows for
+the complete workspace, the umbrella crate without default features, and the umbrella
+crate with all features. See `docs/development/rust-2024-edition.md`.
 
 ## Before A Change
 
@@ -48,12 +52,16 @@ versioned envelope exists.
 Run:
 
 ```powershell
+Select-String -Path Cargo.toml -SimpleMatch 'edition = "2024"'
+cargo check --workspace --all-targets --locked
+cargo check -p dartscope --no-default-features --locked
+cargo check -p dartscope --all-features --locked
 cargo fmt --all -- --check
-cargo test --workspace --quiet
-cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --locked --quiet
+cargo clippy --workspace --all-targets --locked -- -D warnings
 $env:RUSTDOCFLAGS = "-D warnings"
-cargo doc --workspace --no-deps
+cargo doc --workspace --no-deps --locked
 ```
 
 The hosted CI repeats these checks on Linux and Windows using the pinned Rust 1.95.0
-toolchain.
+toolchain and the dedicated edition 2024 matrix.
