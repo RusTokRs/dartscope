@@ -53,6 +53,17 @@ need a different source-only parser backend. The built-in `HeuristicDartParser` 
 the default; capability metadata makes unavailable facts explicit. See
 [`docs/development/parser-backends.md`](docs/development/parser-backends.md).
 
+## Rust Toolchain
+
+DartScope requires Rust 1.95. The repository pins the exact Rust 1.95.0 toolchain in
+`rust-toolchain.toml`, including rustfmt and Clippy. Every workspace crate inherits
+`rust-version = "1.95"` from the root `Cargo.toml`, and hosted Linux/Windows checks run
+on the same pinned toolchain.
+
+The workspace remains on Rust edition 2021. The edition is independent from the
+compiler/MSRV upgrade and will be migrated separately with dedicated compatibility
+checks if needed.
+
 ## Quick Start
 
 ```powershell
