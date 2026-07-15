@@ -312,9 +312,9 @@ fn scalar_span(byte_start: usize, mark: Marker, value: &str) -> SourceSpan {
         byte_start,
         byte_end: byte_start + value.len(),
         start_line: mark.line(),
-        start_column: mark.col(),
+        start_column: mark.col() + 1,
         end_line: mark.line(),
-        end_column: mark.col() + value.chars().count(),
+        end_column: mark.col() + value.chars().count() + 1,
     }
 }
 
@@ -328,9 +328,9 @@ fn point_span(source: &str, byte_start: usize, mark: Marker) -> SourceSpan {
         byte_start,
         byte_end,
         start_line: mark.line(),
-        start_column: mark.col(),
+        start_column: mark.col() + 1,
         end_line: mark.line(),
-        end_column: mark.col() + if byte_end > byte_start { 1 } else { 0 },
+        end_column: mark.col() + if byte_end > byte_start { 2 } else { 1 },
     }
 }
 
@@ -339,9 +339,9 @@ fn range_span(byte_start: usize, start: Marker, byte_end: usize, end: Marker) ->
         byte_start,
         byte_end,
         start_line: start.line(),
-        start_column: start.col(),
+        start_column: start.col() + 1,
         end_line: end.line(),
-        end_column: end.col(),
+        end_column: end.col() + 1,
     }
 }
 
@@ -432,6 +432,8 @@ mod tests {
         assert_eq!(entries.len(), 3);
         assert_eq!(entries[0].key, "name");
         assert!(entries[0].key_span.byte_end > entries[0].key_span.byte_start);
+        assert_eq!(entries[0].key_span.start_column, 1);
+        assert_eq!(entries[0].key_span.end_column, 5);
         assert!(matches!(&entries[2].value.kind, NodeKind::Mapping(_)));
     }
 
