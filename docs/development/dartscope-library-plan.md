@@ -32,9 +32,10 @@ Do not start a later task because it looks easier while an earlier `ready` task 
 unfinished. A task may be skipped only when it is marked `blocked` with a concrete
 reason in this file.
 
-The complete workspace uses the repository-pinned Rust 1.95.0 toolchain. Workspace
-packages inherit `rust-version = "1.95"`; CI, rustfmt, Clippy, rustdoc, tests, dependency
-reviews, and parser-backend decisions must not target a second Rust version.
+The complete workspace uses the repository-pinned Rust 1.95.0 toolchain, Rust edition
+2024, and Cargo resolver 3. Workspace packages inherit `rust-version = "1.95"` and
+`edition = "2024"`; CI, rustfmt, Clippy, rustdoc, tests, dependency reviews, and
+parser-backend decisions must not target a second Rust version, edition, or resolver.
 
 Status vocabulary:
 
@@ -93,7 +94,7 @@ Baseline reviewed on 2026-07-10.
 
 | Area | Status | Evidence in repository |
 | --- | --- | --- |
-| Rust workspace and eight crates | verified | root `Cargo.toml`, workspace tests |
+| Rust workspace and eight crates | implemented | root `Cargo.toml`; hosted Rust 1.95.0 edition-2024 checks pending |
 | Core normalized model | implemented | `dartscope-core`; pre-1.0 compatibility work remains |
 | File and pubspec heuristic analysis | in_progress | `dartscope-parse`, unit and project fixtures |
 | Package config v2 and package URI resolution | in_progress | `dartscope-resolve`, six resolver tests |
@@ -101,7 +102,7 @@ Baseline reviewed on 2026-07-10.
 | Flutter project inventory | in_progress | `dartscope-flutter`, optional umbrella feature |
 | JSON helpers | implemented | `dartscope-json`; versioned schema is not implemented |
 | CLI smoke workflows | implemented | `dartscope-cli`; CLI integration tests are missing |
-| Hosted CI | implemented | pinned Rust 1.95.0 quality gates and Linux/Windows tests configured; first hosted run pending |
+| Hosted CI | implemented | Rust 1.95.0 quality/tests plus Linux/Windows edition-2024 matrix configured; first hosted run pending |
 | Contributor and agent workflow | verified | `AGENTS.md`, `CONTRIBUTING.md`, Rust code standard |
 | Lint/rule engine | planned | crate not created |
 | Parser backend port | planned | current backend is directly implemented in parse crate |
@@ -113,6 +114,8 @@ Current verified behaviors include:
 - top-level class, modified class, mixin, mixin-class, enum, extension, extension-type,
   typedef, function, and variable findings;
 - pubspec dependency sections with flexible direct-child indentation;
+- typed pubspec dependency sources, environment constraints, fonts, and Flutter asset
+  configurations with paths, flavors, platforms, and ordered transformers;
 - package configuration v2 parsing and nearest-config package URI resolution;
 - deterministic project ordering, URI graphs, and GraphQL contract results;
 - direct and re-export GraphQL visibility, part-library membership, client-call and
@@ -337,20 +340,35 @@ Acceptance:
 Status: in_progress. Priority: P1. Owner crates: `dartscope-core`, `dartscope-parse`.
 
 The primary pubspec model now stores typed dependency sources, environment constraints,
-and common Flutter configuration with compatibility defaults and serialization fixtures.
-The remaining parser is still a conservative YAML subset rather than a complete YAML
+fonts, and complete Flutter asset configurations with paths, flavors, platforms, ordered
+transformers, compatibility defaults, source spans, and serialization fixtures. The
+remaining parser is still a conservative YAML subset rather than a complete YAML
 implementation.
 
-Required work:
+Implemented slices:
 
-1. Evaluate a maintained Rust YAML parser against the pinned Rust 1.95 toolchain and
-   record the decision.
-2. Preserve source spans for dependency keys even if structured parsing is adopted.
-3. Add SDK, path, git, hosted, and workspace dependency source variants.
-4. Parse environment constraints and Flutter `assets`, `fonts`, and localization
-   configuration into normalized pubspec-owned types.
-5. Diagnose invalid YAML and unsupported aliases/merge keys.
-6. Harden malformed flow mappings, quote balancing, and wildcard-versus-alias handling.
+1. Core-owned typed dependency sources for version, SDK, path, git, hosted, workspace,
+   and fallback values, while retaining `version_or_source` for pre-1.0 compatibility.
+2. Core-owned environment, Flutter generation, assets, and fonts embedded in the primary
+   `PubspecAnalysis` model with Serde defaults for older payloads.
+3. Wildcard-versus-alias handling, malformed flow diagnostics, quote balancing, and
+   path-attributed invalid-YAML diagnostics.
+4. Flutter asset `path`, `flavors`, `platforms`, and ordered `transformers` with optional
+   scalar arguments, plus the compatibility path-only `assets` projection.
+5. A documented decision to use `yaml-rust2` 0.11.x through a private marked-event
+   adapter on the pinned Rust 1.95.0 toolchain.
+
+Remaining work:
+
+1. Add the exact `yaml-rust2` dependency and regenerated `Cargo.lock` together on Rust
+   1.95.0.
+2. Implement the private marked-event adapter while preserving dependency, environment,
+   asset, font, and transformer spans.
+3. Require normalized-output parity between the current fixtures and the marked-event
+   implementation before switching the public parser.
+4. Add remaining localization-owned fields and define a versioned policy for validating
+   Flutter flavor and platform names.
+5. Run focused and full Rust 1.95.0 quality, test, documentation, and edition-2024 gates.
 
 Acceptance:
 
@@ -359,6 +377,7 @@ Acceptance:
   never emitted as packages;
 - malformed YAML produces a path-attributed diagnostic;
 - serialization fixtures cover every dependency source and complete pubspec variant;
+- structured Flutter assets preserve selectors, transformer order, arguments, and spans;
 - all focused and workspace checks pass on Rust 1.95.0.
 
 Implementation state and remaining limits are recorded in
@@ -491,9 +510,10 @@ Status: implemented; hosted Rust 1.95 verification pending.
 Eight crates, MIT license, root README, fixtures, formatting, tests, clippy, lockfile,
 Linux quality CI, Linux/Windows test CI, contribution guide, agent entrypoint, and
 reference strategy exist. The repository builds independently and has no Athanor
-dependency. The workspace MSRV is Rust 1.95 and the exact Rust 1.95.0 toolchain is pinned
-for local and hosted checks. The first hosted Rust 1.95.0 Linux/Windows run is still
-required before this task becomes `verified`.
+dependency. The workspace MSRV is Rust 1.95, the exact Rust 1.95.0 toolchain is pinned,
+and the virtual workspace uses edition 2024 with resolver 3. The first hosted quality,
+Linux/Windows test, and edition-matrix runs are still required before this task becomes
+`verified`.
 
 ### DS-PARSE-001: File Analysis MVP
 
@@ -582,18 +602,16 @@ A task is complete only when all applicable items pass:
 
 ```powershell
 rustc --version
+Select-String -Path Cargo.toml -SimpleMatch 'resolver = "3"'
+Select-String -Path Cargo.toml -SimpleMatch 'edition = "2024"'
+cargo check --workspace --all-targets --locked
+cargo check -p dartscope --no-default-features --locked
+cargo check -p dartscope --all-features --locked
 cargo fmt --all -- --check
-cargo test --workspace --quiet
-cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --locked --quiet
+cargo clippy --workspace --all-targets --locked -- -D warnings
 $env:RUSTDOCFLAGS = "-D warnings"
-cargo doc --workspace --no-deps
-```
-
-For umbrella feature changes, also run:
-
-```powershell
-cargo check -p dartscope --no-default-features
-cargo check -p dartscope --all-features
+cargo doc --workspace --no-deps --locked
 ```
 
 For CLI changes, run at least one successful command and one expected failure. For
@@ -627,6 +645,6 @@ Do not resolve these conditions by silently expanding scope.
 
 ## Current Recommended Next Step
 
-Continue DS-PUB-002. The typed dependency and configuration storage migration is in
-place; next harden wildcard-versus-alias handling and malformed flow mappings, then
-record the YAML backend decision for the pinned Rust 1.95 toolchain.
+Continue DS-PUB-002 by adding `yaml-rust2 = "=0.11.0"` with default features disabled,
+regenerating `Cargo.lock` on Rust 1.95.0, and implementing the private marked-event
+adapter behind parity fixtures before replacing the conservative parser.
