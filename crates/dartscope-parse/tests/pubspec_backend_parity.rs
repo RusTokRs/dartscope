@@ -4,7 +4,8 @@ use dartscope_parse::{parse_pubspec, parse_pubspec_configuration};
 #[test]
 fn focused_and_complete_apis_share_configuration_contract() {
     for (case, source) in parity_cases() {
-        let focused = parse_pubspec_configuration(PubspecInput::new("config\\pubspec.yaml", source));
+        let focused =
+            parse_pubspec_configuration(PubspecInput::new("config\\pubspec.yaml", source));
         let complete = parse_pubspec(PubspecInput::new("config\\pubspec.yaml", source));
 
         assert_eq!(
