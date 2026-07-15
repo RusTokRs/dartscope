@@ -190,13 +190,13 @@ impl ConfigurationParser {
                 ("fonts", None) => self.flutter_subsection = FlutterSubsection::Fonts,
                 ("uses-material-design", Some(value)) => {
                     self.flutter_subsection = FlutterSubsection::None;
-                    self.analysis.flutter.uses_material_design =
-                        self.parse_flutter_bool(key, value, span);
+                    let parsed = self.parse_flutter_bool(key, value, span);
+                    self.analysis.flutter.uses_material_design = parsed;
                 }
                 ("generate", Some(value)) => {
                     self.flutter_subsection = FlutterSubsection::None;
-                    self.analysis.flutter.generate_localizations =
-                        self.parse_flutter_bool(key, value, span);
+                    let parsed = self.parse_flutter_bool(key, value, span);
+                    self.analysis.flutter.generate_localizations = parsed;
                 }
                 _ => self.flutter_subsection = FlutterSubsection::None,
             }
