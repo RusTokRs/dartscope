@@ -7,7 +7,10 @@ mod flutter_hints;
 mod graphql;
 mod lexical;
 mod namespace;
+#[path = "pubspec_analysis.rs"]
 mod pubspec;
+#[path = "pubspec.rs"]
+mod pubspec_dependencies;
 mod pubspec_configuration;
 mod pubspec_source;
 mod source_lines;
