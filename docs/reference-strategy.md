@@ -57,10 +57,14 @@ Flutter framework:
 - [Navigator API](https://api.flutter.dev/flutter/widgets/Navigator-class.html)
 - [`go_router` package](https://pub.dev/packages/go_router)
 
-The Flutter pubspec options define `path`, `flavors`, and `platforms` on asset entries.
-The asset-transformation documentation defines ordered transformer packages with optional
-scalar arguments. DartScope preserves transformer order because Flutter applies the
-transformations sequentially.
+The Flutter pubspec options define `path`, user-defined `flavors`, and the valid asset
+`platforms` values `android`, `ios`, `web`, `linux`, `macos`, and `windows`. DartScope
+therefore preserves non-empty flavor names without inventing a closed vocabulary and
+diagnoses platform values outside the documented set. The asset-transformation
+documentation defines ordered transformer packages with optional scalar arguments;
+DartScope preserves transformer order because Flutter applies transformations
+sequentially. The pubspec localization switch is `flutter.generate`; richer localization
+configuration belongs to a separate future `l10n.yaml` input rather than the pubspec model.
 
 ## Implementation References
 
@@ -106,12 +110,12 @@ heuristic fixture needs both a positive case and a nearby negative case.
 | class, mixin, enum, extension, extension type, typedef | normative | top-level slice | members not indexed |
 | class modifiers and mixin class | normative | implemented | validity combinations not diagnosed |
 | pubspec dependency sections | normative YAML/pub behavior | typed model and hardened subset | `yaml-rust2` adapter selected but not integrated |
-| Flutter pubspec asset declarations | normative Flutter docs | paths, flavors, platforms, ordered transformers implemented | selector names are not version-validated |
+| Flutter pubspec asset declarations | normative Flutter docs | paths, opaque flavors, validated platforms, ordered transformers implemented | selector item spans await marked-event adapter |
 | package configuration v2 | normative format | implemented | generated metadata and overlap validation incomplete |
 | conditional URI selection | normative | implemented | caller must provide environment |
 | GraphQL documents in Dart strings | ecosystem heuristic | implemented | not Dart or Flutter language semantics |
 | `GoRoute` and Riverpod widget bases | ecosystem convention | implemented heuristic | package/version matrix not yet explicit |
-| Flutter assets and localization calls | official API plus generated convention | implemented direct syntax | declarations and ARB files not linked |
+| Flutter assets and localization calls | official API plus generated convention | implemented direct syntax | declarations, `l10n.yaml`, and ARB files not linked |
 
 ## Real-Project Feedback Loop
 
