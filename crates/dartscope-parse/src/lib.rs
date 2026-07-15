@@ -13,6 +13,7 @@ mod pubspec;
 mod pubspec_dependencies;
 mod pubspec_configuration;
 mod pubspec_source;
+mod pubspec_syntax;
 mod source_lines;
 
 pub use analysis::{analyze_file, analyze_project};
