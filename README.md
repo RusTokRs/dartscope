@@ -83,6 +83,13 @@ path. Byte spans account for both LF and CRLF input, so downstream evidence can 
 reported offsets without platform-specific correction. Pubspec dependency spans cover
 the dependency key token rather than the complete source line.
 
+Consumers that need typed dependency sources can import `PubspecDependencySourceExt` and
+call `structured_source()` on each `PubspecDependency`. The returned
+`PubspecDependencySource` uses `version`, `sdk`, `path`, `git`, `hosted`, `workspace`, or
+`other` variants with a stable Serde `kind` discriminator. The legacy
+`version_or_source` field remains temporarily for pre-1.0 compatibility while storage
+moves into `dartscope-core`.
+
 `graphql-contracts` links a `gql(operationConstant)` use only through Dart visibility:
 an unambiguous same-file declaration, direct import, or transitive re-export. Each
 binding retains source paths and spans for both ends, exposes its `resolution_basis`,
