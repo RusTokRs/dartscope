@@ -15,6 +15,7 @@ pub fn parse_pubspec(input: PubspecInput) -> PubspecAnalysis {
         package_name: None,
         dependencies: Vec::new(),
         diagnostics: Vec::new(),
+        ..PubspecAnalysis::default()
     };
     let mut state = PubspecParseState::default();
 
