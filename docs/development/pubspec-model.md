@@ -14,7 +14,7 @@ status: active
 
 ## Core Ownership
 
-Dependency-source and configuration models live in `dartscope-core::pubspec`. This includes `PubspecDependencySource`, `PubspecConfiguration`, `PubspecConfigurationAnalysis`, environment constraints, Flutter assets, font families, and font assets.
+Dependency-source and configuration models live in `dartscope-core::pubspec`. This includes `PubspecDependencySource`, `PubspecConfiguration`, `PubspecConfigurationAnalysis`, environment constraints, Flutter asset configurations and transformers, font families, and font assets.
 
 Source normalization and the inherent `PubspecDependency::structured_source()` API also live in core. `dartscope-parse` keeps its previous root re-exports and `PubspecDependencySourceExt` as compatibility shims.
 
@@ -22,7 +22,7 @@ Source normalization and the inherent `PubspecDependency::structured_source()` A
 
 `PubspecAnalysis` stores a primary `configuration` field containing environment and Flutter configuration. Deserializing an older payload without `configuration` produces an empty default. Both direct `parse_pubspec` calls and pubspecs inside `analyze_project` use the same complete parser.
 
-Checked-in JSON fixtures cover every dependency source variant, the focused environment/Flutter configuration shape, and the migrated complete `PubspecAnalysis` shape. Tests cover serialization round trips, typed-plus-legacy parser output, legacy-only dependency deserialization, and legacy analysis payloads without configuration.
+Checked-in JSON fixtures cover every dependency source variant, the focused environment/Flutter configuration shape, structured Flutter asset mappings, and the migrated complete `PubspecAnalysis` shape. Tests cover serialization round trips, typed-plus-legacy parser output, legacy-only dependency deserialization, legacy analysis payloads without configuration, and older Flutter configuration payloads without extended asset fields.
 
 ## Parser Hardening
 
@@ -54,8 +54,11 @@ Deprecated `serde_yaml` and `serde_yml` are rejected. Other maintained candidate
 
 - `PubspecEnvironmentConstraint` values with exact key spans;
 - `uses_material_design` and `generate_localizations` booleans;
-- scalar Flutter asset paths and asset entries written as `path: ...` mappings;
+- the compatibility `assets` projection with one path and span per declaration;
+- primary `asset_configurations` with paths, optional `flavors`, optional `platforms`, and ordered transformer packages with scalar `args`;
 - Flutter font families, asset paths, optional styles, and validated weights from 100 through 900.
+
+Scalar assets and `path: ...` mappings populate both asset representations. Existing consumers can continue reading `assets`; consumers that need selectors or transformations should read `asset_configurations`. The new field uses a Serde default and is omitted from serialized output when empty, so older configuration payloads remain readable.
 
 The focused output remains available from the CLI:
 
@@ -73,15 +76,15 @@ cargo run -p dartscope-cli -- pubspec path\to\pubspec.yaml
 
 `version_or_source` remains serialized beside `source` until a versioned JSON contract defines its removal. New consumers should read `source` or call `structured_source()` rather than parsing the compatibility string.
 
-The additive `configuration` field changes new `pubspec` and `analyze-project` JSON output. Older JSON remains readable because the field has a Serde default.
+The additive `configuration` field changes new `pubspec` and `analyze-project` JSON output. Older JSON remains readable because the field has a Serde default. The additive `asset_configurations` field is independently defaulted and keeps the path-only `assets` field intact during the pre-1.0 transition.
 
 ## Explicit Limitations
 
-The current production implementation is still a conservative indentation-aware parser, not a complete YAML implementation. Aliases and merge keys remain unsupported by policy. Extended Flutter asset mappings such as `flavors` and `transformers` are diagnosed as unsupported rather than silently normalized. Flow-style environment and Flutter configuration mappings are not supported yet.
+The current production implementation is still a conservative indentation-aware parser, not a complete YAML implementation. Aliases and merge keys remain unsupported by policy. Flow-style environment and top-level Flutter configuration mappings are not supported yet. Asset flavor and platform names are preserved as declared but are not yet validated against a versioned Flutter support table.
 
 ## Remaining Work
 
 1. Add the pinned `yaml-rust2` dependency and lockfile update on Rust 1.95.0.
 2. Implement the private marked-event adapter and require output parity with current fixtures.
-3. Support extended Flutter asset mappings and any additional localization-owned fields justified by official Flutter documentation.
+3. Add any additional localization-owned fields justified by official Flutter documentation and define selector validation policy.
 4. Run `cargo fmt`, Clippy, documentation, Linux tests, and Windows tests on Rust 1.95 before marking the task implemented or verified.
