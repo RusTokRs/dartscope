@@ -214,6 +214,8 @@ impl AssetParser {
 
         self.finish_transformer();
         self.reset_transformer_state();
+        self.mode = AssetMode::None;
+        self.selector_item_indent = None;
         let parent_indent = self.asset_item_indent.unwrap_or_default();
         if !set_or_matches_indent(&mut self.asset_property_indent, indent, parent_indent) {
             self.push_diagnostic(DartDiagnostic::error(
@@ -270,6 +272,8 @@ impl AssetParser {
             return;
         }
 
+        self.mode = AssetMode::Transformers;
+        self.args_item_indent = None;
         match (key, value) {
             ("args", None) => {
                 self.mode = AssetMode::TransformerArgs;
