@@ -1,146 +1,17 @@
 use dartscope_core::PubspecDependency;
 pub use dartscope_core::pubspec::{
-    PubspecDependencySource, PubspecDependencySourceField,
+    parse_normalized_dependency_source, PubspecDependencySource, PubspecDependencySourceField,
 };
 
-/// Converts the compatibility value on a parsed dependency into a typed source.
+/// Compatibility extension for callers importing the pre-migration parse-crate trait.
 pub trait PubspecDependencySourceExt {
     fn structured_source(&self) -> Option<PubspecDependencySource>;
 }
 
 impl PubspecDependencySourceExt for PubspecDependency {
     fn structured_source(&self) -> Option<PubspecDependencySource> {
-        self.version_or_source
-            .as_deref()
-            .map(parse_normalized_dependency_source)
+        PubspecDependency::structured_source(self)
     }
-}
-
-/// Parses the deterministic source representation emitted by the current pubspec parser.
-pub fn parse_normalized_dependency_source(value: &str) -> PubspecDependencySource {
-    if value == "workspace" {
-        return PubspecDependencySource::Workspace;
-    }
-    if let Some(sdk) = value.strip_prefix("sdk:") {
-        return PubspecDependencySource::Sdk {
-            sdk: sdk.to_string(),
-        };
-    }
-    if let Some(path) = value.strip_prefix("path:") {
-        return PubspecDependencySource::Path {
-            path: path.to_string(),
-        };
-    }
-    if let Some(source) = value.strip_prefix("git:") {
-        return parse_git_source(source);
-    }
-    if let Some(source) = value.strip_prefix("hosted:") {
-        return parse_hosted_source(source);
-    }
-    if looks_like_field_list(value) {
-        return PubspecDependencySource::Other {
-            value: value.to_string(),
-        };
-    }
-
-    PubspecDependencySource::Version {
-        constraint: value.to_string(),
-    }
-}
-
-fn parse_git_source(source: &str) -> PubspecDependencySource {
-    if !looks_like_field_list(source) {
-        return PubspecDependencySource::Git {
-            url: non_empty(source),
-            reference: None,
-            path: None,
-            version: None,
-            additional_fields: Vec::new(),
-        };
-    }
-
-    let mut url = None;
-    let mut reference = None;
-    let mut path = None;
-    let mut version = None;
-    let mut additional_fields = Vec::new();
-    for field in parse_fields(source) {
-        match field.key.as_str() {
-            "url" => url = Some(field.value),
-            "ref" => reference = Some(field.value),
-            "path" => path = Some(field.value),
-            "version" => version = Some(field.value),
-            _ => additional_fields.push(field),
-        }
-    }
-
-    PubspecDependencySource::Git {
-        url,
-        reference,
-        path,
-        version,
-        additional_fields,
-    }
-}
-
-fn parse_hosted_source(source: &str) -> PubspecDependencySource {
-    if !looks_like_field_list(source) {
-        return PubspecDependencySource::Hosted {
-            name: None,
-            url: non_empty(source),
-            version: None,
-            additional_fields: Vec::new(),
-        };
-    }
-
-    let mut name = None;
-    let mut url = None;
-    let mut version = None;
-    let mut additional_fields = Vec::new();
-    for field in parse_fields(source) {
-        match field.key.as_str() {
-            "name" => name = Some(field.value),
-            "url" => url = Some(field.value),
-            "version" => version = Some(field.value),
-            _ => additional_fields.push(field),
-        }
-    }
-
-    PubspecDependencySource::Hosted {
-        name,
-        url,
-        version,
-        additional_fields,
-    }
-}
-
-fn looks_like_field_list(source: &str) -> bool {
-    !source.is_empty()
-        && source.split(';').all(|field| {
-            field.split_once('=').is_some_and(|(key, _)| {
-                !key.is_empty()
-                    && key
-                        .chars()
-                        .all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
-            })
-        })
-}
-
-fn parse_fields(source: &str) -> Vec<PubspecDependencySourceField> {
-    source
-        .split(';')
-        .filter_map(|field| {
-            let (key, value) = field.split_once('=')?;
-            Some(PubspecDependencySourceField {
-                key: key.to_string(),
-                value: value.to_string(),
-            })
-        })
-        .collect()
-}
-
-fn non_empty(value: &str) -> Option<String> {
-    (!value.is_empty()).then(|| value.to_string())
 }
 
 #[cfg(test)]
@@ -162,7 +33,7 @@ mod tests {
         );
 
         assert_eq!(
-            dependency.structured_source(),
+            PubspecDependencySourceExt::structured_source(&dependency),
             Some(PubspecDependencySource::Git {
                 url: Some("https://example.com/repo.git".to_string()),
                 reference: Some("stable".to_string()),
