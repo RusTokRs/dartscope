@@ -151,7 +151,7 @@ pub enum DartFileLanguage {
     Pubspec,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub struct SourceSpan {
     pub byte_start: usize,
     pub byte_end: usize,
@@ -640,7 +640,7 @@ pub struct DartResolvedPackageUri {
     pub project_path: Option<String>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub struct PubspecAnalysis {
     pub path: String,
     pub package_name: Option<String>,
@@ -648,7 +648,7 @@ pub struct PubspecAnalysis {
     pub diagnostics: Vec<DartDiagnostic>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub struct PubspecDependency {
     pub name: String,
     pub section: PubspecDependencySection,
@@ -656,9 +656,10 @@ pub struct PubspecDependency {
     pub span: SourceSpan,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PubspecDependencySection {
+    #[default]
     Dependencies,
     DevDependencies,
     DependencyOverrides,
