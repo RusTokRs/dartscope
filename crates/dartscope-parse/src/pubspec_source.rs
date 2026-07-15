@@ -1,57 +1,7 @@
 use dartscope_core::PubspecDependency;
-use serde::{Deserialize, Serialize};
-
-/// A typed compatibility view over the normalized source stored on a pubspec dependency.
-///
-/// The parser still retains `version_or_source` for pre-1.0 JSON compatibility. Consumers can
-/// use [`PubspecDependencySourceExt::structured_source`] while storage migrates into
-/// `dartscope-core`.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum PubspecDependencySource {
-    Version {
-        constraint: String,
-    },
-    Sdk {
-        sdk: String,
-    },
-    Path {
-        path: String,
-    },
-    Git {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        url: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        reference: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        path: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        version: Option<String>,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        additional_fields: Vec<PubspecDependencySourceField>,
-    },
-    Hosted {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        url: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        version: Option<String>,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        additional_fields: Vec<PubspecDependencySourceField>,
-    },
-    Workspace,
-    Other {
-        value: String,
-    },
-}
-
-/// A source field that is not part of the common typed git or hosted shape.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct PubspecDependencySourceField {
-    pub key: String,
-    pub value: String,
-}
+pub use dartscope_core::pubspec::{
+    PubspecDependencySource, PubspecDependencySourceField,
+};
 
 /// Converts the compatibility value on a parsed dependency into a typed source.
 pub trait PubspecDependencySourceExt {
