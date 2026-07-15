@@ -22,6 +22,8 @@ mod pubspec_syntax;
 mod pubspec_yaml_marked;
 #[allow(dead_code)]
 mod pubspec_yaml_marked_configuration;
+#[cfg(test)]
+mod pubspec_yaml_backend_parity;
 mod pubspec_yaml_subset;
 mod source_lines;
 
