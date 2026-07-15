@@ -1,0 +1,40 @@
+[
+  {
+    "kind": "version",
+    "constraint": "^1.2.0"
+  },
+  {
+    "kind": "sdk",
+    "sdk": "flutter"
+  },
+  {
+    "kind": "path",
+    "path": "../local_package"
+  },
+  {
+    "kind": "git",
+    "url": "https://example.com/repo.git",
+    "reference": "stable",
+    "path": "packages/demo",
+    "version": "^1.0.0",
+    "additional_fields": [
+      {
+        "key": "custom",
+        "value": "value"
+      }
+    ]
+  },
+  {
+    "kind": "hosted",
+    "name": "hosted_package",
+    "url": "https://pub.example.com",
+    "version": "^2.0.0"
+  },
+  {
+    "kind": "workspace"
+  },
+  {
+    "kind": "other",
+    "value": "custom=value"
+  }
+]
