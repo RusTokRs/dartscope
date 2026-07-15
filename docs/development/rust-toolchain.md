@@ -23,11 +23,15 @@ All eight crate manifests use `rust-version.workspace = true` and
 `edition.workspace = true`. A crate must not declare a second local Rust version or
 edition.
 
-## Edition
+## Edition And Resolver
 
 The complete workspace uses Rust edition 2024, declared once as `edition = "2024"` in
 the root `Cargo.toml`. Every crate inherits the setting through
 `edition.workspace = true`.
+
+DartScope is a virtual workspace, so it explicitly declares `resolver = "3"` in the
+workspace table. Resolver 3 enables Rust-version-aware dependency selection and must not
+be downgraded independently from the edition policy.
 
 Edition compatibility is verified in a dedicated CI matrix separate from the normal
 quality and test jobs. The matrix covers Linux and Windows for:
@@ -43,19 +47,19 @@ The migration contract and edition-specific risks are recorded in
 
 | Concern | Source |
 | --- | --- |
-| minimum supported compiler and workspace edition | root `Cargo.toml` |
+| minimum supported compiler, resolver, and workspace edition | root `Cargo.toml` |
 | exact local/CI toolchain and components | `rust-toolchain.toml` |
 | hosted commands, operating systems, and edition matrix | `.github/workflows/ci.yml` |
 | contributor commands | `CONTRIBUTING.md` |
 | agent commands and constraints | `AGENTS.md` |
 | release/task acceptance | `docs/development/dartscope-library-plan.md` |
 
-Documentation may repeat the version or edition for clarity but may not define a
-different one.
+Documentation may repeat the version, resolver, or edition for clarity but may not
+define a different one.
 
 ## Prohibited Overrides
 
-Do not introduce another Rust channel, version, or edition in:
+Do not introduce another Rust channel, version, resolver, or edition in:
 
 - individual crate manifests;
 - `.cargo/config.toml` or target-specific rustflags used to simulate compatibility;
@@ -63,8 +67,8 @@ Do not introduce another Rust channel, version, or edition in:
 - Dockerfiles, task runners, release automation, or additional workflows;
 - dependency evaluation notes or release matrices.
 
-If one of these files is added later, it must reference Rust 1.95.0 and edition 2024 or
-rely directly on the root workspace settings.
+If one of these files is added later, it must reference Rust 1.95.0, resolver 3, and
+edition 2024 or rely directly on the root workspace settings.
 
 At the time this policy was created, the repository had no `.cargo/config.toml`,
 Dependabot toolchain override, devcontainer, Dockerfile, release-plz configuration,
@@ -79,6 +83,7 @@ rustc --version
 cargo --version
 rustfmt --version
 cargo clippy --version
+Select-String -Path Cargo.toml -SimpleMatch 'resolver = "3"'
 Select-String -Path Cargo.toml -SimpleMatch 'edition = "2024"'
 cargo check --workspace --all-targets --locked
 cargo check -p dartscope --no-default-features --locked
