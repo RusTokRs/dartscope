@@ -1,4 +1,5 @@
 pub use dartscope_core::*;
+pub use dartscope_core::pubspec::PubspecConfiguration;
 
 #[cfg(feature = "parse")]
 pub use dartscope_parse::{
