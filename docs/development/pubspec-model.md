@@ -12,6 +12,30 @@ status: active
 - `parse_pubspec` returns the primary complete model with package name, dependency sections, typed dependency sources, environment constraints, and common Flutter configuration;
 - `parse_pubspec_configuration` returns the focused configuration analysis for callers and CLI smoke tests that do not need dependencies.
 
+## Execution Checklist
+
+Completed implementation slices are marked independently from checks that still require an
+executable Rust 1.95.0 environment.
+
+- [x] Move dependency-source and pubspec-configuration contracts into `dartscope-core`.
+- [x] Preserve legacy `version_or_source`, `assets`, and missing-configuration JSON inputs.
+- [x] Normalize version, SDK, path, git, hosted, workspace, and fallback dependency sources.
+- [x] Preserve dependency-key and environment-key source spans.
+- [x] Harden wildcard-versus-alias handling and malformed dependency flow mappings.
+- [x] Normalize Flutter booleans, fonts, scalar assets, and `path` asset mappings.
+- [x] Add `flavors`, `platforms`, ordered transformers, scalar args, and compatibility fixtures.
+- [x] Audit extended assets for colon-containing scalars, invalid scalar metadata,
+  inconsistent transformer indentation, and nested-mode leakage; add regression tests.
+- [x] Select and document `yaml-rust2` 0.11.x as the private marked-event backend.
+- [ ] Add `yaml-rust2 = "=0.11.0"` with default features disabled and regenerate
+  `Cargo.lock` using Rust 1.95.0.
+- [ ] Implement the private marked-event adapter and prove normalized-output parity with
+  the current fixtures before switching the public parser.
+- [ ] Define a versioned policy for Flutter flavor/platform validation and add any
+  localization-owned fields justified by official Flutter documentation.
+- [ ] Run formatting, focused tests, workspace tests, Clippy, rustdoc, Linux/Windows tests,
+  and the edition-2024 matrix on Rust 1.95.0.
+
 ## Core Ownership
 
 Dependency-source and configuration models live in `dartscope-core::pubspec`. This includes `PubspecDependencySource`, `PubspecConfiguration`, `PubspecConfigurationAnalysis`, environment constraints, Flutter asset configurations and transformers, font families, and font assets.
@@ -35,7 +59,9 @@ The complete parser now applies a private syntax-validation stage after dependen
 - nested flow mappings preserve quoted commas and YAML single-quote escaping;
 - tab-indentation diagnostics do not desynchronize subsequent dependency validation.
 
-This stage is transitional and will be removed after the marked-event YAML adapter provides the same behavior.
+The structured asset stage additionally distinguishes mapping separators from colons inside plain scalars, rejects metadata attached to scalar list entries, checks sibling/nested indentation, and resets list modes at mapping boundaries. Its YAML-subset primitives are isolated in `pubspec_yaml_subset.rs` so they can be removed with the marked-event adapter.
+
+These stages are transitional and will be removed after the marked-event YAML adapter provides the same behavior.
 
 ## YAML Backend
 
@@ -80,11 +106,11 @@ The additive `configuration` field changes new `pubspec` and `analyze-project` J
 
 ## Explicit Limitations
 
-The current production implementation is still a conservative indentation-aware parser, not a complete YAML implementation. Aliases and merge keys remain unsupported by policy. Flow-style environment and top-level Flutter configuration mappings are not supported yet. Asset flavor and platform names are preserved as declared but are not yet validated against a versioned Flutter support table.
+The current production implementation is still a conservative indentation-aware parser, not a complete YAML implementation. Aliases and merge keys remain unsupported by policy. Flow-style environment and top-level Flutter configuration mappings are not supported yet. Asset mappings must currently begin with `path`, and flavor/platform names are preserved as declared but are not yet validated against a versioned Flutter support table.
 
-## Remaining Work
+## Verification State
 
-1. Add the pinned `yaml-rust2` dependency and lockfile update on Rust 1.95.0.
-2. Implement the private marked-event adapter and require output parity with current fixtures.
-3. Add any additional localization-owned fields justified by official Flutter documentation and define selector validation policy.
-4. Run `cargo fmt`, Clippy, documentation, Linux tests, and Windows tests on Rust 1.95 before marking the task implemented or verified.
+The implementation and regression-test changes are present, but this task remains
+`in_progress`, not `verified`. No local Rust 1.95.0 toolchain is available in the current
+environment, and a successful hosted quality/test/edition run has not been observed for
+this head.
