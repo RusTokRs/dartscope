@@ -36,15 +36,6 @@ pub fn parse_pubspec(input: PubspecInput) -> PubspecAnalysis {
             continue;
         }
 
-        if has_unterminated_yaml_quote(yaml) {
-            analysis.diagnostics.push(DartDiagnostic::error(
-                "pubspec_invalid_yaml",
-                "unterminated quoted scalar in pubspec.yaml",
-                Some(span),
-            ));
-            continue;
-        }
-
         if contains_unsupported_alias_syntax(trimmed) {
             analysis.diagnostics.push(DartDiagnostic::warning(
                 "pubspec_unsupported_yaml_alias",
@@ -284,7 +275,9 @@ fn normalize_dependency_source(
         return Some(format_source_fields("hosted", fields));
     }
     if fields.len() == 1 {
-        return fields.get("version").cloned();
+        if let Some(version) = fields.get("version") {
+            return Some(version.clone());
+        }
     }
 
     Some(
@@ -372,25 +365,6 @@ fn strip_yaml_comment(line: &str) -> &str {
     }
 
     line
-}
-
-fn has_unterminated_yaml_quote(line: &str) -> bool {
-    let mut quote = None;
-    let mut escaped = false;
-    for ch in line.chars() {
-        if let Some(active_quote) = quote {
-            if escaped {
-                escaped = false;
-            } else if active_quote == '"' && ch == '\\' {
-                escaped = true;
-            } else if ch == active_quote {
-                quote = None;
-            }
-        } else if matches!(ch, '\'' | '"') {
-            quote = Some(ch);
-        }
-    }
-    quote.is_some()
 }
 
 fn contains_unsupported_alias_syntax(value: &str) -> bool {
