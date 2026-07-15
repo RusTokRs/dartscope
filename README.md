@@ -57,11 +57,13 @@ the default; capability metadata makes unavailable facts explicit. See
 
 DartScope requires Rust 1.95. The repository pins the exact Rust 1.95.0 toolchain in
 `rust-toolchain.toml`, including rustfmt and Clippy. Every workspace crate inherits
-`rust-version = "1.95"` and `edition = "2024"` from the root `Cargo.toml`.
+`rust-version = "1.95"` and `edition = "2024"` from the root `Cargo.toml`. Because the
+repository root is a virtual workspace, it explicitly declares Cargo resolver 3.
 
-A dedicated CI matrix verifies edition 2024 on Linux and Windows for the complete
-workspace, the umbrella crate without default features, and the umbrella crate with all
-features. See [`docs/development/rust-2024-edition.md`](docs/development/rust-2024-edition.md).
+A dedicated CI matrix verifies resolver 3 and edition 2024 on Linux and Windows for the
+complete workspace, the umbrella crate without default features, and the umbrella crate
+with all features. See
+[`docs/development/rust-2024-edition.md`](docs/development/rust-2024-edition.md).
 
 ## Quick Start
 
