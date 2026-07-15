@@ -10,7 +10,7 @@ This repository is in early pre-1.0 development. The workspace bootstrap and fir
 file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices exist:
 
 - `dartscope-core` owns normalized analysis types, spans, diagnostics, and pubspec models.
-- `dartscope-parse` provides a conservative file-level MVP for imports, exports, parts, declarations, simple Flutter widget, route, asset, and localization hints, Dart-embedded GraphQL operations and uses, and `pubspec.yaml` dependency discovery.
+- `dartscope-parse` provides a conservative file-level MVP for imports, exports, parts, declarations, simple Flutter widget, route, asset, and localization hints, Dart-embedded GraphQL operations and uses, and structured `pubspec.yaml` dependency discovery. Pubspec dependencies preserve exact key spans and normalize scalar, SDK, path, git, hosted, and workspace sources from block or flow mappings.
 - `dartscope-index` performs project-level linking over normalized analysis results. Its
   first API resolves GraphQL operation uses conservatively and compares operation,
   client-call, and variable contracts without depending on parser internals.
@@ -35,6 +35,10 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
 - The first parser backend is line-oriented and conservative. It does not yet provide
   a complete Dart AST or type system; lexical masking prevents findings inside comments
   and strings, but complex annotations and multi-line declarations remain limited.
+- Pubspec dependency parsing now understands common block and flow mappings, but it is
+  not yet backed by a complete YAML parser. YAML aliases and merge keys remain explicitly
+  unsupported, and typed environment, Flutter asset/font, and localization configuration
+  are still roadmap work.
 - Flutter hints are currently detected during file analysis and aggregated by the
   optional `dartscope-flutter` crate. Moving convention extraction fully behind the
   Flutter boundary requires a normalized, parser-independent call-expression model.
@@ -76,7 +80,8 @@ convention support.
 
 File, pubspec, and package-configuration diagnostics include their normalized source
 path. Byte spans account for both LF and CRLF input, so downstream evidence can use the
-reported offsets without platform-specific correction.
+reported offsets without platform-specific correction. Pubspec dependency spans cover
+the dependency key token rather than the complete source line.
 
 `graphql-contracts` links a `gql(operationConstant)` use only through Dart visibility:
 an unambiguous same-file declaration, direct import, or transitive re-export. Each
