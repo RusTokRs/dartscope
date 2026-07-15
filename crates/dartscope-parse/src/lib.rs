@@ -21,6 +21,7 @@ pub use backend::{
     DartParserCapabilityStatus, DartParserCapabilitySupport, DartParserMetadata,
     HeuristicDartParser,
 };
+pub use dartscope_core::pubspec::PubspecConfiguration;
 pub use pubspec::parse_pubspec;
 pub use pubspec_configuration::{
     parse_pubspec_configuration, PubspecConfigurationAnalysis, PubspecEnvironmentConstraint,
