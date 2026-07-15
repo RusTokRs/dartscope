@@ -8,6 +8,7 @@ mod graphql;
 mod lexical;
 mod namespace;
 mod pubspec;
+mod pubspec_configuration;
 mod pubspec_source;
 mod source_lines;
 
@@ -18,6 +19,11 @@ pub use backend::{
     HeuristicDartParser,
 };
 pub use pubspec::parse_pubspec;
+pub use pubspec_configuration::{
+    parse_pubspec_configuration, PubspecConfigurationAnalysis, PubspecEnvironmentConstraint,
+    PubspecFlutterAsset, PubspecFlutterConfiguration, PubspecFlutterFont,
+    PubspecFlutterFontFamily,
+};
 pub use pubspec_source::{
     parse_normalized_dependency_source, PubspecDependencySource, PubspecDependencySourceExt,
     PubspecDependencySourceField,
