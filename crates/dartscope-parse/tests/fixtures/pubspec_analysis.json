@@ -1,0 +1,57 @@
+{
+  "path": "pubspec.yaml",
+  "package_name": "demo",
+  "dependencies": [
+    {
+      "name": "flutter",
+      "section": "dependencies",
+      "source": {
+        "kind": "sdk",
+        "sdk": "flutter"
+      },
+      "version_or_source": "sdk:flutter",
+      "span": {
+        "byte_start": 54,
+        "byte_end": 61,
+        "start_line": 5,
+        "start_column": 3,
+        "end_line": 5,
+        "end_column": 10
+      }
+    }
+  ],
+  "configuration": {
+    "environment": [
+      {
+        "name": "sdk",
+        "constraint": "^3.4.0",
+        "span": {
+          "byte_start": 26,
+          "byte_end": 29,
+          "start_line": 3,
+          "start_column": 3,
+          "end_line": 3,
+          "end_column": 6
+        }
+      }
+    ],
+    "flutter": {
+      "generate_localizations": true,
+      "assets": [
+        {
+          "path": "assets/",
+          "span": {
+            "byte_start": 116,
+            "byte_end": 129,
+            "start_line": 10,
+            "start_column": 1,
+            "end_line": 10,
+            "end_column": 14
+          }
+        }
+      ],
+      "fonts": []
+    }
+  },
+  "diagnostics": []
+}
