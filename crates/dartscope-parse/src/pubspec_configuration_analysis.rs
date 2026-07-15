@@ -2,8 +2,8 @@ use dartscope_core::PubspecInput;
 
 pub use dartscope_core::pubspec::{
     PubspecConfigurationAnalysis, PubspecEnvironmentConstraint, PubspecFlutterAsset,
-    PubspecFlutterAssetConfiguration, PubspecFlutterAssetTransformer, PubspecFlutterConfiguration,
-    PubspecFlutterFont, PubspecFlutterFontFamily,
+    PubspecFlutterAssetConfiguration, PubspecFlutterAssetTransformer,
+    PubspecFlutterConfiguration, PubspecFlutterFont, PubspecFlutterFontFamily,
 };
 
 /// Parses environment constraints and normalized Flutter pubspec configuration.
@@ -59,7 +59,10 @@ mod tests {
             analysis.flutter.asset_configurations[1].flavors,
             ["development", "production"]
         );
-        assert_eq!(analysis.flutter.asset_configurations[1].platforms, ["android", "ios"]);
+        assert_eq!(
+            analysis.flutter.asset_configurations[1].platforms,
+            ["android", "ios"]
+        );
         assert_eq!(
             analysis.flutter.asset_configurations[1].transformers[0].package,
             "vector_graphics_compiler"
