@@ -5,9 +5,9 @@ use std::process::ExitCode;
 
 use dartscope::{
     analyze_file, analyze_graphql_contracts_with_options, analyze_project,
-    build_uri_graph_with_options, extract_flutter_inventory, parse_pubspec, to_json_pretty,
-    DartCompilationEnvironment, DartFileInput, DartIndexOptions, DartProjectInput,
-    PackageConfigInput, PubspecInput,
+    build_uri_graph_with_options, extract_flutter_inventory, parse_pubspec,
+    parse_pubspec_configuration, to_json_pretty, DartCompilationEnvironment, DartFileInput,
+    DartIndexOptions, DartProjectInput, PackageConfigInput, PubspecInput,
 };
 
 fn main() -> ExitCode {
@@ -40,6 +40,15 @@ fn run() -> Result<(), String> {
             reject_extra_args(&extra_args)?;
             let source = read_source(&path)?;
             let analysis = parse_pubspec(PubspecInput::new(path, source));
+            println!(
+                "{}",
+                to_json_pretty(&analysis).map_err(|error| error.to_string())?
+            );
+        }
+        "pubspec-config" => {
+            reject_extra_args(&extra_args)?;
+            let source = read_source(&path)?;
+            let analysis = parse_pubspec_configuration(PubspecInput::new(path, source));
             println!(
                 "{}",
                 to_json_pretty(&analysis).map_err(|error| error.to_string())?
@@ -266,6 +275,6 @@ fn is_skipped_directory(path: &Path) -> bool {
 }
 
 fn usage() -> String {
-    "usage: dartscope <analyze-file|pubspec|analyze-project|graphql-contracts|uri-graph|flutter-inventory> <path> [--env key=value ...]"
+    "usage: dartscope <analyze-file|pubspec|pubspec-config|analyze-project|graphql-contracts|uri-graph|flutter-inventory> <path> [--env key=value ...]"
         .to_string()
 }
