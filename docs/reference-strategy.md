@@ -59,10 +59,18 @@ Flutter framework:
 
 Implementation references may be used after the official behavior is identified:
 
-- Dart analyzer behavior and diagnostics
-- `tree-sitter-dart` or other parser grammars
-- optional analyzer bridges that call Dart tooling
-- `custom_lint`, `build_runner`, `melos`, and similar ecosystem tools
+- [`yaml-rust2` 0.11.0](https://docs.rs/yaml-rust2/0.11.0/yaml_rust2/) as the accepted private pubspec YAML backend;
+- [`yaml-rust2::parser::Event`](https://docs.rs/yaml-rust2/0.11.0/yaml_rust2/parser/enum.Event.html) for explicit alias and document events;
+- [`yaml-rust2::scanner::Marker`](https://docs.rs/yaml-rust2/0.11.0/yaml_rust2/scanner/struct.Marker.html) for byte-indexed source evidence;
+- Dart analyzer behavior and diagnostics;
+- `tree-sitter-dart` or other parser grammars;
+- optional analyzer bridges that call Dart tooling;
+- `custom_lint`, `build_runner`, `melos`, and similar ecosystem tools.
+
+The YAML backend is an implementation mechanism, not the source of pubspec semantics.
+Official Dart/pub documentation continues to define accepted fields and meanings.
+DartScope's adapter must reject aliases and merge keys according to its documented
+support policy even when the backend can parse them.
 
 When DartScope adopts behavior from an implementation or ecosystem source, the code or
 test fixture should make the status clear: official behavior, observed tool behavior,
@@ -90,7 +98,7 @@ heuristic fixture needs both a positive case and a nearby negative case.
 | import, export, part, part-of | normative | implemented heuristic backend | not a full lexer/AST |
 | class, mixin, enum, extension, extension type, typedef | normative | top-level slice | members not indexed |
 | class modifiers and mixin class | normative | implemented | validity combinations not diagnosed |
-| pubspec dependency sections | normative YAML/pub behavior | implemented subset | no complete YAML model |
+| pubspec dependency sections | normative YAML/pub behavior | typed model and hardened subset | `yaml-rust2` adapter selected but not integrated |
 | package configuration v2 | normative format | implemented | generated metadata and overlap validation incomplete |
 | conditional URI selection | normative | implemented | caller must provide environment |
 | GraphQL documents in Dart strings | ecosystem heuristic | implemented | not Dart or Flutter language semantics |
