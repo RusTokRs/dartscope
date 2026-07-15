@@ -645,6 +645,8 @@ pub struct PubspecAnalysis {
     pub path: String,
     pub package_name: Option<String>,
     pub dependencies: Vec<PubspecDependency>,
+    #[serde(default)]
+    pub configuration: pubspec::PubspecConfiguration,
     pub diagnostics: Vec<DartDiagnostic>,
 }
 
