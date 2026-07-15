@@ -45,7 +45,7 @@ jobs:
       - name: Run workspace tests
         run: cargo test --workspace --locked --quiet
 
-  edition-2024:
+  edition_2024:
     name: Edition 2024 (${{ matrix.os }} / ${{ matrix.check.name }})
     strategy:
       fail-fast: false
@@ -73,7 +73,7 @@ jobs:
 
   report:
     name: Publish aggregate status
-    needs: [quality, test, edition-2024]
+    needs: [quality, test, edition_2024]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -84,7 +84,7 @@ jobs:
             const results = [
               '${{ needs.quality.result }}',
               '${{ needs.test.result }}',
-              '${{ needs.edition-2024.result }}',
+              '${{ needs.edition_2024.result }}',
             ];
             const passed = results.every((result) => result === 'success');
             await github.rest.repos.createCommitStatus({
