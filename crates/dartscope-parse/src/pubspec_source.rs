@@ -14,16 +14,25 @@ pub enum PubspecDependencySource {
         path: String,
     },
     Git {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         url: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         reference: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         version: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
         additional_fields: Vec<PubspecDependencySourceField>,
     },
     Hosted {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         url: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         version: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
         additional_fields: Vec<PubspecDependencySourceField>,
     },
     Workspace,
@@ -70,7 +79,7 @@ pub fn parse_normalized_dependency_source(value: &str) -> PubspecDependencySourc
     if let Some(source) = value.strip_prefix("hosted:") {
         return parse_hosted_source(source);
     }
-    if value.contains('=') && value.contains(';') {
+    if looks_like_field_list(value) {
         return PubspecDependencySource::Other {
             value: value.to_string(),
         };
@@ -82,7 +91,7 @@ pub fn parse_normalized_dependency_source(value: &str) -> PubspecDependencySourc
 }
 
 fn parse_git_source(source: &str) -> PubspecDependencySource {
-    if !source.contains('=') {
+    if !looks_like_field_list(source) {
         return PubspecDependencySource::Git {
             url: non_empty(source),
             reference: None,
@@ -117,7 +126,7 @@ fn parse_git_source(source: &str) -> PubspecDependencySource {
 }
 
 fn parse_hosted_source(source: &str) -> PubspecDependencySource {
-    if !source.contains('=') {
+    if !looks_like_field_list(source) {
         return PubspecDependencySource::Hosted {
             name: None,
             url: non_empty(source),
@@ -145,6 +154,18 @@ fn parse_hosted_source(source: &str) -> PubspecDependencySource {
         version,
         additional_fields,
     }
+}
+
+fn looks_like_field_list(source: &str) -> bool {
+    !source.is_empty()
+        && source.split(';').all(|field| {
+            field.split_once('=').is_some_and(|(key, _)| {
+                !key.is_empty()
+                    && key
+                        .chars()
+                        .all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+            })
+        })
 }
 
 fn parse_fields(source: &str) -> Vec<PubspecDependencySourceField> {
@@ -206,6 +227,37 @@ mod tests {
                     key: "custom".to_string(),
                     value: "value".to_string(),
                 }],
+            }
+        );
+        assert_eq!(
+            parse_normalized_dependency_source("custom=value"),
+            PubspecDependencySource::Other {
+                value: "custom=value".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn keeps_direct_source_urls_with_query_values_intact() {
+        assert_eq!(
+            parse_normalized_dependency_source(
+                "git:https://example.com/repo.git?ref=stable&depth=1"
+            ),
+            PubspecDependencySource::Git {
+                url: Some("https://example.com/repo.git?ref=stable&depth=1".to_string()),
+                reference: None,
+                path: None,
+                version: None,
+                additional_fields: Vec::new(),
+            }
+        );
+        assert_eq!(
+            parse_normalized_dependency_source("hosted:https://pub.example.com?token=demo"),
+            PubspecDependencySource::Hosted {
+                name: None,
+                url: Some("https://pub.example.com?token=demo".to_string()),
+                version: None,
+                additional_fields: Vec::new(),
             }
         );
     }
