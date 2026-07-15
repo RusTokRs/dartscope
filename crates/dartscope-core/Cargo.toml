@@ -11,3 +11,5 @@ description = "Core DartScope analysis model, spans, diagnostics, and ports"
 serde.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+serde_json.workspace = true
