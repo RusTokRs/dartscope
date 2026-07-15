@@ -10,15 +10,17 @@ status: active
 `DS-PUB-002` is in progress. DartScope currently exposes two source-only pubspec APIs:
 
 - `parse_pubspec` discovers the package name and dependency sections, preserves dependency-key spans, and normalizes scalar, SDK, path, git, hosted, workspace, and unknown dependency sources;
-- `parse_pubspec_configuration` extracts typed environment constraints and common Flutter configuration without changing the pre-1.0 `PubspecAnalysis` JSON shape.
+- `parse_pubspec_configuration` extracts typed environment constraints and common Flutter configuration.
 
 ## Core Ownership
 
-Dependency-source and configuration models now live in `dartscope-core::pubspec`. This includes `PubspecDependencySource`, `PubspecConfigurationAnalysis`, environment constraints, Flutter assets, font families, and font assets.
+Dependency-source and configuration models live in `dartscope-core::pubspec`. This includes `PubspecDependencySource`, `PubspecConfigurationAnalysis`, environment constraints, Flutter assets, font families, and font assets.
 
-Source normalization and the inherent `PubspecDependency::structured_source()` API also live in core. `dartscope-parse` keeps its previous root re-exports and `PubspecDependencySourceExt` as compatibility shims, while `parse_pubspec_configuration` constructs the core-owned configuration types directly.
+Source normalization and the inherent `PubspecDependency::structured_source()` API also live in core. `dartscope-parse` keeps its previous root re-exports and `PubspecDependencySourceExt` as compatibility shims, while `parse_pubspec_configuration` constructs core-owned configuration types directly.
 
-Checked-in JSON fixtures cover every dependency source variant and a complete environment/Flutter configuration example. Both fixtures verify serialization and deserialization round trips.
+`PubspecDependency` now stores a primary typed `source` field. The parser also emits the legacy `version_or_source` value during the pre-1.0 transition. Deserializing an older payload without `source` remains supported through a Serde default and `structured_source()` derives the typed value from the legacy field.
+
+Checked-in JSON fixtures cover every dependency source variant and a complete environment/Flutter configuration example. Both fixtures verify serialization and deserialization round trips. An integration test covers typed-plus-legacy parser output and legacy-only deserialization.
 
 ## Typed Configuration Output
 
@@ -38,9 +40,9 @@ cargo run -p dartscope-cli -- pubspec-config path\to\pubspec.yaml
 
 ## Compatibility Boundary
 
-The typed configuration API remains separate from `PubspecAnalysis`. The legacy `version_or_source` field remains the serialized dependency-source storage field for pre-1.0 compatibility. The core constructor validates that its typed interpretation matches the normalized compatibility value in debug builds.
+`version_or_source` remains serialized beside `source` until a versioned JSON contract defines its removal. New consumers should read `source` or call `structured_source()` rather than parsing the compatibility string.
 
-Do not describe the migration as complete until `PubspecDependency` and `PubspecAnalysis` store the typed source and configuration directly and the complete JSON transition is covered by golden fixtures.
+The typed configuration API remains separate from `PubspecAnalysis`; embedding it is the remaining core-storage migration.
 
 ## Explicit Limitations
 
@@ -49,7 +51,7 @@ The current implementation is a conservative indentation-aware parser, not a com
 ## Remaining Work
 
 1. Record the final maintained YAML backend decision for MSRV 1.85.
-2. Add primary typed dependency-source and configuration storage to `PubspecAnalysis` with an explicit compatibility migration for `version_or_source` and CLI JSON.
+2. Add primary configuration storage to `PubspecAnalysis` with an explicit CLI JSON migration.
 3. Support extended Flutter asset mappings and any additional localization-owned fields justified by official Flutter documentation.
 4. Add a checked-in fixture for the migrated complete pubspec shape.
 5. Run `cargo fmt`, Clippy, documentation, Linux tests, and Windows tests before marking the task implemented or verified.
