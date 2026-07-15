@@ -59,6 +59,7 @@ the default; capability metadata makes unavailable facts explicit. See
 cargo test --workspace
 cargo run -p dartscope-cli -- analyze-file path\to\file.dart
 cargo run -p dartscope-cli -- pubspec path\to\pubspec.yaml
+cargo run -p dartscope-cli -- pubspec-config path\to\pubspec.yaml
 cargo run -p dartscope-cli -- analyze-project path\to\flutter_project
 cargo run -p dartscope-cli -- graphql-contracts path\to\flutter_project
 cargo run -p dartscope-cli -- uri-graph path\to\flutter_project
@@ -94,8 +95,9 @@ moves into `dartscope-core`.
 `parse_pubspec_configuration` accepts the same in-memory `PubspecInput` as
 `parse_pubspec` and returns `PubspecConfigurationAnalysis`. It preserves environment-key
 spans and exposes typed `uses_material_design`, `generate_localizations`, asset paths,
-font families, font assets, styles, and validated weights. This API remains separate from
-`PubspecAnalysis` during the compatibility migration.
+font families, font assets, styles, and validated weights. The CLI command
+`pubspec-config` prints the same structure as deterministic pretty JSON. This API remains
+separate from `PubspecAnalysis` during the compatibility migration.
 
 `graphql-contracts` links a `gql(operationConstant)` use only through Dart visibility:
 an unambiguous same-file declaration, direct import, or transitive re-export. Each
