@@ -105,7 +105,7 @@ pub struct PubspecFlutterFont {
 }
 
 impl PubspecDependency {
-    /// Constructs a dependency while the legacy and typed source fields are migrated.
+    /// Constructs a dependency with typed and legacy source representations.
     pub fn new(
         name: impl Into<String>,
         section: PubspecDependencySection,
@@ -122,6 +122,7 @@ impl PubspecDependency {
         let mut dependency = Self {
             name: name.into(),
             section,
+            source,
             version_or_source,
             ..Self::default()
         };
@@ -129,11 +130,13 @@ impl PubspecDependency {
         dependency
     }
 
-    /// Returns the typed interpretation of the pre-1.0 normalized source field.
+    /// Returns the stored typed source, with a fallback for legacy deserialized values.
     pub fn structured_source(&self) -> Option<PubspecDependencySource> {
-        self.version_or_source
-            .as_deref()
-            .map(parse_normalized_dependency_source)
+        self.source.clone().or_else(|| {
+            self.version_or_source
+                .as_deref()
+                .map(parse_normalized_dependency_source)
+        })
     }
 }
 
