@@ -1,6 +1,11 @@
 use dartscope_core::PubspecDependency;
 use serde::{Deserialize, Serialize};
 
+/// A typed compatibility view over the normalized source stored on a pubspec dependency.
+///
+/// The parser still retains `version_or_source` for pre-1.0 JSON compatibility. Consumers can
+/// use [`PubspecDependencySourceExt::structured_source`] while storage migrates into
+/// `dartscope-core`.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PubspecDependencySource {
@@ -41,12 +46,14 @@ pub enum PubspecDependencySource {
     },
 }
 
+/// A source field that is not part of the common typed git or hosted shape.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PubspecDependencySourceField {
     pub key: String,
     pub value: String,
 }
 
+/// Converts the compatibility value on a parsed dependency into a typed source.
 pub trait PubspecDependencySourceExt {
     fn structured_source(&self) -> Option<PubspecDependencySource>;
 }
@@ -59,6 +66,7 @@ impl PubspecDependencySourceExt for PubspecDependency {
     }
 }
 
+/// Parses the deterministic source representation emitted by the current pubspec parser.
 pub fn parse_normalized_dependency_source(value: &str) -> PubspecDependencySource {
     if value == "workspace" {
         return PubspecDependencySource::Workspace;
@@ -187,7 +195,7 @@ fn non_empty(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use dartscope_core::{PubspecDependencySection, SourceSpan};
+    use dartscope_core::{PubspecDependencySection, PubspecInput, SourceSpan};
 
     use super::*;
 
@@ -211,6 +219,80 @@ mod tests {
                 version: Some("^1.0.0".to_string()),
                 additional_fields: Vec::new(),
             })
+        );
+    }
+
+    #[test]
+    fn exposes_every_parsed_dependency_source_variant() {
+        let source = r#"name: demo
+dependencies:
+  plain: ^1.2.0
+  flutter:
+    sdk: flutter
+  local_package:
+    path: ../local_package
+  remote_package:
+    git:
+      url: https://example.com/repo.git
+      ref: stable
+    version: ^1.0.0
+  hosted_package:
+    hosted:
+      name: hosted_package
+      url: https://pub.example.com
+    version: ^2.0.0
+  workspace_package:
+    workspace: true
+"#;
+        let analysis = crate::parse_pubspec(PubspecInput::new("pubspec.yaml", source));
+        let source_for = |name: &str| {
+            analysis
+                .dependencies
+                .iter()
+                .find(|dependency| dependency.name == name)
+                .and_then(PubspecDependencySourceExt::structured_source)
+        };
+
+        assert_eq!(
+            source_for("plain"),
+            Some(PubspecDependencySource::Version {
+                constraint: "^1.2.0".to_string(),
+            })
+        );
+        assert_eq!(
+            source_for("flutter"),
+            Some(PubspecDependencySource::Sdk {
+                sdk: "flutter".to_string(),
+            })
+        );
+        assert_eq!(
+            source_for("local_package"),
+            Some(PubspecDependencySource::Path {
+                path: "../local_package".to_string(),
+            })
+        );
+        assert_eq!(
+            source_for("remote_package"),
+            Some(PubspecDependencySource::Git {
+                url: Some("https://example.com/repo.git".to_string()),
+                reference: Some("stable".to_string()),
+                path: None,
+                version: Some("^1.0.0".to_string()),
+                additional_fields: Vec::new(),
+            })
+        );
+        assert_eq!(
+            source_for("hosted_package"),
+            Some(PubspecDependencySource::Hosted {
+                name: Some("hosted_package".to_string()),
+                url: Some("https://pub.example.com".to_string()),
+                version: Some("^2.0.0".to_string()),
+                additional_fields: Vec::new(),
+            })
+        );
+        assert_eq!(
+            source_for("workspace_package"),
+            Some(PubspecDependencySource::Workspace)
         );
     }
 
