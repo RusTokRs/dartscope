@@ -652,6 +652,8 @@ pub struct PubspecAnalysis {
 pub struct PubspecDependency {
     pub name: String,
     pub section: PubspecDependencySection,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<pubspec::PubspecDependencySource>,
     pub version_or_source: Option<String>,
     pub span: SourceSpan,
 }
