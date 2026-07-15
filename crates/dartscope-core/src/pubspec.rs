@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    DartDiagnostic, PubspecDependency, PubspecDependencySection, SourceSpan,
-};
+use crate::{DartDiagnostic, PubspecDependency, PubspecDependencySection, SourceSpan};
 
 /// A normalized pubspec dependency source.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -112,14 +110,208 @@ impl PubspecDependency {
         name: impl Into<String>,
         section: PubspecDependencySection,
         version_or_source: Option<String>,
-        _source: Option<PubspecDependencySource>,
+        source: Option<PubspecDependencySource>,
         span: SourceSpan,
     ) -> Self {
+        debug_assert_eq!(
+            source,
+            version_or_source
+                .as_deref()
+                .map(parse_normalized_dependency_source)
+        );
         Self {
             name: name.into(),
             section,
             version_or_source,
             span,
         }
+    }
+
+    /// Returns the typed interpretation of the pre-1.0 normalized source field.
+    pub fn structured_source(&self) -> Option<PubspecDependencySource> {
+        self.version_or_source
+            .as_deref()
+            .map(parse_normalized_dependency_source)
+    }
+}
+
+/// Parses the deterministic dependency-source representation emitted by DartScope.
+pub fn parse_normalized_dependency_source(value: &str) -> PubspecDependencySource {
+    if value == "workspace" {
+        return PubspecDependencySource::Workspace;
+    }
+    if let Some(sdk) = value.strip_prefix("sdk:") {
+        return PubspecDependencySource::Sdk {
+            sdk: sdk.to_string(),
+        };
+    }
+    if let Some(path) = value.strip_prefix("path:") {
+        return PubspecDependencySource::Path {
+            path: path.to_string(),
+        };
+    }
+    if let Some(source) = value.strip_prefix("git:") {
+        return parse_git_source(source);
+    }
+    if let Some(source) = value.strip_prefix("hosted:") {
+        return parse_hosted_source(source);
+    }
+    if looks_like_field_list(value) {
+        return PubspecDependencySource::Other {
+            value: value.to_string(),
+        };
+    }
+
+    PubspecDependencySource::Version {
+        constraint: value.to_string(),
+    }
+}
+
+fn parse_git_source(source: &str) -> PubspecDependencySource {
+    if !looks_like_field_list(source) {
+        return PubspecDependencySource::Git {
+            url: non_empty(source),
+            reference: None,
+            path: None,
+            version: None,
+            additional_fields: Vec::new(),
+        };
+    }
+
+    let mut url = None;
+    let mut reference = None;
+    let mut path = None;
+    let mut version = None;
+    let mut additional_fields = Vec::new();
+    for field in parse_fields(source) {
+        match field.key.as_str() {
+            "url" => url = Some(field.value),
+            "ref" => reference = Some(field.value),
+            "path" => path = Some(field.value),
+            "version" => version = Some(field.value),
+            _ => additional_fields.push(field),
+        }
+    }
+
+    PubspecDependencySource::Git {
+        url,
+        reference,
+        path,
+        version,
+        additional_fields,
+    }
+}
+
+fn parse_hosted_source(source: &str) -> PubspecDependencySource {
+    if !looks_like_field_list(source) {
+        return PubspecDependencySource::Hosted {
+            name: None,
+            url: non_empty(source),
+            version: None,
+            additional_fields: Vec::new(),
+        };
+    }
+
+    let mut name = None;
+    let mut url = None;
+    let mut version = None;
+    let mut additional_fields = Vec::new();
+    for field in parse_fields(source) {
+        match field.key.as_str() {
+            "name" => name = Some(field.value),
+            "url" => url = Some(field.value),
+            "version" => version = Some(field.value),
+            _ => additional_fields.push(field),
+        }
+    }
+
+    PubspecDependencySource::Hosted {
+        name,
+        url,
+        version,
+        additional_fields,
+    }
+}
+
+fn looks_like_field_list(source: &str) -> bool {
+    !source.is_empty()
+        && source.split(';').all(|field| {
+            field.split_once('=').is_some_and(|(key, _)| {
+                !key.is_empty()
+                    && key
+                        .chars()
+                        .all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+            })
+        })
+}
+
+fn parse_fields(source: &str) -> Vec<PubspecDependencySourceField> {
+    source
+        .split(';')
+        .filter_map(|field| {
+            let (key, value) = field.split_once('=')?;
+            Some(PubspecDependencySourceField {
+                key: key.to_string(),
+                value: value.to_string(),
+            })
+        })
+        .collect()
+}
+
+fn non_empty(value: &str) -> Option<String> {
+    (!value.is_empty()).then(|| value.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_common_dependency_source_variants() {
+        assert_eq!(
+            parse_normalized_dependency_source("sdk:flutter"),
+            PubspecDependencySource::Sdk {
+                sdk: "flutter".to_string(),
+            }
+        );
+        assert_eq!(
+            parse_normalized_dependency_source("path:../local"),
+            PubspecDependencySource::Path {
+                path: "../local".to_string(),
+            }
+        );
+        assert_eq!(
+            parse_normalized_dependency_source("workspace"),
+            PubspecDependencySource::Workspace
+        );
+    }
+
+    #[test]
+    fn preserves_direct_urls_and_additional_fields() {
+        assert_eq!(
+            parse_normalized_dependency_source(
+                "git:https://example.com/repo.git?ref=stable&depth=1"
+            ),
+            PubspecDependencySource::Git {
+                url: Some("https://example.com/repo.git?ref=stable&depth=1".to_string()),
+                reference: None,
+                path: None,
+                version: None,
+                additional_fields: Vec::new(),
+            }
+        );
+        assert_eq!(
+            parse_normalized_dependency_source("git:custom=value;url=https://example.com/repo.git"),
+            PubspecDependencySource::Git {
+                url: Some("https://example.com/repo.git".to_string()),
+                reference: None,
+                path: None,
+                version: None,
+                additional_fields: vec![PubspecDependencySourceField {
+                    key: "custom".to_string(),
+                    value: "value".to_string(),
+                }],
+            }
+        );
     }
 }
