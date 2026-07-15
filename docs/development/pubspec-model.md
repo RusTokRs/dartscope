@@ -26,6 +26,8 @@ executable Rust 1.95.0 environment.
 - [x] Add `flavors`, `platforms`, ordered transformers, scalar args, and compatibility fixtures.
 - [x] Audit extended assets for colon-containing scalars, invalid scalar metadata,
   inconsistent transformer indentation, and nested-mode leakage; add regression tests.
+- [x] Accept one explicit YAML document, ignore additional documents, diagnose duplicate
+  top-level/direct mapping keys, and preserve CRLF/Unicode byte evidence.
 - [x] Select and document `yaml-rust2` 0.11.x as the private marked-event backend.
 - [ ] Add `yaml-rust2 = "=0.11.0"` with default features disabled and regenerate
   `Cargo.lock` using Rust 1.95.0.
@@ -50,14 +52,16 @@ Checked-in JSON fixtures cover every dependency source variant, the focused envi
 
 ## Parser Hardening
 
-The complete parser now applies a private syntax-validation stage after dependency and configuration analysis:
+The complete parser now applies a private syntax-validation stage before dependency and configuration analysis:
 
 - an unquoted dependency constraint of exactly `*` remains a valid wildcard and is not diagnosed as a YAML alias;
 - named aliases such as `*defaults` remain explicitly unsupported;
 - unmatched or mismatched flow delimiters and unterminated flow quotes produce a path-attributed `pubspec_invalid_yaml` diagnostic;
 - invalid inline dependency mappings are removed from normalized output instead of being retained as fabricated dependency sources;
 - nested flow mappings preserve quoted commas and YAML single-quote escaping;
-- tab-indentation diagnostics do not desynchronize subsequent dependency validation.
+- tab-indentation diagnostics do not desynchronize subsequent dependency validation;
+- optional leading `---` and trailing `...` markers are blanked without changing source length, while a second document is diagnosed and excluded from both public parser paths;
+- duplicate top-level keys and duplicate direct keys in dependency, environment, and Flutter mappings produce `pubspec_duplicate_key` diagnostics with exact key spans.
 
 The structured asset stage additionally distinguishes mapping separators from colons inside plain scalars, rejects metadata attached to scalar list entries, checks sibling/nested indentation, and resets list modes at mapping boundaries. Its YAML-subset primitives are isolated in `pubspec_yaml_subset.rs` so they can be removed with the marked-event adapter.
 
@@ -106,7 +110,7 @@ The additive `configuration` field changes new `pubspec` and `analyze-project` J
 
 ## Explicit Limitations
 
-The current production implementation is still a conservative indentation-aware parser, not a complete YAML implementation. Aliases and merge keys remain unsupported by policy. Flow-style environment and top-level Flutter configuration mappings are not supported yet. Asset mappings must currently begin with `path`, and flavor/platform names are preserved as declared but are not yet validated against a versioned Flutter support table.
+The current production implementation is still a conservative indentation-aware parser, not a complete YAML implementation. Aliases and merge keys remain unsupported by policy. Flow-style environment and top-level Flutter configuration mappings are not supported yet. Asset mappings must currently begin with `path`, and flavor/platform names are preserved as declared but are not yet validated against a versioned Flutter support table. Duplicate keys are diagnosed, but invalid input may still retain both conflicting normalized entries until the marked-event adapter owns mapping construction.
 
 ## Verification State
 
