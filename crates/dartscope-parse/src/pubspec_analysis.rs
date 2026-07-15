@@ -9,7 +9,6 @@ pub fn parse_pubspec(input: PubspecInput) -> PubspecAnalysis {
     let configuration_analysis =
         crate::pubspec_configuration::parse_pubspec_configuration(input.clone());
     let mut analysis = crate::pubspec_dependencies::parse_pubspec(input);
-    apply_dependency_syntax_check(&mut analysis, &syntax);
 
     let PubspecConfigurationAnalysis {
         environment,
@@ -27,18 +26,17 @@ pub fn parse_pubspec(input: PubspecInput) -> PubspecAnalysis {
             analysis.diagnostics.push(diagnostic);
         }
     }
+    apply_dependency_syntax_check(&mut analysis, &syntax);
     analysis
 }
 
-fn apply_dependency_syntax_check(
-    analysis: &mut PubspecAnalysis,
-    syntax: &PubspecSyntaxCheck,
-) {
+fn apply_dependency_syntax_check(analysis: &mut PubspecAnalysis, syntax: &PubspecSyntaxCheck) {
     analysis.diagnostics.retain(|diagnostic| {
         diagnostic.code != "pubspec_unsupported_yaml_alias"
-            || !diagnostic.span.as_ref().is_some_and(|span| {
-                syntax.is_bare_wildcard_line(span.start_line)
-            })
+            || !diagnostic
+                .span
+                .as_ref()
+                .is_some_and(|span| syntax.is_bare_wildcard_line(span.start_line))
     });
 
     for span in syntax.invalid_flow_spans() {
@@ -147,10 +145,7 @@ flutter:
             "broken: { path: \"unterminated }",
         ] {
             let source = format!("name: demo\ndependencies:\n  {dependency}\n");
-            let analysis = parse_pubspec(PubspecInput::new(
-                "config\\pubspec.yaml",
-                source,
-            ));
+            let analysis = parse_pubspec(PubspecInput::new("config\\pubspec.yaml", source));
 
             assert!(analysis.dependencies.is_empty(), "{dependency}");
             assert!(analysis.diagnostics.iter().any(|diagnostic| {
