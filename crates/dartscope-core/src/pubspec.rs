@@ -92,13 +92,37 @@ pub struct PubspecFlutterConfiguration {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generate_localizations: Option<bool>,
     pub assets: Vec<PubspecFlutterAsset>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asset_configurations: Vec<PubspecFlutterAssetConfiguration>,
     pub fonts: Vec<PubspecFlutterFontFamily>,
 }
 
-/// A scalar or path-mapping Flutter asset entry.
+/// A scalar or path-mapping Flutter asset entry retained for pre-1.0 compatibility.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PubspecFlutterAsset {
     pub path: String,
+    pub span: SourceSpan,
+}
+
+/// A complete Flutter asset declaration, including optional selectors and transforms.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PubspecFlutterAssetConfiguration {
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flavors: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub platforms: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transformers: Vec<PubspecFlutterAssetTransformer>,
+    pub span: SourceSpan,
+}
+
+/// One ordered build-time transformer attached to a Flutter asset.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PubspecFlutterAssetTransformer {
+    pub package: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
     pub span: SourceSpan,
 }
 
@@ -347,5 +371,14 @@ mod tests {
         };
 
         assert_eq!(analysis.into_configuration(), PubspecConfiguration::default());
+    }
+
+    #[test]
+    fn defaults_extended_asset_configuration_for_legacy_json() {
+        let flutter: PubspecFlutterConfiguration =
+            serde_json::from_value(serde_json::json!({"assets": [], "fonts": []}))
+                .expect("deserialize legacy Flutter configuration");
+
+        assert!(flutter.asset_configurations.is_empty());
     }
 }
