@@ -98,7 +98,7 @@ impl DependencyBuilder {
         section: PubspecDependencySection,
         scalar: Option<&str>,
         span: SourceSpan,
-    ) -> Result<Self, ()> {
+    ) -> Option<Self> {
         let mut builder = Self {
             name: yaml_scalar(name).to_string(),
             section,
@@ -110,14 +110,14 @@ impl DependencyBuilder {
         match scalar {
             Some(value) if value.trim_start().starts_with('{') => {
                 if !parse_flow_mapping_fields(value, "", &mut builder.fields) {
-                    return Err(());
+                    return None;
                 }
             }
             Some(value) => builder.scalar = Some(yaml_scalar(value).to_string()),
             None => {}
         }
 
-        Ok(builder)
+        Some(builder)
     }
 
     fn insert_field(&mut self, path: String, value: &str) {
@@ -221,8 +221,8 @@ fn parse_dependency_line(
         let key_span = mapping_key_span(&span, indent, trimmed);
         state.dependency = match state.section {
             Some(section) => match DependencyBuilder::new(key, section, value, key_span) {
-                Ok(dependency) => Some(dependency),
-                Err(()) => {
+                Some(dependency) => Some(dependency),
+                None => {
                     analysis.diagnostics.push(DartDiagnostic::error(
                         "pubspec_invalid_yaml",
                         "invalid inline dependency source mapping",
