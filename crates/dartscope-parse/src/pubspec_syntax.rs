@@ -24,6 +24,10 @@ pub(crate) fn check_pubspec_syntax(source: &str) -> PubspecSyntaxCheck {
     let mut direct_indent = None;
 
     for source_line in source_lines(source) {
+        if leading_indentation_contains_tab(source_line.text) {
+            continue;
+        }
+
         let yaml = strip_yaml_comment(source_line.text);
         let trimmed = yaml.trim();
         if trimmed.is_empty() {
@@ -43,7 +47,6 @@ pub(crate) fn check_pubspec_syntax(source: &str) -> PubspecSyntaxCheck {
         let expected_indent = *direct_indent.get_or_insert(indent);
         if indent < expected_indent {
             in_dependency_section = false;
-            direct_indent = None;
             continue;
         }
         if indent != expected_indent {
@@ -126,12 +129,20 @@ fn flow_delimiters_are_balanced(value: &str) -> bool {
 fn find_unquoted_colon(value: &str) -> Option<usize> {
     let mut quote = None;
     let mut escaped = false;
-    for (index, ch) in value.char_indices() {
+    let mut chars = value.char_indices().peekable();
+
+    while let Some((index, ch)) = chars.next() {
         if let Some(active_quote) = quote {
             if escaped {
                 escaped = false;
             } else if active_quote == '"' && ch == '\\' {
                 escaped = true;
+            } else if active_quote == '\'' && ch == '\'' {
+                if chars.peek().is_some_and(|(_, next)| *next == '\'') {
+                    chars.next();
+                } else {
+                    quote = None;
+                }
             } else if ch == active_quote {
                 quote = None;
             }
@@ -143,6 +154,7 @@ fn find_unquoted_colon(value: &str) -> Option<usize> {
             }
         }
     }
+
     None
 }
 
@@ -150,13 +162,20 @@ fn strip_yaml_comment(line: &str) -> &str {
     let mut quote = None;
     let mut escaped = false;
     let mut previous = None;
+    let mut chars = line.char_indices().peekable();
 
-    for (index, ch) in line.char_indices() {
+    while let Some((index, ch)) = chars.next() {
         if let Some(active_quote) = quote {
             if escaped {
                 escaped = false;
             } else if active_quote == '"' && ch == '\\' {
                 escaped = true;
+            } else if active_quote == '\'' && ch == '\'' {
+                if chars.peek().is_some_and(|(_, next)| *next == '\'') {
+                    chars.next();
+                } else {
+                    quote = None;
+                }
             } else if ch == active_quote {
                 quote = None;
             }
@@ -171,6 +190,12 @@ fn strip_yaml_comment(line: &str) -> &str {
     }
 
     line
+}
+
+fn leading_indentation_contains_tab(line: &str) -> bool {
+    line.chars()
+        .take_while(|ch| ch.is_whitespace())
+        .any(|ch| ch == '\t')
 }
 
 fn leading_space_count(line: &str) -> usize {
@@ -195,6 +220,18 @@ mod tests {
     }
 
     #[test]
+    fn retains_dependency_section_after_tab_indentation() {
+        let source = concat!(
+            "dependencies:\n",
+            "\tinvalid: any\n",
+            "  wildcard: *\n",
+        );
+        let check = check_pubspec_syntax(source);
+
+        assert!(check.is_bare_wildcard_line(3));
+    }
+
+    #[test]
     fn rejects_unbalanced_flow_delimiters_and_quotes() {
         for value in [
             "{ path: ../local } }",
@@ -209,6 +246,13 @@ mod tests {
     fn accepts_nested_flow_mappings_with_quoted_commas() {
         assert!(flow_delimiters_are_balanced(
             "{ git: { url: \"https://example.com/repo.git?parts=one,two\", ref: stable } }"
+        ));
+    }
+
+    #[test]
+    fn accepts_yaml_single_quote_escaping() {
+        assert!(flow_delimiters_are_balanced(
+            "{ path: 'packages/it''s-local' }"
         ));
     }
 }
