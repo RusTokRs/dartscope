@@ -49,11 +49,18 @@ Flutter framework:
 
 - [Flutter navigation and routing](https://docs.flutter.dev/ui/navigation)
 - [Flutter assets and images](https://docs.flutter.dev/ui/assets/assets-and-images)
+- [Flutter pubspec asset options](https://docs.flutter.dev/tools/pubspec)
+- [Flutter asset transformation](https://docs.flutter.dev/ui/assets/asset-transformation)
 - [Internationalizing Flutter apps](https://docs.flutter.dev/ui/accessibility-and-internationalization/internationalization)
 - [MaterialApp API](https://api.flutter.dev/flutter/material/MaterialApp-class.html)
 - [WidgetsApp API](https://api.flutter.dev/flutter/widgets/WidgetsApp-class.html)
 - [Navigator API](https://api.flutter.dev/flutter/widgets/Navigator-class.html)
 - [`go_router` package](https://pub.dev/packages/go_router)
+
+The Flutter pubspec options define `path`, `flavors`, and `platforms` on asset entries.
+The asset-transformation documentation defines ordered transformer packages with optional
+scalar arguments. DartScope preserves transformer order because Flutter applies the
+transformations sequentially.
 
 ## Implementation References
 
@@ -99,6 +106,7 @@ heuristic fixture needs both a positive case and a nearby negative case.
 | class, mixin, enum, extension, extension type, typedef | normative | top-level slice | members not indexed |
 | class modifiers and mixin class | normative | implemented | validity combinations not diagnosed |
 | pubspec dependency sections | normative YAML/pub behavior | typed model and hardened subset | `yaml-rust2` adapter selected but not integrated |
+| Flutter pubspec asset declarations | normative Flutter docs | paths, flavors, platforms, ordered transformers implemented | selector names are not version-validated |
 | package configuration v2 | normative format | implemented | generated metadata and overlap validation incomplete |
 | conditional URI selection | normative | implemented | caller must provide environment |
 | GraphQL documents in Dart strings | ecosystem heuristic | implemented | not Dart or Flutter language semantics |
