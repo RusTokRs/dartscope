@@ -1,61 +1,10 @@
 use dartscope_core::{normalize_path, DartDiagnostic, PubspecInput, SourceSpan};
-use serde::{Deserialize, Serialize};
+pub use dartscope_core::pubspec::{
+    PubspecConfigurationAnalysis, PubspecEnvironmentConstraint, PubspecFlutterAsset,
+    PubspecFlutterConfiguration, PubspecFlutterFont, PubspecFlutterFontFamily,
+};
 
 use crate::source_lines::{attach_diagnostic_paths, source_lines, SourceLine};
-
-/// Typed pubspec configuration that is not part of dependency discovery.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct PubspecConfigurationAnalysis {
-    pub path: String,
-    pub environment: Vec<PubspecEnvironmentConstraint>,
-    pub flutter: PubspecFlutterConfiguration,
-    pub diagnostics: Vec<DartDiagnostic>,
-}
-
-/// One entry from the top-level `environment` mapping.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct PubspecEnvironmentConstraint {
-    pub name: String,
-    pub constraint: String,
-    pub span: SourceSpan,
-}
-
-/// Normalized configuration owned by the top-level `flutter` mapping.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
-pub struct PubspecFlutterConfiguration {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub uses_material_design: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub generate_localizations: Option<bool>,
-    pub assets: Vec<PubspecFlutterAsset>,
-    pub fonts: Vec<PubspecFlutterFontFamily>,
-}
-
-/// A scalar or `path` asset entry from `flutter.assets`.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct PubspecFlutterAsset {
-    pub path: String,
-    pub span: SourceSpan,
-}
-
-/// A family from `flutter.fonts`.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct PubspecFlutterFontFamily {
-    pub family: String,
-    pub fonts: Vec<PubspecFlutterFont>,
-    pub span: SourceSpan,
-}
-
-/// A concrete font asset within a Flutter font family.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct PubspecFlutterFont {
-    pub asset: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub style: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub weight: Option<u16>,
-    pub span: SourceSpan,
-}
 
 /// Parses environment constraints and common Flutter pubspec configuration.
 pub fn parse_pubspec_configuration(input: PubspecInput) -> PubspecConfigurationAnalysis {
