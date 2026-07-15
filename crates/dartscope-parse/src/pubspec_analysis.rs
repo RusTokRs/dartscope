@@ -3,7 +3,8 @@ use dartscope_core::{PubspecAnalysis, PubspecInput};
 
 /// Parses dependencies and typed configuration into the primary pubspec analysis model.
 pub fn parse_pubspec(input: PubspecInput) -> PubspecAnalysis {
-    let configuration_analysis = crate::pubspec_configuration::parse_pubspec_configuration(input.clone());
+    let configuration_analysis =
+        crate::pubspec_configuration::parse_pubspec_configuration(input.clone());
     let mut analysis = crate::pubspec_dependencies::parse_pubspec(input);
     let PubspecConfigurationAnalysis {
         environment,
