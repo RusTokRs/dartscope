@@ -57,7 +57,7 @@ The current implementation is a conservative indentation-aware parser, not a com
 
 ## Remaining Work
 
-1. Record the final maintained YAML backend decision for MSRV 1.85.
+1. Record the final maintained YAML backend decision for the pinned Rust 1.95 toolchain.
 2. Support extended Flutter asset mappings and any additional localization-owned fields justified by official Flutter documentation.
 3. Harden malformed flow mappings, quote balancing, and wildcard-versus-alias handling.
-4. Run `cargo fmt`, Clippy, documentation, Linux tests, and Windows tests before marking the task implemented or verified.
+4. Run `cargo fmt`, Clippy, documentation, Linux tests, and Windows tests on Rust 1.95 before marking the task implemented or verified.
