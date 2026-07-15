@@ -17,17 +17,15 @@ fn stores_typed_and_legacy_dependency_sources_together() {
         ),
     ));
     let dependency = &analysis.dependencies[0];
+    let expected_source = PubspecDependencySource::Git {
+        url: Some("https://example.com/repo.git".to_string()),
+        reference: Some("stable".to_string()),
+        path: None,
+        version: Some("^1.0.0".to_string()),
+        additional_fields: Vec::new(),
+    };
 
-    assert_eq!(
-        dependency.source,
-        Some(PubspecDependencySource::Git {
-            url: Some("https://example.com/repo.git".to_string()),
-            reference: Some("stable".to_string()),
-            path: None,
-            version: Some("^1.0.0".to_string()),
-            additional_fields: Vec::new(),
-        })
-    );
+    assert_eq!(dependency.source.as_ref(), Some(&expected_source));
     assert_eq!(
         dependency.version_or_source.as_deref(),
         Some("git:ref=stable;url=https://example.com/repo.git;version=^1.0.0")
