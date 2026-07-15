@@ -14,11 +14,11 @@ status: active
 
 ## Core Ownership
 
-`PubspecDependencySource`, `PubspecDependencySourceField`, source normalization, and the inherent `PubspecDependency::structured_source()` API now live in `dartscope-core::pubspec`. `dartscope-parse` keeps its previous root re-exports and `PubspecDependencySourceExt` as compatibility shims.
+Dependency-source and configuration models now live in `dartscope-core::pubspec`. This includes `PubspecDependencySource`, `PubspecConfigurationAnalysis`, environment constraints, Flutter assets, font families, and font assets.
 
-The core crate also defines the target environment and Flutter configuration types. The configuration parser still needs to be switched from its compatibility-local types to those core definitions before the model migration is complete.
+Source normalization and the inherent `PubspecDependency::structured_source()` API also live in core. `dartscope-parse` keeps its previous root re-exports and `PubspecDependencySourceExt` as compatibility shims, while `parse_pubspec_configuration` constructs the core-owned configuration types directly.
 
-A checked-in JSON fixture covers every dependency source variant and verifies serialization plus deserialization round trips.
+Checked-in JSON fixtures cover every dependency source variant and a complete environment/Flutter configuration example. Both fixtures verify serialization and deserialization round trips.
 
 ## Typed Configuration Output
 
@@ -38,9 +38,9 @@ cargo run -p dartscope-cli -- pubspec-config path\to\pubspec.yaml
 
 ## Compatibility Boundary
 
-The typed configuration API remains separate from `PubspecAnalysis`. The legacy `version_or_source` field remains the serialized storage field for pre-1.0 compatibility. The core constructor validates that its typed interpretation matches the normalized compatibility value in debug builds.
+The typed configuration API remains separate from `PubspecAnalysis`. The legacy `version_or_source` field remains the serialized dependency-source storage field for pre-1.0 compatibility. The core constructor validates that its typed interpretation matches the normalized compatibility value in debug builds.
 
-Do not describe the migration as complete until `PubspecDependency` stores its typed source directly and the JSON transition is covered by golden fixtures.
+Do not describe the migration as complete until `PubspecDependency` and `PubspecAnalysis` store the typed source and configuration directly and the complete JSON transition is covered by golden fixtures.
 
 ## Explicit Limitations
 
@@ -49,8 +49,7 @@ The current implementation is a conservative indentation-aware parser, not a com
 ## Remaining Work
 
 1. Record the final maintained YAML backend decision for MSRV 1.85.
-2. Switch `parse_pubspec_configuration` to the core-owned configuration types.
-3. Add primary typed source and configuration storage to `PubspecAnalysis` with an explicit compatibility migration for `version_or_source` and CLI JSON.
-4. Support extended Flutter asset mappings and any additional localization-owned fields justified by official Flutter documentation.
-5. Add checked-in serialization fixtures for every configuration variant and the migrated complete pubspec shape.
-6. Run `cargo fmt`, Clippy, documentation, Linux tests, and Windows tests before marking the task implemented or verified.
+2. Add primary typed dependency-source and configuration storage to `PubspecAnalysis` with an explicit compatibility migration for `version_or_source` and CLI JSON.
+3. Support extended Flutter asset mappings and any additional localization-owned fields justified by official Flutter documentation.
+4. Add a checked-in fixture for the migrated complete pubspec shape.
+5. Run `cargo fmt`, Clippy, documentation, Linux tests, and Windows tests before marking the task implemented or verified.
