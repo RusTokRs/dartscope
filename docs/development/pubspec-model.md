@@ -28,13 +28,14 @@ executable Rust 1.95.0 environment.
   inconsistent transformer indentation, and nested-mode leakage; add regression tests.
 - [x] Accept one explicit YAML document, ignore additional documents, diagnose duplicate
   top-level/direct mapping keys, and preserve CRLF/Unicode byte evidence.
+- [x] Preserve non-empty flavor names as application-defined values, validate asset
+  platforms against Flutter's six documented values, and keep richer localization
+  configuration outside the pubspec-owned `generate` field.
 - [x] Select and document `yaml-rust2` 0.11.x as the private marked-event backend.
 - [ ] Add `yaml-rust2 = "=0.11.0"` with default features disabled and regenerate
   `Cargo.lock` using Rust 1.95.0.
 - [ ] Implement the private marked-event adapter and prove normalized-output parity with
   the current fixtures before switching the public parser.
-- [ ] Define a versioned policy for Flutter flavor/platform validation and add any
-  localization-owned fields justified by official Flutter documentation.
 - [ ] Run formatting, focused tests, workspace tests, Clippy, rustdoc, Linux/Windows tests,
   and the edition-2024 matrix on Rust 1.95.0.
 
@@ -65,6 +66,12 @@ The complete parser now applies a private syntax-validation stage before depende
 
 The structured asset stage additionally distinguishes mapping separators from colons inside plain scalars, rejects metadata attached to scalar list entries, checks sibling/nested indentation, and resets list modes at mapping boundaries. Its YAML-subset primitives are isolated in `pubspec_yaml_subset.rs` so they can be removed with the marked-event adapter.
 
+Asset selector validation follows the official Flutter boundary:
+
+- flavor names are application-defined and remain opaque, but empty names are invalid;
+- platform names must be one of `android`, `ios`, `web`, `linux`, `macos`, or `windows`;
+- invalid selectors remain visible in normalized output and carry explicit diagnostics rather than being silently dropped.
+
 These stages are transitional and will be removed after the marked-event YAML adapter provides the same behavior.
 
 ## YAML Backend
@@ -85,10 +92,12 @@ Deprecated `serde_yaml` and `serde_yml` are rejected. Other maintained candidate
 - `PubspecEnvironmentConstraint` values with exact key spans;
 - `uses_material_design` and `generate_localizations` booleans;
 - the compatibility `assets` projection with one path and span per declaration;
-- primary `asset_configurations` with paths, optional `flavors`, optional `platforms`, and ordered transformer packages with scalar `args`;
+- primary `asset_configurations` with paths, optional opaque `flavors`, validated `platforms`, and ordered transformer packages with scalar `args`;
 - Flutter font families, asset paths, optional styles, and validated weights from 100 through 900.
 
 Scalar assets and `path: ...` mappings populate both asset representations. Existing consumers can continue reading `assets`; consumers that need selectors or transformations should read `asset_configurations`. The new field uses a Serde default and is omitted from serialized output when empty, so older configuration payloads remain readable.
+
+The official Flutter pubspec localization switch is `flutter.generate`, which is already normalized as `generate_localizations`. Options such as ARB locations, generated class names, and untranslated-message output belong to a future explicit `l10n.yaml` input under `DS-FLUTTER-003`, not to this pubspec model.
 
 The focused output remains available from the CLI:
 
@@ -110,7 +119,7 @@ The additive `configuration` field changes new `pubspec` and `analyze-project` J
 
 ## Explicit Limitations
 
-The current production implementation is still a conservative indentation-aware parser, not a complete YAML implementation. Aliases and merge keys remain unsupported by policy. Flow-style environment and top-level Flutter configuration mappings are not supported yet. Asset mappings must currently begin with `path`, and flavor/platform names are preserved as declared but are not yet validated against a versioned Flutter support table. Duplicate keys are diagnosed, but invalid input may still retain both conflicting normalized entries until the marked-event adapter owns mapping construction.
+The current production implementation is still a conservative indentation-aware parser, not a complete YAML implementation. Aliases and merge keys remain unsupported by policy. Flow-style environment and top-level Flutter configuration mappings are not supported yet. Asset mappings must currently begin with `path`. Duplicate keys are diagnosed, but invalid input may still retain both conflicting normalized entries until the marked-event adapter owns mapping construction. Selector diagnostics currently point to the containing asset declaration because individual selector-item spans are not yet retained.
 
 ## Verification State
 
