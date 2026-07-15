@@ -98,14 +98,26 @@ impl DependencyBuilder {
         section: PubspecDependencySection,
         scalar: Option<&str>,
         span: SourceSpan,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, ()> {
+        let mut builder = Self {
             name: yaml_scalar(name).to_string(),
             section,
-            scalar: scalar.map(yaml_scalar).map(str::to_string),
+            scalar: None,
             fields: BTreeMap::new(),
             span,
+        };
+
+        match scalar {
+            Some(value) if value.trim_start().starts_with('{') => {
+                if !parse_flow_mapping_fields(value, "", &mut builder.fields) {
+                    return Err(());
+                }
+            }
+            Some(value) => builder.scalar = Some(yaml_scalar(value).to_string()),
+            None => {}
         }
+
+        Ok(builder)
     }
 
     fn insert_field(&mut self, path: String, value: &str) {
@@ -206,9 +218,21 @@ fn parse_dependency_line(
 
     if indent == direct_indent {
         state.finish_dependency(&mut analysis.dependencies);
-        state.dependency = state
-            .section
-            .map(|section| DependencyBuilder::new(key, section, value, span));
+        let key_span = mapping_key_span(&span, indent, trimmed);
+        state.dependency = match state.section {
+            Some(section) => match DependencyBuilder::new(key, section, value, key_span) {
+                Ok(dependency) => Some(dependency),
+                Err(()) => {
+                    analysis.diagnostics.push(DartDiagnostic::error(
+                        "pubspec_invalid_yaml",
+                        "invalid inline dependency source mapping",
+                        Some(span),
+                    ));
+                    None
+                }
+            },
+            None => None,
+        };
         return;
     }
 
@@ -243,6 +267,95 @@ fn parse_dependency_line(
             key: key.to_string(),
         });
     }
+}
+
+fn mapping_key_span(line_span: &SourceSpan, indent: usize, trimmed: &str) -> SourceSpan {
+    let key_end = find_unquoted_colon(trimmed).unwrap_or(trimmed.len());
+    let raw_key = trimmed[..key_end].trim_end();
+    SourceSpan {
+        byte_start: line_span.byte_start + indent,
+        byte_end: line_span.byte_start + indent + raw_key.len(),
+        start_line: line_span.start_line,
+        start_column: indent + 1,
+        end_line: line_span.start_line,
+        end_column: indent + raw_key.chars().count() + 1,
+    }
+}
+
+fn parse_flow_mapping_fields(
+    value: &str,
+    prefix: &str,
+    fields: &mut BTreeMap<String, String>,
+) -> bool {
+    let value = value.trim();
+    let Some(inner) = value
+        .strip_prefix('{')
+        .and_then(|value| value.strip_suffix('}'))
+    else {
+        return false;
+    };
+
+    for entry in split_flow_entries(inner) {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = yaml_key_value(entry) else {
+            return false;
+        };
+        let Some(value) = value else {
+            return false;
+        };
+        let path = if prefix.is_empty() {
+            key.to_string()
+        } else {
+            format!("{prefix}.{key}")
+        };
+        if value.trim_start().starts_with('{') {
+            if !parse_flow_mapping_fields(value, &path, fields) {
+                return false;
+            }
+        } else {
+            fields.insert(path, yaml_scalar(value).to_string());
+        }
+    }
+
+    true
+}
+
+fn split_flow_entries(value: &str) -> Vec<&str> {
+    let mut entries = Vec::new();
+    let mut start = 0usize;
+    let mut quote = None;
+    let mut escaped = false;
+    let mut depth = 0usize;
+
+    for (index, ch) in value.char_indices() {
+        if let Some(active_quote) = quote {
+            if escaped {
+                escaped = false;
+            } else if active_quote == '"' && ch == '\\' {
+                escaped = true;
+            } else if ch == active_quote {
+                quote = None;
+            }
+            continue;
+        }
+
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            '{' | '[' => depth += 1,
+            '}' | ']' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                entries.push(&value[start..index]);
+                start = index + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+
+    entries.push(&value[start..]);
+    entries
 }
 
 fn normalize_dependency_source(
@@ -468,10 +581,39 @@ dependencies:
             Some("hosted:name=hosted_package;url=https://pub.example.com;version=^2.0.0")
         );
         assert_eq!(source_for(&analysis, "workspace_package"), Some("workspace"));
-        assert!(!analysis
-            .dependencies
-            .iter()
-            .any(|dependency| matches!(dependency.name.as_str(), "sdk" | "path" | "git" | "url" | "ref")));
+        assert!(!analysis.dependencies.iter().any(|dependency| matches!(
+            dependency.name.as_str(),
+            "sdk" | "path" | "git" | "url" | "ref"
+        )));
+        assert!(analysis.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn parses_inline_dependency_source_mappings() {
+        let source = r#"name: demo
+dependencies:
+  local_package: { path: ../local_package }
+  remote_package: { git: { url: https://example.com/repo.git, ref: stable }, version: ^1.0.0 }
+  hosted_package: { hosted: { name: hosted_package, url: https://pub.example.com }, version: ^2.0.0 }
+  workspace_package: { workspace: true }
+"#;
+
+        let analysis = parse_pubspec(PubspecInput::new("pubspec.yaml", source));
+
+        assert_eq!(analysis.dependencies.len(), 4);
+        assert_eq!(
+            source_for(&analysis, "local_package"),
+            Some("path:../local_package")
+        );
+        assert_eq!(
+            source_for(&analysis, "remote_package"),
+            Some("git:ref=stable;url=https://example.com/repo.git;version=^1.0.0")
+        );
+        assert_eq!(
+            source_for(&analysis, "hosted_package"),
+            Some("hosted:name=hosted_package;url=https://pub.example.com;version=^2.0.0")
+        );
+        assert_eq!(source_for(&analysis, "workspace_package"), Some("workspace"));
         assert!(analysis.diagnostics.is_empty());
     }
 
@@ -485,14 +627,27 @@ dependencies:
             .find(|dependency| dependency.name == "http")
             .expect("http dependency");
 
+        let expected_start = "name: demo\r\ndependencies: # packages\r\n".len() + 4;
         assert_eq!(dependency.span.start_line, 3);
-        assert_eq!(dependency.span.byte_start, "name: demo\r\ndependencies: # packages\r\n".len());
+        assert_eq!(dependency.span.start_column, 5);
+        assert_eq!(dependency.span.end_column, 9);
+        assert_eq!(dependency.span.byte_start, expected_start);
+        assert_eq!(dependency.span.byte_end, expected_start + "http".len());
         assert_eq!(dependency.version_or_source.as_deref(), Some("^1.2.0"));
     }
 
     #[test]
     fn diagnoses_aliases_tabs_and_malformed_entries_with_paths() {
-        let source = "name: demo\ndependencies:\n\tbad: any\n  defaults: &defaults\n    path: ../defaults\n  merged:\n    <<: *defaults\n  broken entry\n";
+        let source = concat!(
+            "name: demo\n",
+            "dependencies:\n",
+            "\tbad: any\n",
+            "  defaults: &defaults\n",
+            "    path: ../defaults\n",
+            "  merged:\n",
+            "    <<: *defaults\n",
+            "  broken entry\n",
+        );
         let analysis = parse_pubspec(PubspecInput::new("config\\pubspec.yaml", source));
 
         assert!(analysis.diagnostics.iter().any(|diagnostic| {
@@ -507,6 +662,22 @@ dependencies:
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "pubspec_invalid_yaml"));
+    }
+
+    #[test]
+    fn diagnoses_malformed_inline_dependency_source() {
+        let source = concat!(
+            "name: demo\n",
+            "dependencies:\n",
+            "  broken: { git: { url: https://example.com/repo.git }\n",
+        );
+        let analysis = parse_pubspec(PubspecInput::new("pubspec.yaml", source));
+
+        assert!(analysis.dependencies.is_empty());
+        assert!(analysis.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "pubspec_invalid_yaml"
+                && diagnostic.path.as_deref() == Some("pubspec.yaml")
+        }));
     }
 
     fn source_for<'a>(analysis: &'a PubspecAnalysis, name: &str) -> Option<&'a str> {
