@@ -18,10 +18,9 @@ const SOURCE: &str = concat!(
 fn matches_the_complete_pubspec_analysis_fixture() {
     let analysis = parse_pubspec(PubspecInput::new("pubspec.yaml", SOURCE));
     let actual = serde_json::to_value(analysis).expect("serialize pubspec analysis");
-    let expected: serde_json::Value = serde_json::from_str(include_str!(
-        "fixtures/pubspec_analysis.json"
-    ))
-    .expect("parse pubspec analysis fixture");
+    let expected: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/pubspec_analysis.json"))
+            .expect("parse pubspec analysis fixture");
 
     assert_eq!(actual, expected);
 }
