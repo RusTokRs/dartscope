@@ -1,4 +1,4 @@
-use dartscope_core::PubspecInput;
+use dartscope_core::{DartDiagnostic, PubspecInput};
 
 pub use dartscope_core::pubspec::{
     PubspecConfigurationAnalysis, PubspecEnvironmentConstraint, PubspecFlutterAsset,
@@ -7,6 +7,10 @@ pub use dartscope_core::pubspec::{
 };
 
 use crate::pubspec_syntax::{append_common_syntax_diagnostics, prepare_pubspec_source};
+
+const SUPPORTED_ASSET_PLATFORMS: [&str; 6] = [
+    "android", "ios", "web", "linux", "macos", "windows",
+];
 
 /// Parses environment constraints and normalized Flutter pubspec configuration.
 pub fn parse_pubspec_configuration(input: PubspecInput) -> PubspecConfigurationAnalysis {
@@ -44,9 +48,48 @@ pub(crate) fn parse_pubspec_configuration_prepared(
                 analysis.diagnostics.push(diagnostic);
             }
         }
+        validate_asset_selectors(&mut analysis);
     }
 
     analysis
+}
+
+fn validate_asset_selectors(analysis: &mut PubspecConfigurationAnalysis) {
+    let mut diagnostics = Vec::new();
+    for asset in &analysis.flutter.asset_configurations {
+        for flavor in &asset.flavors {
+            if flavor.is_empty() {
+                diagnostics.push(
+                    DartDiagnostic::error(
+                        "pubspec_invalid_flutter_asset_flavor",
+                        "Flutter asset flavor names cannot be empty",
+                        Some(asset.span.clone()),
+                    )
+                    .with_path(analysis.path.clone()),
+                );
+            }
+        }
+        for platform in &asset.platforms {
+            if !SUPPORTED_ASSET_PLATFORMS.contains(&platform.as_str()) {
+                diagnostics.push(
+                    DartDiagnostic::error(
+                        "pubspec_invalid_flutter_asset_platform",
+                        format!(
+                            "unsupported Flutter asset platform: {platform}; expected one of {}",
+                            SUPPORTED_ASSET_PLATFORMS.join(", ")
+                        ),
+                        Some(asset.span.clone()),
+                    )
+                    .with_path(analysis.path.clone()),
+                );
+            }
+        }
+    }
+    for diagnostic in diagnostics {
+        if !analysis.diagnostics.contains(&diagnostic) {
+            analysis.diagnostics.push(diagnostic);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -85,6 +128,50 @@ mod tests {
             analysis.flutter.asset_configurations[1].transformers[0].package,
             "vector_graphics_compiler"
         );
+    }
+
+    #[test]
+    fn accepts_custom_flavors_and_official_asset_platforms() {
+        let analysis = parse_pubspec_configuration(PubspecInput::new(
+            "pubspec.yaml",
+            concat!(
+                "flutter:\n",
+                "  assets:\n",
+                "    - path: assets/shared.bin\n",
+                "      flavors: [customer-a, experimental_2026]\n",
+                "      platforms: [android, ios, web, linux, macos, windows]\n",
+            ),
+        ));
+
+        assert!(analysis.diagnostics.is_empty());
+        assert_eq!(
+            analysis.flutter.asset_configurations[0].flavors,
+            ["customer-a", "experimental_2026"]
+        );
+    }
+
+    #[test]
+    fn diagnoses_empty_flavors_and_unknown_platforms() {
+        let analysis = parse_pubspec_configuration(PubspecInput::new(
+            "config\\pubspec.yaml",
+            concat!(
+                "flutter:\n",
+                "  assets:\n",
+                "    - path: assets/fuchsia.bin\n",
+                "      flavors: ['']\n",
+                "      platforms: [fuchsia]\n",
+            ),
+        ));
+
+        assert!(analysis.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "pubspec_invalid_flutter_asset_flavor"
+                && diagnostic.path.as_deref() == Some("config/pubspec.yaml")
+        }));
+        assert!(analysis.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "pubspec_invalid_flutter_asset_platform"
+                && diagnostic.path.as_deref() == Some("config/pubspec.yaml")
+                && diagnostic.message.contains("fuchsia")
+        }));
     }
 
     #[test]
