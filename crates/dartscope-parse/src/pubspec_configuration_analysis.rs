@@ -6,8 +6,26 @@ pub use dartscope_core::pubspec::{
     PubspecFlutterConfiguration, PubspecFlutterFont, PubspecFlutterFontFamily,
 };
 
+use crate::pubspec_syntax::{append_common_syntax_diagnostics, prepare_pubspec_source};
+
 /// Parses environment constraints and normalized Flutter pubspec configuration.
 pub fn parse_pubspec_configuration(input: PubspecInput) -> PubspecConfigurationAnalysis {
+    let prepared = prepare_pubspec_source(&input.source);
+    let mut analysis = parse_pubspec_configuration_prepared(PubspecInput::new(
+        input.path,
+        prepared.source,
+    ));
+    append_common_syntax_diagnostics(
+        &mut analysis.diagnostics,
+        &analysis.path,
+        &prepared.syntax,
+    );
+    analysis
+}
+
+pub(crate) fn parse_pubspec_configuration_prepared(
+    input: PubspecInput,
+) -> PubspecConfigurationAnalysis {
     let source = input.source.clone();
     let mut analysis = crate::pubspec_configuration_legacy::parse_pubspec_configuration(input);
     let assets = crate::pubspec_assets::parse_flutter_assets(&source, &analysis.path);
@@ -86,5 +104,26 @@ mod tests {
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "pubspec_unsupported_flutter_asset"));
+    }
+
+    #[test]
+    fn ignores_configuration_from_additional_documents() {
+        let analysis = parse_pubspec_configuration(PubspecInput::new(
+            "config\\pubspec.yaml",
+            concat!(
+                "---\n",
+                "flutter:\n",
+                "  generate: true\n",
+                "---\n",
+                "flutter:\n",
+                "  generate: false\n",
+            ),
+        ));
+
+        assert_eq!(analysis.flutter.generate_localizations, Some(true));
+        assert!(analysis.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "pubspec_multiple_documents_unsupported"
+                && diagnostic.path.as_deref() == Some("config/pubspec.yaml")
+        }));
     }
 }
