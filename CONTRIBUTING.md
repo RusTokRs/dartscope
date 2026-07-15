@@ -3,6 +3,12 @@
 DartScope accepts focused changes backed by reduced Dart or Flutter examples and a
 clear behavioral source.
 
+## Toolchain
+
+The repository requires Rust 1.95. The exact Rust 1.95.0 toolchain, including `rustfmt`
+and Clippy, is pinned in `rust-toolchain.toml`; workspace packages inherit
+`rust-version = "1.95"` from the root `Cargo.toml`.
+
 ## Before A Change
 
 - Read `AGENTS.md` and the library plan.
@@ -49,4 +55,5 @@ $env:RUSTDOCFLAGS = "-D warnings"
 cargo doc --workspace --no-deps
 ```
 
-The hosted CI repeats tests on Linux and Windows using the declared Rust 1.85 minimum.
+The hosted CI repeats these checks on Linux and Windows using the pinned Rust 1.95.0
+toolchain.
