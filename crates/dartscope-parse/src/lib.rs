@@ -18,6 +18,7 @@ mod pubspec_configuration;
 mod pubspec_configuration_legacy;
 mod pubspec_source;
 mod pubspec_syntax;
+mod pubspec_yaml_subset;
 mod source_lines;
 
 pub use analysis::{analyze_file, analyze_project};
