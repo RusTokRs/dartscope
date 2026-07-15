@@ -17,6 +17,12 @@ Then read the source and tests for every crate you intend to modify.
 The Rust code standard is mandatory. Its naming, ownership, refactor-trigger, public
 API, error, documentation, and testing rules apply to every code change.
 
+## Required Toolchain
+
+Use the repository-pinned Rust 1.95.0 toolchain. `rust-toolchain.toml` supplies Cargo,
+rustfmt, Clippy, and rustdoc; all workspace crates inherit `rust-version = "1.95"` from
+the root manifest. Do not introduce a second Rust version or an unpinned CI toolchain.
+
 ## Repository Boundary
 
 - DartScope is the standalone Rust toolkit at `D:\DartScope`.
