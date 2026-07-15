@@ -50,6 +50,13 @@ pub struct PubspecDependencySourceField {
     pub value: String,
 }
 
+/// Configuration embedded in the primary pubspec analysis model.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
+pub struct PubspecConfiguration {
+    pub environment: Vec<PubspecEnvironmentConstraint>,
+    pub flutter: PubspecFlutterConfiguration,
+}
+
 /// Typed pubspec configuration outside dependency discovery.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PubspecConfigurationAnalysis {
@@ -57,6 +64,16 @@ pub struct PubspecConfigurationAnalysis {
     pub environment: Vec<PubspecEnvironmentConstraint>,
     pub flutter: PubspecFlutterConfiguration,
     pub diagnostics: Vec<DartDiagnostic>,
+}
+
+impl PubspecConfigurationAnalysis {
+    /// Removes analysis-only path and diagnostics for embedding in `PubspecAnalysis`.
+    pub fn into_configuration(self) -> PubspecConfiguration {
+        PubspecConfiguration {
+            environment: self.environment,
+            flutter: self.flutter,
+        }
+    }
 }
 
 /// One top-level pubspec environment constraint.
@@ -318,5 +335,17 @@ mod tests {
                 }],
             }
         );
+    }
+
+    #[test]
+    fn extracts_embeddable_configuration() {
+        let analysis = PubspecConfigurationAnalysis {
+            path: "pubspec.yaml".to_string(),
+            environment: Vec::new(),
+            flutter: PubspecFlutterConfiguration::default(),
+            diagnostics: Vec::new(),
+        };
+
+        assert_eq!(analysis.into_configuration(), PubspecConfiguration::default());
     }
 }
