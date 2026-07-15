@@ -5,6 +5,7 @@ use dartscope_core::{
     PubspecInput, SourceSpan,
 };
 
+use crate::pubspec_source::parse_normalized_dependency_source;
 use crate::source_lines::{attach_diagnostic_paths, source_lines};
 
 pub fn parse_pubspec(input: PubspecInput) -> PubspecAnalysis {
@@ -125,12 +126,17 @@ impl DependencyBuilder {
     }
 
     fn finish(self) -> PubspecDependency {
-        PubspecDependency {
-            name: self.name,
-            section: self.section,
-            version_or_source: normalize_dependency_source(self.scalar, &self.fields),
-            span: self.span,
-        }
+        let version_or_source = normalize_dependency_source(self.scalar, &self.fields);
+        let source = version_or_source
+            .as_deref()
+            .map(parse_normalized_dependency_source);
+        PubspecDependency::new(
+            self.name,
+            self.section,
+            version_or_source,
+            source,
+            self.span,
+        )
     }
 }
 
