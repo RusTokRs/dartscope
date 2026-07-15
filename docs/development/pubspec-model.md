@@ -31,11 +31,14 @@ executable Rust 1.95.0 environment.
 - [x] Preserve non-empty flavor names as application-defined values, validate asset
   platforms against Flutter's six documented values, and keep richer localization
   configuration outside the pubspec-owned `generate` field.
+- [x] Establish a backend-parity harness that requires focused and complete APIs to retain
+  identical environment, Flutter configuration, common YAML diagnostics, and CRLF/Unicode
+  evidence across representative positive and negative sources.
 - [x] Select and document `yaml-rust2` 0.11.x as the private marked-event backend.
 - [ ] Add `yaml-rust2 = "=0.11.0"` with default features disabled and regenerate
   `Cargo.lock` using Rust 1.95.0.
-- [ ] Implement the private marked-event adapter and prove normalized-output parity with
-  the current fixtures before switching the public parser.
+- [ ] Implement the private marked-event adapter and run the parity harness against both
+  implementations before switching the public parser.
 - [ ] Run formatting, focused tests, workspace tests, Clippy, rustdoc, Linux/Windows tests,
   and the edition-2024 matrix on Rust 1.95.0.
 
@@ -50,6 +53,8 @@ Source normalization and the inherent `PubspecDependency::structured_source()` A
 `PubspecAnalysis` stores a primary `configuration` field containing environment and Flutter configuration. Deserializing an older payload without `configuration` produces an empty default. Both direct `parse_pubspec` calls and pubspecs inside `analyze_project` use the same complete parser.
 
 Checked-in JSON fixtures cover every dependency source variant, the focused environment/Flutter configuration shape, structured Flutter asset mappings, and the migrated complete `PubspecAnalysis` shape. Tests cover serialization round trips, typed-plus-legacy parser output, legacy-only dependency deserialization, legacy analysis payloads without configuration, and older Flutter configuration payloads without extended asset fields.
+
+The integration parity harness in `tests/pubspec_backend_parity.rs` is the migration gate for the private YAML backend. It compares the focused and complete APIs before a second implementation exists, then will compare conservative and marked-event implementations without changing the public contract.
 
 ## Parser Hardening
 
@@ -124,6 +129,7 @@ The current production implementation is still a conservative indentation-aware 
 ## Verification State
 
 The implementation and regression-test changes are present, but this task remains
-`in_progress`, not `verified`. No local Rust 1.95.0 toolchain is available in the current
-environment, and a successful hosted quality/test/edition run has not been observed for
-this head.
+`in_progress`, not `verified`. `rustup` is present in the current environment, but DNS access
+to the Rust distribution service and GitHub is unavailable, so Rust 1.95.0, Cargo checks,
+and a local repository checkout cannot be obtained. A successful hosted quality/test/edition
+run has not been observed for this head.
