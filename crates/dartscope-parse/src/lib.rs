@@ -18,6 +18,8 @@ mod pubspec_configuration;
 mod pubspec_configuration_legacy;
 mod pubspec_source;
 mod pubspec_syntax;
+#[allow(dead_code)]
+mod pubspec_yaml_marked;
 mod pubspec_yaml_subset;
 mod source_lines;
 
