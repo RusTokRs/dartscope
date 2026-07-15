@@ -79,7 +79,11 @@ impl AssetParser {
         }
 
         let indent = leading_space_count(source_line.text);
-        let span = SourceSpan::line(source_line.number, source_line.byte_start, source_line.text);
+        let span = SourceSpan::line(
+            source_line.number,
+            source_line.byte_start,
+            source_line.text,
+        );
         if indent == 0 {
             self.finish_asset();
             self.in_flutter = matches!(yaml_key_value(trimmed), Some(("flutter", None)));
@@ -258,14 +262,17 @@ impl AssetParser {
 
     fn observe_nested_item(&mut self, item: &str, indent: usize, span: SourceSpan) {
         if self.mode == AssetMode::TransformerArgs
-            && self.transformer_indent.is_some_and(|expected| indent == expected)
+            && self
+                .transformer_indent
+                .is_some_and(|expected| indent == expected)
         {
             self.mode = AssetMode::Transformers;
         }
 
         match self.mode {
-            AssetMode::Flavors => self.push_selector(item, true, span),
-            AssetMode::Platforms => self.push_selector(item, false, span),
+            AssetMode::Flavors | AssetMode::Platforms => {
+                self.push_selector(item, self.mode, span)
+            }
             AssetMode::Transformers => self.start_transformer(item, indent, span),
             AssetMode::TransformerArgs => self.push_transformer_arg(item, span),
             AssetMode::None => self.push_diagnostic(DartDiagnostic::warning(
@@ -276,9 +283,9 @@ impl AssetParser {
         }
     }
 
-    fn push_selector(&mut self, item: &str, flavor: bool, span: SourceSpan) {
-        let value = yaml_scalar(item);
-        if value.is_empty() || yaml_key_value(value).is_some() {
+    fn push_selector(&mut self, item: &str, mode: AssetMode, span: SourceSpan) {
+        let item = item.trim();
+        if item.is_empty() || yaml_key_value(item).is_some() {
             self.push_diagnostic(DartDiagnostic::error(
                 "pubspec_invalid_flutter_asset",
                 "Flutter asset selectors must be scalar values",
@@ -286,11 +293,12 @@ impl AssetParser {
             ));
             return;
         }
+        let value = yaml_scalar(item);
         if let Some(asset) = self.current_asset.as_mut() {
-            if flavor {
-                asset.flavors.push(value.to_string());
-            } else {
-                asset.platforms.push(value.to_string());
+            match mode {
+                AssetMode::Flavors => asset.flavors.push(value.to_string()),
+                AssetMode::Platforms => asset.platforms.push(value.to_string()),
+                _ => {}
             }
         }
     }
@@ -323,8 +331,8 @@ impl AssetParser {
     }
 
     fn push_transformer_arg(&mut self, item: &str, span: SourceSpan) {
-        let arg = yaml_scalar(item);
-        if arg.is_empty() || yaml_key_value(arg).is_some() {
+        let item = item.trim();
+        if item.is_empty() || yaml_key_value(item).is_some() {
             self.push_diagnostic(DartDiagnostic::error(
                 "pubspec_invalid_flutter_asset_transformer",
                 "Flutter asset transformer args must be scalar values",
@@ -333,7 +341,7 @@ impl AssetParser {
             return;
         }
         if let Some(transformer) = self.current_transformer.as_mut() {
-            transformer.args.push(arg.to_string());
+            transformer.args.push(yaml_scalar(item).to_string());
         }
     }
 
@@ -369,6 +377,10 @@ impl AssetParser {
 fn parse_inline_sequence(value: &str) -> Option<Vec<String>> {
     let value = value.trim();
     let inner = value.strip_prefix('[')?.strip_suffix(']')?;
+    if inner.trim().is_empty() {
+        return Some(Vec::new());
+    }
+
     let mut values = Vec::new();
     let mut start = 0usize;
     let mut quote = None;
@@ -411,11 +423,11 @@ fn parse_inline_sequence(value: &str) -> Option<Vec<String>> {
 }
 
 fn push_inline_scalar(values: &mut Vec<String>, value: &str) -> Option<()> {
-    let value = yaml_scalar(value);
+    let value = value.trim();
     if value.is_empty() || yaml_key_value(value).is_some() {
         return None;
     }
-    values.push(value.to_string());
+    values.push(yaml_scalar(value).to_string());
     Some(())
 }
 
@@ -523,12 +535,27 @@ mod tests {
         assert!(parsed.diagnostics.is_empty());
         assert_eq!(parsed.assets.len(), 1);
         let asset = &parsed.configurations[0];
-        assert_eq!(asset.flavors, ["development", "production"]);
-        assert_eq!(asset.platforms, ["android", "ios"]);
+        assert_eq!(asset.flavors.as_slice(), ["development", "production"]);
+        assert_eq!(asset.platforms.as_slice(), ["android", "ios"]);
         assert_eq!(asset.transformers.len(), 2);
         assert_eq!(asset.transformers[0].package, "vector_graphics_compiler");
-        assert_eq!(asset.transformers[0].args, ["--tessellate", "--font-size=14"]);
+        assert_eq!(
+            asset.transformers[0].args.as_slice(),
+            ["--tessellate", "--font-size=14"]
+        );
         assert_eq!(asset.transformers[1].package, "png_optimizer");
+    }
+
+    #[test]
+    fn accepts_empty_and_quoted_transformer_args() {
+        assert_eq!(parse_inline_sequence("[]"), Some(Vec::new()));
+        assert_eq!(
+            parse_inline_sequence("['https://example.com/a:b', '--flag']"),
+            Some(vec![
+                "https://example.com/a:b".to_string(),
+                "--flag".to_string()
+            ])
+        );
     }
 
     #[test]
