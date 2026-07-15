@@ -9,8 +9,9 @@ Read these files before implementation:
 1. `README.md`
 2. `docs/development/dartscope-library-plan.md`
 3. `docs/development/rust-code-standards.md`
-4. `docs/reference-strategy.md`
-5. `CONTRIBUTING.md`
+4. `docs/development/rust-toolchain.md`
+5. `docs/reference-strategy.md`
+6. `CONTRIBUTING.md`
 
 Then read the source and tests for every crate you intend to modify.
 
@@ -20,8 +21,11 @@ API, error, documentation, and testing rules apply to every code change.
 ## Required Toolchain
 
 Use the repository-pinned Rust 1.95.0 toolchain. `rust-toolchain.toml` supplies Cargo,
-rustfmt, Clippy, and rustdoc; all workspace crates inherit `rust-version = "1.95"` from
-the root manifest. Do not introduce a second Rust version or an unpinned CI toolchain.
+rustfmt, Clippy, and rustdoc; all workspace crates inherit `rust-version = "1.95"` and
+`edition = "2024"` from the root manifest. Do not introduce a second Rust version,
+edition, or an unpinned CI toolchain.
+
+The edition migration contract lives in `docs/development/rust-2024-edition.md`.
 
 ## Repository Boundary
 
@@ -58,11 +62,15 @@ must satisfy its acceptance criteria and definition of done in the plan.
 Run from `D:\DartScope`:
 
 ```powershell
+Select-String -Path Cargo.toml -SimpleMatch 'edition = "2024"'
+cargo check --workspace --all-targets --locked
+cargo check -p dartscope --no-default-features --locked
+cargo check -p dartscope --all-features --locked
 cargo fmt --all -- --check
-cargo test --workspace --quiet
-cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --locked --quiet
+cargo clippy --workspace --all-targets --locked -- -D warnings
 $env:RUSTDOCFLAGS = "-D warnings"
-cargo doc --workspace --no-deps
+cargo doc --workspace --no-deps --locked
 ```
 
 For CLI changes, also run the affected command against a repository fixture or a small
