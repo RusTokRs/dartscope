@@ -71,10 +71,6 @@ pub(crate) fn prepare_pubspec_source(source: &str) -> PreparedPubspecSource {
     }
 }
 
-pub(crate) fn check_pubspec_syntax(source: &str) -> PubspecSyntaxCheck {
-    prepare_pubspec_source(source).syntax
-}
-
 pub(crate) fn append_common_syntax_diagnostics(
     diagnostics: &mut Vec<DartDiagnostic>,
     path: &str,
@@ -87,7 +83,7 @@ pub(crate) fn append_common_syntax_diagnostics(
                 format!("duplicate YAML mapping key: {}", duplicate.key),
                 Some(duplicate.span.clone()),
             )
-            .with_path(path.to_string()),
+            .with_path(path),
         );
     }
     for span in syntax.multiple_document_spans() {
@@ -97,7 +93,7 @@ pub(crate) fn append_common_syntax_diagnostics(
                 "pubspec.yaml must contain exactly one YAML document",
                 Some(span.clone()),
             )
-            .with_path(path.to_string()),
+            .with_path(path),
         );
     }
 }
@@ -128,7 +124,11 @@ impl SyntaxScanner {
         }
 
         match trimmed {
-            "---" if !self.saw_content && !self.document_closed && !self.saw_leading_document_start => {
+            "---"
+                if !self.saw_content
+                    && !self.document_closed
+                    && !self.saw_leading_document_start =>
+            {
                 self.saw_leading_document_start = true;
                 true
             }
@@ -266,12 +266,12 @@ impl SyntaxScanner {
         line_span: SourceSpan,
         top_level: bool,
     ) {
-        let keys = if top_level {
-            &mut self.top_level_keys
+        let inserted = if top_level {
+            self.top_level_keys.insert(key.to_string())
         } else {
-            &mut self.direct_mapping_keys
+            self.direct_mapping_keys.insert(key.to_string())
         };
-        if !keys.insert(key.to_string()) {
+        if !inserted {
             self.syntax.duplicate_keys.push(DuplicatePubspecKey {
                 key: key.to_string(),
                 span: mapping_key_span(&line_span, indent, trimmed),
@@ -365,7 +365,7 @@ fn find_mapping_colon(value: &str) -> Option<usize> {
     None
 }
 
-fn flow_delimiters_are_balanced(value: &str) -> bool {
+pub(crate) fn flow_delimiters_are_balanced(value: &str) -> bool {
     let mut delimiters = Vec::new();
     let mut quote = None;
     let mut escaped = false;
@@ -410,104 +410,4 @@ fn flow_delimiters_are_balanced(value: &str) -> bool {
     }
 
     quote.is_none() && !escaped && delimiters.is_empty()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn identifies_bare_wildcards_but_not_named_aliases() {
-        let source = concat!(
-            "dependencies:\n",
-            "  wildcard: *\n",
-            "  alias: *defaults\n",
-        );
-        let check = check_pubspec_syntax(source);
-
-        assert!(check.is_bare_wildcard_line(2));
-        assert!(!check.is_bare_wildcard_line(3));
-    }
-
-    #[test]
-    fn retains_dependency_section_after_tab_indentation() {
-        let source = concat!(
-            "dependencies:\n",
-            "\tinvalid: any\n",
-            "  wildcard: *\n",
-        );
-        let check = check_pubspec_syntax(source);
-
-        assert!(check.is_bare_wildcard_line(3));
-    }
-
-    #[test]
-    fn accepts_single_document_markers() {
-        let source = "---\r\nname: демо\r\n...\r\n";
-        let prepared = prepare_pubspec_source(source);
-
-        assert!(prepared.syntax.multiple_document_spans().is_empty());
-        assert_eq!(prepared.source.len(), source.len());
-        assert_eq!(prepared.source.lines().count(), source.lines().count());
-        assert!(prepared.source.contains("name: демо"));
-        assert!(!prepared.source.contains("---"));
-        assert!(!prepared.source.contains("..."));
-    }
-
-    #[test]
-    fn masks_additional_documents_without_changing_offsets() {
-        let source = "name: first\n---\nname: second\n";
-        let prepared = prepare_pubspec_source(source);
-
-        assert_eq!(prepared.source.len(), source.len());
-        assert!(prepared.source.contains("name: first"));
-        assert!(!prepared.source.contains("name: second"));
-        assert_eq!(prepared.syntax.multiple_document_spans()[0].start_line, 2);
-    }
-
-    #[test]
-    fn detects_duplicate_top_level_and_direct_mapping_keys() {
-        let source = concat!(
-            "name: first\n",
-            "name: second\n",
-            "dependencies:\n",
-            "  shared: ^1.0.0\n",
-            "  shared: ^2.0.0\n",
-            "flutter:\n",
-            "  generate: true\n",
-            "  generate: false\n",
-        );
-        let check = check_pubspec_syntax(source);
-
-        assert_eq!(check.duplicate_keys().len(), 3);
-        assert_eq!(check.duplicate_keys()[0].key, "name");
-        assert_eq!(check.duplicate_keys()[0].span.start_line, 2);
-        assert_eq!(check.duplicate_keys()[1].key, "shared");
-        assert_eq!(check.duplicate_keys()[2].key, "generate");
-    }
-
-    #[test]
-    fn rejects_unbalanced_flow_delimiters_and_quotes() {
-        for value in [
-            "{ path: ../local } }",
-            "{ git: { url: https://example.com/repo.git ] }",
-            "{ path: \"unterminated }",
-        ] {
-            assert!(!flow_delimiters_are_balanced(value), "{value}");
-        }
-    }
-
-    #[test]
-    fn accepts_nested_flow_mappings_with_quoted_commas() {
-        assert!(flow_delimiters_are_balanced(
-            "{ git: { url: \"https://example.com/repo.git?parts=one,two\", ref: stable } }"
-        ));
-    }
-
-    #[test]
-    fn accepts_yaml_single_quote_escaping() {
-        assert!(flow_delimiters_are_balanced(
-            "{ path: 'packages/it''s-local' }"
-        ));
-    }
 }
