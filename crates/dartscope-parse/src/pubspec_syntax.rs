@@ -1,11 +1,24 @@
-use dartscope_core::SourceSpan;
+use std::collections::BTreeSet;
 
-use crate::source_lines::source_lines;
+use dartscope_core::{DartDiagnostic, SourceSpan};
+
+use crate::pubspec_yaml_subset::{
+    leading_indentation_contains_tab, leading_space_count, strip_yaml_comment, yaml_key_value,
+};
+use crate::source_lines::{source_lines, SourceLine};
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct DuplicatePubspecKey {
+    pub(crate) key: String,
+    pub(crate) span: SourceSpan,
+}
 
 #[derive(Debug, Default)]
 pub(crate) struct PubspecSyntaxCheck {
     bare_wildcard_lines: Vec<usize>,
     invalid_flow_spans: Vec<SourceSpan>,
+    duplicate_keys: Vec<DuplicatePubspecKey>,
+    multiple_document_spans: Vec<SourceSpan>,
 }
 
 impl PubspecSyntaxCheck {
@@ -16,67 +29,340 @@ impl PubspecSyntaxCheck {
     pub(crate) fn invalid_flow_spans(&self) -> &[SourceSpan] {
         &self.invalid_flow_spans
     }
+
+    pub(crate) fn duplicate_keys(&self) -> &[DuplicatePubspecKey] {
+        &self.duplicate_keys
+    }
+
+    pub(crate) fn multiple_document_spans(&self) -> &[SourceSpan] {
+        &self.multiple_document_spans
+    }
+}
+
+pub(crate) struct PreparedPubspecSource {
+    pub(crate) source: String,
+    pub(crate) syntax: PubspecSyntaxCheck,
+}
+
+pub(crate) fn prepare_pubspec_source(source: &str) -> PreparedPubspecSource {
+    let mut scanner = SyntaxScanner::default();
+    let mut sanitized = source.as_bytes().to_vec();
+    let mut stop_at = None;
+
+    for source_line in source_lines(source) {
+        if scanner.observe_document_boundary(source_line) {
+            blank_line(&mut sanitized, source_line);
+            continue;
+        }
+        if scanner.should_stop() {
+            stop_at = Some(source_line.byte_start);
+            break;
+        }
+        scanner.observe_content(source_line);
+    }
+
+    if let Some(byte_start) = stop_at {
+        blank_range(&mut sanitized, byte_start, source.len());
+    }
+
+    PreparedPubspecSource {
+        source: String::from_utf8(sanitized).expect("blanking source bytes preserves UTF-8"),
+        syntax: scanner.finish(),
+    }
 }
 
 pub(crate) fn check_pubspec_syntax(source: &str) -> PubspecSyntaxCheck {
-    let mut check = PubspecSyntaxCheck::default();
-    let mut in_dependency_section = false;
-    let mut direct_indent = None;
+    prepare_pubspec_source(source).syntax
+}
 
-    for source_line in source_lines(source) {
+pub(crate) fn append_common_syntax_diagnostics(
+    diagnostics: &mut Vec<DartDiagnostic>,
+    path: &str,
+    syntax: &PubspecSyntaxCheck,
+) {
+    for duplicate in syntax.duplicate_keys() {
+        diagnostics.push(
+            DartDiagnostic::error(
+                "pubspec_duplicate_key",
+                format!("duplicate YAML mapping key: {}", duplicate.key),
+                Some(duplicate.span.clone()),
+            )
+            .with_path(path.to_string()),
+        );
+    }
+    for span in syntax.multiple_document_spans() {
+        diagnostics.push(
+            DartDiagnostic::error(
+                "pubspec_multiple_documents_unsupported",
+                "pubspec.yaml must contain exactly one YAML document",
+                Some(span.clone()),
+            )
+            .with_path(path.to_string()),
+        );
+    }
+}
+
+#[derive(Default)]
+struct SyntaxScanner {
+    syntax: PubspecSyntaxCheck,
+    saw_leading_document_start: bool,
+    saw_content: bool,
+    document_closed: bool,
+    stop: bool,
+    top_level_keys: BTreeSet<String>,
+    direct_mapping_keys: BTreeSet<String>,
+    direct_mapping_indent: Option<usize>,
+    in_direct_mapping: bool,
+    in_dependency_section: bool,
+    dependency_direct_indent: Option<usize>,
+}
+
+impl SyntaxScanner {
+    fn observe_document_boundary(&mut self, source_line: SourceLine<'_>) -> bool {
         if leading_indentation_contains_tab(source_line.text) {
-            continue;
+            return false;
+        }
+        let trimmed = strip_yaml_comment(source_line.text).trim();
+        if trimmed.is_empty() || leading_space_count(source_line.text) != 0 {
+            return false;
+        }
+
+        match trimmed {
+            "---" if !self.saw_content && !self.document_closed && !self.saw_leading_document_start => {
+                self.saw_leading_document_start = true;
+                true
+            }
+            "---" => {
+                self.reject_additional_document(source_line);
+                false
+            }
+            "..." if !self.document_closed => {
+                self.document_closed = true;
+                true
+            }
+            "..." => {
+                self.reject_additional_document(source_line);
+                false
+            }
+            _ if self.document_closed => {
+                self.reject_additional_document(source_line);
+                false
+            }
+            _ => false,
+        }
+    }
+
+    fn observe_content(&mut self, source_line: SourceLine<'_>) {
+        if self.stop || leading_indentation_contains_tab(source_line.text) {
+            return;
         }
 
         let yaml = strip_yaml_comment(source_line.text);
         let trimmed = yaml.trim();
         if trimmed.is_empty() {
-            continue;
+            return;
         }
+        self.saw_content = true;
 
         let indent = leading_space_count(source_line.text);
+        let span = SourceSpan::line(source_line.number, source_line.byte_start, source_line.text);
         if indent == 0 {
-            in_dependency_section = is_dependency_section(trimmed);
-            direct_indent = None;
-            continue;
-        }
-        if !in_dependency_section {
-            continue;
+            self.observe_top_level(trimmed, span);
+            return;
         }
 
-        let expected_indent = *direct_indent.get_or_insert(indent);
+        self.observe_direct_mapping_key(trimmed, indent, &span);
+        self.observe_dependency_syntax(trimmed, indent, span);
+    }
+
+    fn observe_top_level(&mut self, trimmed: &str, span: SourceSpan) {
+        self.in_direct_mapping = false;
+        self.in_dependency_section = false;
+        self.direct_mapping_indent = None;
+        self.dependency_direct_indent = None;
+        self.direct_mapping_keys.clear();
+
+        let Some((key, value)) = yaml_key_value(trimmed) else {
+            return;
+        };
+        self.record_key(key, 0, trimmed, span, true);
+
+        self.in_direct_mapping = value.is_none()
+            && matches!(
+                key,
+                "dependencies"
+                    | "dev_dependencies"
+                    | "dependency_overrides"
+                    | "environment"
+                    | "flutter"
+            );
+        self.in_dependency_section = value.is_none()
+            && matches!(
+                key,
+                "dependencies" | "dev_dependencies" | "dependency_overrides"
+            );
+    }
+
+    fn observe_direct_mapping_key(
+        &mut self,
+        trimmed: &str,
+        indent: usize,
+        span: &SourceSpan,
+    ) {
+        if !self.in_direct_mapping {
+            return;
+        }
+        let expected_indent = *self.direct_mapping_indent.get_or_insert(indent);
         if indent < expected_indent {
-            in_dependency_section = false;
-            continue;
+            self.in_direct_mapping = false;
+            return;
+        }
+        if indent != expected_indent || trimmed.starts_with('-') {
+            return;
+        }
+        let Some((key, _)) = yaml_key_value(trimmed) else {
+            return;
+        };
+        self.record_key(key, indent, trimmed, span.clone(), false);
+    }
+
+    fn observe_dependency_syntax(
+        &mut self,
+        trimmed: &str,
+        indent: usize,
+        span: SourceSpan,
+    ) {
+        if !self.in_dependency_section {
+            return;
+        }
+        let expected_indent = *self.dependency_direct_indent.get_or_insert(indent);
+        if indent < expected_indent {
+            self.in_dependency_section = false;
+            return;
         }
         if indent != expected_indent {
-            continue;
+            return;
         }
 
-        let Some(colon) = find_unquoted_colon(trimmed) else {
-            continue;
+        let Some((_, value)) = yaml_key_value(trimmed) else {
+            return;
         };
-        let value = trimmed[colon + 1..].trim();
+        let Some(value) = value else {
+            return;
+        };
         if value == "*" {
-            check.bare_wildcard_lines.push(source_line.number);
+            self.syntax.bare_wildcard_lines.push(span.start_line);
         }
         if value.starts_with('{') && !flow_delimiters_are_balanced(value) {
-            check.invalid_flow_spans.push(SourceSpan::line(
-                source_line.number,
-                source_line.byte_start,
-                source_line.text,
-            ));
+            self.syntax.invalid_flow_spans.push(span);
         }
     }
 
-    check
+    fn record_key(
+        &mut self,
+        key: &str,
+        indent: usize,
+        trimmed: &str,
+        line_span: SourceSpan,
+        top_level: bool,
+    ) {
+        let keys = if top_level {
+            &mut self.top_level_keys
+        } else {
+            &mut self.direct_mapping_keys
+        };
+        if !keys.insert(key.to_string()) {
+            self.syntax.duplicate_keys.push(DuplicatePubspecKey {
+                key: key.to_string(),
+                span: mapping_key_span(&line_span, indent, trimmed),
+            });
+        }
+    }
+
+    fn reject_additional_document(&mut self, source_line: SourceLine<'_>) {
+        self.syntax.multiple_document_spans.push(SourceSpan::line(
+            source_line.number,
+            source_line.byte_start,
+            source_line.text,
+        ));
+        self.stop = true;
+    }
+
+    fn should_stop(&self) -> bool {
+        self.stop
+    }
+
+    fn finish(self) -> PubspecSyntaxCheck {
+        self.syntax
+    }
 }
 
-fn is_dependency_section(trimmed: &str) -> bool {
-    matches!(
-        trimmed,
-        "dependencies:" | "dev_dependencies:" | "dependency_overrides:"
-    )
+fn blank_line(bytes: &mut [u8], source_line: SourceLine<'_>) {
+    blank_range(
+        bytes,
+        source_line.byte_start,
+        source_line.byte_start + source_line.text.len(),
+    );
+}
+
+fn blank_range(bytes: &mut [u8], byte_start: usize, byte_end: usize) {
+    for byte in &mut bytes[byte_start..byte_end] {
+        if !matches!(*byte, b'\r' | b'\n') {
+            *byte = b' ';
+        }
+    }
+}
+
+fn mapping_key_span(line_span: &SourceSpan, indent: usize, trimmed: &str) -> SourceSpan {
+    let key_end = find_mapping_colon(trimmed).unwrap_or(trimmed.len());
+    let raw_key = trimmed[..key_end].trim_end();
+    SourceSpan {
+        byte_start: line_span.byte_start + indent,
+        byte_end: line_span.byte_start + indent + raw_key.len(),
+        start_line: line_span.start_line,
+        start_column: indent + 1,
+        end_line: line_span.start_line,
+        end_column: indent + raw_key.chars().count() + 1,
+    }
+}
+
+fn find_mapping_colon(value: &str) -> Option<usize> {
+    let mut quote = None;
+    let mut escaped = false;
+    let mut chars = value.char_indices().peekable();
+
+    while let Some((index, ch)) = chars.next() {
+        if let Some(active_quote) = quote {
+            if escaped {
+                escaped = false;
+            } else if active_quote == '"' && ch == '\\' {
+                escaped = true;
+            } else if active_quote == '\'' && ch == '\'' {
+                if chars.peek().is_some_and(|(_, next)| *next == '\'') {
+                    chars.next();
+                } else {
+                    quote = None;
+                }
+            } else if ch == active_quote {
+                quote = None;
+            }
+            continue;
+        }
+
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            ':' => {
+                let is_separator = chars
+                    .peek()
+                    .is_none_or(|(_, next)| next.is_whitespace());
+                if is_separator {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn flow_delimiters_are_balanced(value: &str) -> bool {
@@ -126,82 +412,6 @@ fn flow_delimiters_are_balanced(value: &str) -> bool {
     quote.is_none() && !escaped && delimiters.is_empty()
 }
 
-fn find_unquoted_colon(value: &str) -> Option<usize> {
-    let mut quote = None;
-    let mut escaped = false;
-    let mut chars = value.char_indices().peekable();
-
-    while let Some((index, ch)) = chars.next() {
-        if let Some(active_quote) = quote {
-            if escaped {
-                escaped = false;
-            } else if active_quote == '"' && ch == '\\' {
-                escaped = true;
-            } else if active_quote == '\'' && ch == '\'' {
-                if chars.peek().is_some_and(|(_, next)| *next == '\'') {
-                    chars.next();
-                } else {
-                    quote = None;
-                }
-            } else if ch == active_quote {
-                quote = None;
-            }
-        } else {
-            match ch {
-                '\'' | '"' => quote = Some(ch),
-                ':' => return Some(index),
-                _ => {}
-            }
-        }
-    }
-
-    None
-}
-
-fn strip_yaml_comment(line: &str) -> &str {
-    let mut quote = None;
-    let mut escaped = false;
-    let mut previous = None;
-    let mut chars = line.char_indices().peekable();
-
-    while let Some((index, ch)) = chars.next() {
-        if let Some(active_quote) = quote {
-            if escaped {
-                escaped = false;
-            } else if active_quote == '"' && ch == '\\' {
-                escaped = true;
-            } else if active_quote == '\'' && ch == '\'' {
-                if chars.peek().is_some_and(|(_, next)| *next == '\'') {
-                    chars.next();
-                } else {
-                    quote = None;
-                }
-            } else if ch == active_quote {
-                quote = None;
-            }
-        } else {
-            match ch {
-                '\'' | '"' => quote = Some(ch),
-                '#' if previous.is_none_or(char::is_whitespace) => return &line[..index],
-                _ => {}
-            }
-        }
-        previous = Some(ch);
-    }
-
-    line
-}
-
-fn leading_indentation_contains_tab(line: &str) -> bool {
-    line.chars()
-        .take_while(|ch| ch.is_whitespace())
-        .any(|ch| ch == '\t')
-}
-
-fn leading_space_count(line: &str) -> usize {
-    line.chars().take_while(|ch| *ch == ' ').count()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,6 +439,51 @@ mod tests {
         let check = check_pubspec_syntax(source);
 
         assert!(check.is_bare_wildcard_line(3));
+    }
+
+    #[test]
+    fn accepts_single_document_markers() {
+        let source = "---\r\nname: демо\r\n...\r\n";
+        let prepared = prepare_pubspec_source(source);
+
+        assert!(prepared.syntax.multiple_document_spans().is_empty());
+        assert_eq!(prepared.source.len(), source.len());
+        assert_eq!(prepared.source.lines().count(), source.lines().count());
+        assert!(prepared.source.contains("name: демо"));
+        assert!(!prepared.source.contains("---"));
+        assert!(!prepared.source.contains("..."));
+    }
+
+    #[test]
+    fn masks_additional_documents_without_changing_offsets() {
+        let source = "name: first\n---\nname: second\n";
+        let prepared = prepare_pubspec_source(source);
+
+        assert_eq!(prepared.source.len(), source.len());
+        assert!(prepared.source.contains("name: first"));
+        assert!(!prepared.source.contains("name: second"));
+        assert_eq!(prepared.syntax.multiple_document_spans()[0].start_line, 2);
+    }
+
+    #[test]
+    fn detects_duplicate_top_level_and_direct_mapping_keys() {
+        let source = concat!(
+            "name: first\n",
+            "name: second\n",
+            "dependencies:\n",
+            "  shared: ^1.0.0\n",
+            "  shared: ^2.0.0\n",
+            "flutter:\n",
+            "  generate: true\n",
+            "  generate: false\n",
+        );
+        let check = check_pubspec_syntax(source);
+
+        assert_eq!(check.duplicate_keys().len(), 3);
+        assert_eq!(check.duplicate_keys()[0].key, "name");
+        assert_eq!(check.duplicate_keys()[0].span.start_line, 2);
+        assert_eq!(check.duplicate_keys()[1].key, "shared");
+        assert_eq!(check.duplicate_keys()[2].key, "generate");
     }
 
     #[test]
