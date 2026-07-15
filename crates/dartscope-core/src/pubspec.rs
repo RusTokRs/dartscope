@@ -119,12 +119,14 @@ impl PubspecDependency {
                 .as_deref()
                 .map(parse_normalized_dependency_source)
         );
-        Self {
+        let mut dependency = Self {
             name: name.into(),
             section,
             version_or_source,
-            span,
-        }
+            ..Self::default()
+        };
+        dependency.span = span;
+        dependency
     }
 
     /// Returns the typed interpretation of the pre-1.0 normalized source field.
