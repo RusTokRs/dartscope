@@ -10,7 +10,7 @@ This repository is in early pre-1.0 development. The workspace bootstrap and fir
 file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices exist:
 
 - `dartscope-core` owns normalized analysis types, spans, diagnostics, and pubspec models.
-- `dartscope-parse` provides a conservative file-level MVP for imports, exports, parts, declarations, simple Flutter widget, route, asset, and localization hints, Dart-embedded GraphQL operations and uses, and structured `pubspec.yaml` discovery. Pubspec dependencies preserve exact key spans and normalize scalar, SDK, path, git, hosted, and workspace sources from block or flow mappings. A separate typed configuration API extracts environment constraints and common Flutter assets, fonts, and localization-generation settings.
+- `dartscope-parse` provides a conservative file-level MVP for imports, exports, parts, declarations, simple Flutter widget, route, asset, and localization hints, Dart-embedded GraphQL operations and uses, and structured `pubspec.yaml` discovery. The primary pubspec analysis preserves exact dependency-key and environment-key spans, normalizes scalar, SDK, path, git, hosted, and workspace sources, and embeds common Flutter assets, fonts, and localization-generation settings.
 - `dartscope-index` performs project-level linking over normalized analysis results. Its
   first API resolves GraphQL operation uses conservatively and compares operation,
   client-call, and variable contracts without depending on parser internals.
@@ -38,8 +38,8 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
 - Pubspec parsing understands common dependency, environment, asset, font, and generation
   shapes, but it is not yet backed by a complete YAML parser. YAML aliases and merge keys
   remain explicitly unsupported. Extended Flutter asset mappings such as `flavors` and
-  `transformers` are not normalized yet, and configuration is not yet embedded into the
-  main `PubspecAnalysis` core model.
+  `transformers` are not normalized yet, and flow-style environment or Flutter
+  configuration mappings remain unsupported.
 - Flutter hints are currently detected during file analysis and aggregated by the
   optional `dartscope-flutter` crate. Moving convention extraction fully behind the
   Flutter boundary requires a normalized, parser-independent call-expression model.
@@ -85,19 +85,22 @@ path. Byte spans account for both LF and CRLF input, so downstream evidence can 
 reported offsets without platform-specific correction. Pubspec dependency and
 environment spans cover their key token rather than the complete source line.
 
-Consumers that need typed dependency sources can import `PubspecDependencySourceExt` and
-call `structured_source()` on each `PubspecDependency`. The returned
-`PubspecDependencySource` uses `version`, `sdk`, `path`, `git`, `hosted`, `workspace`, or
-`other` variants with a stable Serde `kind` discriminator. The legacy
-`version_or_source` field remains temporarily for pre-1.0 compatibility while storage
-moves into `dartscope-core`.
+Each `PubspecDependency` stores a typed `source` using `version`, `sdk`, `path`, `git`,
+`hosted`, `workspace`, or `other` variants with a stable Serde `kind` discriminator.
+The legacy `version_or_source` field remains beside it for pre-1.0 compatibility.
+`structured_source()` returns the stored typed source and derives it from the legacy
+field when reading an older payload that does not contain `source`.
 
-`parse_pubspec_configuration` accepts the same in-memory `PubspecInput` as
-`parse_pubspec` and returns `PubspecConfigurationAnalysis`. It preserves environment-key
-spans and exposes typed `uses_material_design`, `generate_localizations`, asset paths,
-font families, font assets, styles, and validated weights. The CLI command
-`pubspec-config` prints the same structure as deterministic pretty JSON. This API remains
-separate from `PubspecAnalysis` during the compatibility migration.
+`parse_pubspec` returns the complete primary model. Its `configuration` field contains
+environment constraints and typed `uses_material_design`, `generate_localizations`,
+asset paths, font families, font assets, styles, and validated weights. The `pubspec`
+CLI command prints this migrated shape, and pubspecs inside `analyze-project` use the
+same parser. Older JSON without `configuration` remains readable through a Serde
+default.
+
+`parse_pubspec_configuration` remains available as a focused configuration-only API.
+The `pubspec-config` CLI command prints that structure as deterministic pretty JSON for
+callers and smoke tests that do not need dependency discovery.
 
 `graphql-contracts` links a `gql(operationConstant)` use only through Dart visibility:
 an unambiguous same-file declaration, direct import, or transitive re-export. Each
