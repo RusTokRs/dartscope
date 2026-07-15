@@ -81,6 +81,7 @@ enum Frame {
 
 struct Receiver<'a> {
     source: &'a str,
+    byte_offsets: Vec<usize>,
     frames: Vec<Frame>,
     root: Option<Node>,
     diagnostics: Vec<DartDiagnostic>,
@@ -90,14 +91,27 @@ struct Receiver<'a> {
 
 impl<'a> Receiver<'a> {
     fn new(source: &'a str) -> Self {
+        let mut byte_offsets = source
+            .char_indices()
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        byte_offsets.push(source.len());
         Self {
             source,
+            byte_offsets,
             frames: Vec::new(),
             root: None,
             diagnostics: Vec::new(),
             documents: 0,
             accepting: false,
         }
+    }
+
+    fn byte_index(&self, mark: Marker) -> usize {
+        self.byte_offsets
+            .get(mark.index())
+            .copied()
+            .unwrap_or(self.source.len())
     }
 
     fn finish(self) -> MarkedYamlDocument {
@@ -114,13 +128,13 @@ impl<'a> Receiver<'a> {
             self.diagnostics.push(DartDiagnostic::error(
                 "pubspec_multiple_documents_unsupported",
                 "pubspec.yaml must contain exactly one YAML document",
-                Some(line_span(self.source, mark)),
+                Some(line_span(self.source, self.byte_index(mark), mark)),
             ));
         }
     }
 
     fn alias(&mut self, mark: Marker) {
-        let span = line_span(self.source, mark);
+        let span = line_span(self.source, self.byte_index(mark), mark);
         if self.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == ALIAS_CODE
                 && diagnostic
@@ -147,7 +161,11 @@ impl<'a> Receiver<'a> {
         self.diagnostics.push(DartDiagnostic::error(
             "pubspec_invalid_yaml",
             format!("invalid pubspec YAML: {}", error.info()),
-            Some(point_span(self.source, *error.marker())),
+            Some(point_span(
+                self.source,
+                self.byte_index(*error.marker()),
+                *error.marker(),
+            )),
         ));
     }
 
@@ -155,17 +173,18 @@ impl<'a> Receiver<'a> {
         if !self.accepting {
             return;
         }
+        let end_byte = self.byte_index(mark);
         let Some(frame) = self.frames.pop() else {
             return;
         };
         let node = match frame {
             Frame::Sequence { start, items } if !mapping => Node {
                 kind: NodeKind::Sequence(items),
-                span: range_span(start, mark),
+                span: range_span(self.byte_index(start), start, end_byte, mark),
             },
             Frame::Mapping { start, entries, .. } if mapping => Node {
                 kind: NodeKind::Mapping(entries),
-                span: range_span(start, mark),
+                span: range_span(self.byte_index(start), start, end_byte, mark),
             },
             other => {
                 self.frames.push(other);
@@ -242,12 +261,13 @@ impl MarkedEventReceiver for Receiver<'_> {
             Event::DocumentEnd => self.accepting = false,
             Event::Alias(_) if self.accepting => {
                 self.alias(mark);
-                self.push_node(Node::unsupported(point_span(self.source, mark)));
+                let byte_start = self.byte_index(mark);
+                self.push_node(Node::unsupported(point_span(self.source, byte_start, mark)));
             }
             Event::Alias(_) => {}
             Event::Scalar(value, _, anchor, _) if self.accepting => {
                 self.anchor(anchor, mark);
-                let span = scalar_span(mark, &value);
+                let span = scalar_span(self.byte_index(mark), mark, &value);
                 self.push_node(Node::scalar(value, span));
             }
             Event::Scalar(_, _, _, _) => {}
@@ -287,10 +307,10 @@ fn same_diagnostic_line(existing: &[DartDiagnostic], candidate: &DartDiagnostic)
     })
 }
 
-fn scalar_span(mark: Marker, value: &str) -> SourceSpan {
+fn scalar_span(byte_start: usize, mark: Marker, value: &str) -> SourceSpan {
     SourceSpan {
-        byte_start: mark.index(),
-        byte_end: mark.index() + value.len(),
+        byte_start,
+        byte_end: byte_start + value.len(),
         start_line: mark.line(),
         start_column: mark.col(),
         end_line: mark.line(),
@@ -298,8 +318,8 @@ fn scalar_span(mark: Marker, value: &str) -> SourceSpan {
     }
 }
 
-fn point_span(source: &str, mark: Marker) -> SourceSpan {
-    let byte_start = mark.index().min(source.len());
+fn point_span(source: &str, byte_start: usize, mark: Marker) -> SourceSpan {
+    let byte_start = byte_start.min(source.len());
     let byte_end = source[byte_start..]
         .chars()
         .next()
@@ -314,10 +334,10 @@ fn point_span(source: &str, mark: Marker) -> SourceSpan {
     }
 }
 
-fn range_span(start: Marker, end: Marker) -> SourceSpan {
+fn range_span(byte_start: usize, start: Marker, byte_end: usize, end: Marker) -> SourceSpan {
     SourceSpan {
-        byte_start: start.index(),
-        byte_end: end.index(),
+        byte_start,
+        byte_end,
         start_line: start.line(),
         start_column: start.col(),
         end_line: end.line(),
@@ -325,14 +345,18 @@ fn range_span(start: Marker, end: Marker) -> SourceSpan {
     }
 }
 
-fn line_span(source: &str, mark: Marker) -> SourceSpan {
-    let marker = mark.index().min(source.len());
+fn line_span(source: &str, marker: usize, mark: Marker) -> SourceSpan {
+    let marker = marker.min(source.len());
     let byte_start = source[..marker].rfind('\n').map_or(0, |index| index + 1);
     let byte_end = source[marker..]
         .find('\n')
         .map_or(source.len(), |index| marker + index);
     let line = &source[byte_start..byte_end];
-    SourceSpan::line(mark.line(), byte_start, line.strip_suffix('\r').unwrap_or(line))
+    SourceSpan::line(
+        mark.line(),
+        byte_start,
+        line.strip_suffix('\r').unwrap_or(line),
+    )
 }
 
 fn mapping_key_span(source: &str, scalar: &SourceSpan) -> SourceSpan {
@@ -447,9 +471,12 @@ mod tests {
                     .as_ref()
                     .is_some_and(|span| span.start_line == 2)
         }));
-        assert!(document.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "pubspec_multiple_documents_unsupported"
-        }));
+        assert!(
+            document
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "pubspec_multiple_documents_unsupported" })
+        );
     }
 
     #[test]
@@ -474,9 +501,11 @@ mod tests {
     fn converts_scanner_failures_to_stable_diagnostics() {
         let diagnostics = parse_marked_yaml("flutter: [unterminated\n").into_diagnostics();
 
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "pubspec_invalid_yaml"));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "pubspec_invalid_yaml")
+        );
     }
 
     fn contains_scalar_at(node: Option<&Node>, value: &str, byte_start: usize) -> bool {
