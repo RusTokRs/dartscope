@@ -107,11 +107,13 @@ fn find_mapping_colon(value: &str) -> Option<usize> {
 
         match ch {
             '\'' | '"' => quote = Some(ch),
-            ':' if chars
-                .peek()
-                .is_none_or(|(_, next)| next.is_whitespace()) =>
-            {
-                return Some(index);
+            ':' => {
+                let is_separator = chars
+                    .peek()
+                    .is_none_or(|(_, next)| next.is_whitespace());
+                if is_separator {
+                    return Some(index);
+                }
             }
             _ => {}
         }
