@@ -3,6 +3,10 @@ use dartscope_core::pubspec::{
 };
 use dartscope_core::{DartDiagnostic, SourceSpan};
 
+use crate::pubspec_yaml_subset::{
+    leading_indentation_contains_tab, leading_space_count, parse_inline_sequence,
+    set_or_matches_indent, strip_yaml_comment, yaml_key_value, yaml_scalar,
+};
 use crate::source_lines::{source_lines, SourceLine};
 
 pub(crate) struct PubspecAssetParse {
@@ -23,8 +27,13 @@ pub(crate) fn parse_flutter_assets(source: &str, path: &str) -> PubspecAssetPars
         flutter_direct_indent: None,
         in_assets: false,
         asset_item_indent: None,
+        asset_property_indent: None,
+        selector_item_indent: None,
         mode: AssetMode::None,
         transformer_indent: None,
+        transformer_property_indent: None,
+        args_item_indent: None,
+        current_asset_is_mapping: false,
         current_asset: None,
         current_transformer: None,
     };
@@ -61,8 +70,13 @@ struct AssetParser {
     flutter_direct_indent: Option<usize>,
     in_assets: bool,
     asset_item_indent: Option<usize>,
+    asset_property_indent: Option<usize>,
+    selector_item_indent: Option<usize>,
     mode: AssetMode,
     transformer_indent: Option<usize>,
+    transformer_property_indent: Option<usize>,
+    args_item_indent: Option<usize>,
+    current_asset_is_mapping: bool,
     current_asset: Option<PubspecFlutterAssetConfiguration>,
     current_transformer: Option<PubspecFlutterAssetTransformer>,
 }
@@ -88,10 +102,7 @@ impl AssetParser {
             self.finish_asset();
             self.in_flutter = matches!(yaml_key_value(trimmed), Some(("flutter", None)));
             self.flutter_direct_indent = None;
-            self.in_assets = false;
-            self.asset_item_indent = None;
-            self.mode = AssetMode::None;
-            self.transformer_indent = None;
+            self.reset_asset_section();
             return;
         }
         if !self.in_flutter {
@@ -102,14 +113,12 @@ impl AssetParser {
         if indent < direct_indent {
             self.finish_asset();
             self.in_flutter = false;
-            self.in_assets = false;
+            self.reset_asset_section();
             return;
         }
         if indent == direct_indent {
             self.finish_asset();
-            self.asset_item_indent = None;
-            self.mode = AssetMode::None;
-            self.transformer_indent = None;
+            self.reset_asset_section();
             self.in_assets = matches!(yaml_key_value(trimmed), Some(("assets", None)));
             self.found_section |= self.in_assets;
             return;
@@ -131,8 +140,7 @@ impl AssetParser {
 
     fn start_asset(&mut self, trimmed: &str, span: SourceSpan) {
         self.finish_asset();
-        self.mode = AssetMode::None;
-        self.transformer_indent = None;
+        self.reset_asset_item();
 
         let Some(item) = trimmed.strip_prefix('-').map(str::trim) else {
             self.push_diagnostic(DartDiagnostic::warning(
@@ -142,8 +150,8 @@ impl AssetParser {
             ));
             return;
         };
-        let path = match yaml_key_value(item) {
-            Some(("path", Some(path))) => yaml_scalar(path),
+        let (path, is_mapping) = match yaml_key_value(item) {
+            Some(("path", Some(path))) => (yaml_scalar(path), true),
             Some(_) => {
                 self.push_diagnostic(DartDiagnostic::warning(
                     "pubspec_unsupported_flutter_asset",
@@ -152,7 +160,7 @@ impl AssetParser {
                 ));
                 return;
             }
-            None => yaml_scalar(item),
+            None => (yaml_scalar(item), false),
         };
         if path.is_empty() {
             self.push_diagnostic(DartDiagnostic::error(
@@ -163,6 +171,7 @@ impl AssetParser {
             return;
         }
 
+        self.current_asset_is_mapping = is_mapping;
         self.current_asset = Some(PubspecFlutterAssetConfiguration {
             path: path.to_string(),
             flavors: Vec::new(),
@@ -173,6 +182,14 @@ impl AssetParser {
     }
 
     fn observe_asset_property(&mut self, trimmed: &str, indent: usize, span: SourceSpan) {
+        if !self.current_asset_is_mapping {
+            self.push_diagnostic(DartDiagnostic::error(
+                "pubspec_invalid_flutter_asset",
+                "Flutter asset metadata requires a mapping with a path field",
+                Some(span),
+            ));
+            return;
+        }
         if let Some(item) = trimmed.strip_prefix('-').map(str::trim) {
             self.observe_nested_item(item, indent, span);
             return;
@@ -186,22 +203,44 @@ impl AssetParser {
             ));
             return;
         };
+        if self.current_transformer.is_some()
+            && self
+                .transformer_indent
+                .is_some_and(|transformer_indent| indent >= transformer_indent)
+        {
+            self.observe_transformer_property(key, value, indent, span);
+            return;
+        }
+
+        self.finish_transformer();
+        self.reset_transformer_state();
+        let parent_indent = self.asset_item_indent.unwrap_or_default();
+        if !set_or_matches_indent(&mut self.asset_property_indent, indent, parent_indent) {
+            self.push_diagnostic(DartDiagnostic::error(
+                "pubspec_invalid_flutter_asset",
+                "Flutter asset mapping fields must use consistent indentation",
+                Some(span),
+            ));
+            return;
+        }
+
         match (key, value) {
             ("flavors", value) => self.set_string_list(AssetMode::Flavors, value, span),
             ("platforms", value) => self.set_string_list(AssetMode::Platforms, value, span),
             ("transformers", None) => {
-                self.finish_transformer();
                 self.mode = AssetMode::Transformers;
                 self.transformer_indent = None;
             }
+            ("transformers", Some(value))
+                if parse_inline_sequence(value).is_some_and(|values| values.is_empty()) =>
+            {
+                self.mode = AssetMode::None;
+            }
             ("transformers", Some(_)) => self.push_diagnostic(DartDiagnostic::error(
                 "pubspec_invalid_flutter_asset_transformer",
-                "Flutter asset transformers must be a list",
+                "Flutter asset transformers must be a block list of mappings",
                 Some(span),
             )),
-            ("args", value) if self.current_transformer.is_some() => {
-                self.set_transformer_args(value, span)
-            }
             _ => self.push_diagnostic(DartDiagnostic::warning(
                 "pubspec_unsupported_flutter_asset",
                 format!("unsupported Flutter asset field: {key}"),
@@ -210,17 +249,43 @@ impl AssetParser {
         }
     }
 
-    fn set_string_list(&mut self, mode: AssetMode, value: Option<&str>, span: SourceSpan) {
-        if self.current_asset.is_none() {
+    fn observe_transformer_property(
+        &mut self,
+        key: &str,
+        value: Option<&str>,
+        indent: usize,
+        span: SourceSpan,
+    ) {
+        let parent_indent = self.transformer_indent.unwrap_or_default();
+        if !set_or_matches_indent(
+            &mut self.transformer_property_indent,
+            indent,
+            parent_indent,
+        ) {
             self.push_diagnostic(DartDiagnostic::error(
-                "pubspec_invalid_flutter_asset",
-                "Flutter asset metadata appears before an asset path",
+                "pubspec_invalid_flutter_asset_transformer",
+                "Flutter asset transformer fields must use consistent indentation",
                 Some(span),
             ));
             return;
         }
-        self.finish_transformer();
-        self.transformer_indent = None;
+
+        match (key, value) {
+            ("args", None) => {
+                self.mode = AssetMode::TransformerArgs;
+                self.args_item_indent = None;
+            }
+            ("args", Some(value)) => self.set_transformer_args(value, span),
+            _ => self.push_diagnostic(DartDiagnostic::warning(
+                "pubspec_unsupported_flutter_asset_transformer",
+                format!("unsupported Flutter asset transformer field: {key}"),
+                Some(span),
+            )),
+        }
+    }
+
+    fn set_string_list(&mut self, mode: AssetMode, value: Option<&str>, span: SourceSpan) {
+        self.selector_item_indent = None;
         self.mode = mode;
         let Some(value) = value else {
             return;
@@ -231,6 +296,7 @@ impl AssetParser {
                 "Flutter asset selectors must be a scalar list",
                 Some(span),
             ));
+            self.mode = AssetMode::None;
             return;
         };
         if let Some(asset) = self.current_asset.as_mut() {
@@ -240,13 +306,10 @@ impl AssetParser {
                 _ => {}
             }
         }
+        self.mode = AssetMode::None;
     }
 
-    fn set_transformer_args(&mut self, value: Option<&str>, span: SourceSpan) {
-        self.mode = AssetMode::TransformerArgs;
-        let Some(value) = value else {
-            return;
-        };
+    fn set_transformer_args(&mut self, value: &str, span: SourceSpan) {
         let Some(args) = parse_inline_sequence(value) else {
             self.push_diagnostic(DartDiagnostic::error(
                 "pubspec_invalid_flutter_asset_transformer",
@@ -258,23 +321,25 @@ impl AssetParser {
         if let Some(transformer) = self.current_transformer.as_mut() {
             transformer.args.extend(args);
         }
+        self.mode = AssetMode::Transformers;
+        self.args_item_indent = None;
     }
 
     fn observe_nested_item(&mut self, item: &str, indent: usize, span: SourceSpan) {
         if self.mode == AssetMode::TransformerArgs
             && self
                 .transformer_indent
-                .is_some_and(|expected| indent == expected)
+                .is_some_and(|transformer_indent| indent == transformer_indent)
         {
             self.mode = AssetMode::Transformers;
         }
 
         match self.mode {
             AssetMode::Flavors | AssetMode::Platforms => {
-                self.push_selector(item, self.mode, span)
+                self.push_selector(item, indent, self.mode, span);
             }
             AssetMode::Transformers => self.start_transformer(item, indent, span),
-            AssetMode::TransformerArgs => self.push_transformer_arg(item, span),
+            AssetMode::TransformerArgs => self.push_transformer_arg(item, indent, span),
             AssetMode::None => self.push_diagnostic(DartDiagnostic::warning(
                 "pubspec_unsupported_flutter_asset",
                 "unexpected nested Flutter asset list item",
@@ -283,7 +348,22 @@ impl AssetParser {
         }
     }
 
-    fn push_selector(&mut self, item: &str, mode: AssetMode, span: SourceSpan) {
+    fn push_selector(
+        &mut self,
+        item: &str,
+        indent: usize,
+        mode: AssetMode,
+        span: SourceSpan,
+    ) {
+        let parent_indent = self.asset_property_indent.unwrap_or_default();
+        if !set_or_matches_indent(&mut self.selector_item_indent, indent, parent_indent) {
+            self.push_diagnostic(DartDiagnostic::error(
+                "pubspec_invalid_flutter_asset",
+                "Flutter asset selector items must use consistent indentation",
+                Some(span),
+            ));
+            return;
+        }
         let item = item.trim();
         if item.is_empty() || yaml_key_value(item).is_some() {
             self.push_diagnostic(DartDiagnostic::error(
@@ -304,7 +384,20 @@ impl AssetParser {
     }
 
     fn start_transformer(&mut self, item: &str, indent: usize, span: SourceSpan) {
+        let parent_indent = self.asset_property_indent.unwrap_or_default();
+        if !set_or_matches_indent(&mut self.transformer_indent, indent, parent_indent) {
+            self.push_diagnostic(DartDiagnostic::error(
+                "pubspec_invalid_flutter_asset_transformer",
+                "Flutter asset transformer items must use consistent indentation",
+                Some(span),
+            ));
+            return;
+        }
+
         self.finish_transformer();
+        self.transformer_property_indent = None;
+        self.args_item_indent = None;
+
         let Some(("package", Some(package))) = yaml_key_value(item) else {
             self.push_diagnostic(DartDiagnostic::error(
                 "pubspec_invalid_flutter_asset_transformer",
@@ -322,7 +415,6 @@ impl AssetParser {
             ));
             return;
         }
-        self.transformer_indent = Some(indent);
         self.current_transformer = Some(PubspecFlutterAssetTransformer {
             package: package.to_string(),
             args: Vec::new(),
@@ -330,7 +422,16 @@ impl AssetParser {
         });
     }
 
-    fn push_transformer_arg(&mut self, item: &str, span: SourceSpan) {
+    fn push_transformer_arg(&mut self, item: &str, indent: usize, span: SourceSpan) {
+        let parent_indent = self.transformer_property_indent.unwrap_or_default();
+        if !set_or_matches_indent(&mut self.args_item_indent, indent, parent_indent) {
+            self.push_diagnostic(DartDiagnostic::error(
+                "pubspec_invalid_flutter_asset_transformer",
+                "Flutter asset transformer args must use consistent indentation",
+                Some(span),
+            ));
+            return;
+        }
         let item = item.trim();
         if item.is_empty() || yaml_key_value(item).is_some() {
             self.push_diagnostic(DartDiagnostic::error(
@@ -364,222 +465,32 @@ impl AssetParser {
             span: configuration.span.clone(),
         });
         self.configurations.push(configuration);
+        self.reset_asset_item();
+    }
+
+    fn reset_asset_section(&mut self) {
+        self.in_assets = false;
+        self.asset_item_indent = None;
+        self.reset_asset_item();
+    }
+
+    fn reset_asset_item(&mut self) {
+        self.asset_property_indent = None;
+        self.selector_item_indent = None;
         self.mode = AssetMode::None;
+        self.current_asset_is_mapping = false;
+        self.reset_transformer_state();
+    }
+
+    fn reset_transformer_state(&mut self) {
         self.transformer_indent = None;
+        self.transformer_property_indent = None;
+        self.args_item_indent = None;
+        self.current_transformer = None;
     }
 
     fn push_diagnostic(&mut self, diagnostic: DartDiagnostic) {
         self.diagnostics
             .push(diagnostic.with_path(self.path.clone()));
-    }
-}
-
-fn parse_inline_sequence(value: &str) -> Option<Vec<String>> {
-    let value = value.trim();
-    let inner = value.strip_prefix('[')?.strip_suffix(']')?;
-    if inner.trim().is_empty() {
-        return Some(Vec::new());
-    }
-
-    let mut values = Vec::new();
-    let mut start = 0usize;
-    let mut quote = None;
-    let mut escaped = false;
-    let mut chars = inner.char_indices().peekable();
-
-    while let Some((index, ch)) = chars.next() {
-        if let Some(active_quote) = quote {
-            if escaped {
-                escaped = false;
-            } else if active_quote == '"' && ch == '\\' {
-                escaped = true;
-            } else if active_quote == '\'' && ch == '\'' {
-                if chars.peek().is_some_and(|(_, next)| *next == '\'') {
-                    chars.next();
-                } else {
-                    quote = None;
-                }
-            } else if ch == active_quote {
-                quote = None;
-            }
-            continue;
-        }
-
-        match ch {
-            '\'' | '"' => quote = Some(ch),
-            ',' => {
-                push_inline_scalar(&mut values, &inner[start..index])?;
-                start = index + ch.len_utf8();
-            }
-            '[' | ']' | '{' | '}' => return None,
-            _ => {}
-        }
-    }
-    if quote.is_some() || escaped {
-        return None;
-    }
-    push_inline_scalar(&mut values, &inner[start..])?;
-    Some(values)
-}
-
-fn push_inline_scalar(values: &mut Vec<String>, value: &str) -> Option<()> {
-    let value = value.trim();
-    if value.is_empty() || yaml_key_value(value).is_some() {
-        return None;
-    }
-    values.push(yaml_scalar(value).to_string());
-    Some(())
-}
-
-fn yaml_key_value(trimmed: &str) -> Option<(&str, Option<&str>)> {
-    let colon = find_unquoted_colon(trimmed)?;
-    let key = trimmed[..colon].trim();
-    if key.is_empty() {
-        return None;
-    }
-    let value = trimmed[colon + 1..].trim();
-    Some((yaml_scalar(key), (!value.is_empty()).then_some(value)))
-}
-
-fn find_unquoted_colon(value: &str) -> Option<usize> {
-    let mut quote = None;
-    let mut escaped = false;
-    for (index, ch) in value.char_indices() {
-        if let Some(active_quote) = quote {
-            if escaped {
-                escaped = false;
-            } else if active_quote == '"' && ch == '\\' {
-                escaped = true;
-            } else if ch == active_quote {
-                quote = None;
-            }
-        } else {
-            match ch {
-                '\'' | '"' => quote = Some(ch),
-                ':' => return Some(index),
-                _ => {}
-            }
-        }
-    }
-    None
-}
-
-fn strip_yaml_comment(line: &str) -> &str {
-    let mut quote = None;
-    let mut escaped = false;
-    let mut previous = None;
-    for (index, ch) in line.char_indices() {
-        if let Some(active_quote) = quote {
-            if escaped {
-                escaped = false;
-            } else if active_quote == '"' && ch == '\\' {
-                escaped = true;
-            } else if ch == active_quote {
-                quote = None;
-            }
-        } else {
-            match ch {
-                '\'' | '"' => quote = Some(ch),
-                '#' if previous.is_none_or(char::is_whitespace) => return &line[..index],
-                _ => {}
-            }
-        }
-        previous = Some(ch);
-    }
-    line
-}
-
-fn yaml_scalar(value: &str) -> &str {
-    let value = value.trim();
-    if value.len() >= 2 {
-        let first = value.as_bytes()[0];
-        let last = value.as_bytes()[value.len() - 1];
-        if matches!((first, last), (b'\'', b'\'') | (b'"', b'"')) {
-            return &value[1..value.len() - 1];
-        }
-    }
-    value
-}
-
-fn leading_indentation_contains_tab(line: &str) -> bool {
-    line.chars()
-        .take_while(|ch| ch.is_whitespace())
-        .any(|ch| ch == '\t')
-}
-
-fn leading_space_count(line: &str) -> usize {
-    line.chars().take_while(|ch| *ch == ' ').count()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_selectors_and_ordered_transformers() {
-        let source = concat!(
-            "flutter:\n",
-            "  assets:\n",
-            "    - path: assets/logo.svg\n",
-            "      flavors: [development, production]\n",
-            "      platforms:\n",
-            "        - android\n",
-            "        - ios\n",
-            "      transformers:\n",
-            "        - package: vector_graphics_compiler\n",
-            "          args: ['--tessellate', '--font-size=14']\n",
-            "        - package: png_optimizer\n",
-        );
-        let parsed = parse_flutter_assets(source, "pubspec.yaml");
-
-        assert!(parsed.diagnostics.is_empty());
-        assert_eq!(parsed.assets.len(), 1);
-        let asset = &parsed.configurations[0];
-        assert_eq!(asset.flavors.as_slice(), ["development", "production"]);
-        assert_eq!(asset.platforms.as_slice(), ["android", "ios"]);
-        assert_eq!(asset.transformers.len(), 2);
-        assert_eq!(asset.transformers[0].package, "vector_graphics_compiler");
-        assert_eq!(
-            asset.transformers[0].args.as_slice(),
-            ["--tessellate", "--font-size=14"]
-        );
-        assert_eq!(asset.transformers[1].package, "png_optimizer");
-    }
-
-    #[test]
-    fn accepts_empty_and_quoted_transformer_args() {
-        assert_eq!(parse_inline_sequence("[]"), Some(Vec::new()));
-        assert_eq!(
-            parse_inline_sequence("['https://example.com/a:b', '--flag']"),
-            Some(vec![
-                "https://example.com/a:b".to_string(),
-                "--flag".to_string()
-            ])
-        );
-    }
-
-    #[test]
-    fn preserves_scalar_assets_in_both_representations() {
-        let parsed = parse_flutter_assets(
-            "flutter:\n  assets:\n    - assets/images/\n",
-            "pubspec.yaml",
-        );
-
-        assert_eq!(parsed.assets[0].path, "assets/images/");
-        assert_eq!(parsed.configurations[0].path, "assets/images/");
-        assert!(parsed.configurations[0].transformers.is_empty());
-    }
-
-    #[test]
-    fn diagnoses_transformers_without_packages() {
-        let parsed = parse_flutter_assets(
-            "flutter:\n  assets:\n    - path: assets/logo.svg\n      transformers:\n        - args: [bad]\n",
-            "config/pubspec.yaml",
-        );
-
-        assert!(parsed.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "pubspec_invalid_flutter_asset_transformer"
-                && diagnostic.path.as_deref() == Some("config/pubspec.yaml")
-        }));
     }
 }
