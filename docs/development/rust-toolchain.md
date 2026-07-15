@@ -16,34 +16,46 @@ CI, documentation, parser dependency decisions, and release planning.
   `Cargo.toml`.
 - Exact repository toolchain: Rust 1.95.0, pinned in `rust-toolchain.toml`.
 - Required components: Cargo, rustc, rustfmt, Clippy, and rustdoc from Rust 1.95.0.
-- Hosted checks: Linux quality gates and Linux/Windows tests install Rust 1.95.0.
+- Hosted checks: Linux quality gates, Linux/Windows tests, and the dedicated edition matrix
+  install Rust 1.95.0.
 
 All eight crate manifests use `rust-version.workspace = true` and
-`edition.workspace = true`. A crate must not declare a second local Rust version.
+`edition.workspace = true`. A crate must not declare a second local Rust version or
+edition.
 
 ## Edition
 
-The workspace remains on Rust edition 2021. Compiler version/MSRV and language edition
-are independent settings. A future edition 2024 migration requires a separate task with
-fixture, Clippy, documentation, public API, and downstream compatibility checks; it must
-not be bundled into a toolchain pin change.
+The complete workspace uses Rust edition 2024, declared once as `edition = "2024"` in
+the root `Cargo.toml`. Every crate inherits the setting through
+`edition.workspace = true`.
+
+Edition compatibility is verified in a dedicated CI matrix separate from the normal
+quality and test jobs. The matrix covers Linux and Windows for:
+
+- the complete workspace with all targets;
+- the umbrella crate with no default features;
+- the umbrella crate with all features.
+
+The migration contract and edition-specific risks are recorded in
+`docs/development/rust-2024-edition.md`.
 
 ## Sources Of Truth
 
 | Concern | Source |
 | --- | --- |
-| minimum supported compiler | root `Cargo.toml` |
+| minimum supported compiler and workspace edition | root `Cargo.toml` |
 | exact local/CI toolchain and components | `rust-toolchain.toml` |
-| hosted commands and operating systems | `.github/workflows/ci.yml` |
+| hosted commands, operating systems, and edition matrix | `.github/workflows/ci.yml` |
 | contributor commands | `CONTRIBUTING.md` |
 | agent commands and constraints | `AGENTS.md` |
 | release/task acceptance | `docs/development/dartscope-library-plan.md` |
 
-Documentation may repeat the version for clarity but may not define a different one.
+Documentation may repeat the version or edition for clarity but may not define a
+different one.
 
 ## Prohibited Overrides
 
-Do not introduce another Rust channel or version in:
+Do not introduce another Rust channel, version, or edition in:
 
 - individual crate manifests;
 - `.cargo/config.toml` or target-specific rustflags used to simulate compatibility;
@@ -51,8 +63,8 @@ Do not introduce another Rust channel or version in:
 - Dockerfiles, task runners, release automation, or additional workflows;
 - dependency evaluation notes or release matrices.
 
-If one of these files is added later, it must reference Rust 1.95.0 or rely directly on
-`rust-toolchain.toml`.
+If one of these files is added later, it must reference Rust 1.95.0 and edition 2024 or
+rely directly on the root workspace settings.
 
 At the time this policy was created, the repository had no `.cargo/config.toml`,
 Dependabot toolchain override, devcontainer, Dockerfile, release-plz configuration,
@@ -67,6 +79,10 @@ rustc --version
 cargo --version
 rustfmt --version
 cargo clippy --version
+Select-String -Path Cargo.toml -SimpleMatch 'edition = "2024"'
+cargo check --workspace --all-targets --locked
+cargo check -p dartscope --no-default-features --locked
+cargo check -p dartscope --all-features --locked
 cargo fmt --all -- --check
 cargo test --workspace --locked --quiet
 cargo clippy --workspace --all-targets --locked -- -D warnings
