@@ -20,6 +20,8 @@ mod pubspec_source;
 mod pubspec_syntax;
 #[allow(dead_code)]
 mod pubspec_yaml_marked;
+#[allow(dead_code)]
+mod pubspec_yaml_marked_configuration;
 mod pubspec_yaml_subset;
 mod source_lines;
 
