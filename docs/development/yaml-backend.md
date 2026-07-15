@@ -92,7 +92,7 @@ The private adapter must:
 
 ## Current Migration Status
 
-Completed prerequisites:
+Completed prerequisites and configuration slices:
 
 - [x] Both public APIs pass through one private `PreparedPubspecSource` boundary.
 - [x] Document-count, duplicate-key, malformed-flow, alias-policy, and byte-evidence
@@ -105,31 +105,35 @@ Completed prerequisites:
   Cargo-resolved registry graph is recorded in `Cargo.lock`.
 - [x] A private `MarkedEventReceiver` bridge builds a marked scalar/sequence/mapping tree,
   rejects aliases and merge keys, detects duplicate keys and additional documents, and
-  preserves UTF-8 byte offsets across LF, CRLF, and non-ASCII input.
+  preserves UTF-8 byte offsets and one-based columns across LF, CRLF, and non-ASCII input.
+- [x] A private marked-tree converter maps environment constraints, Flutter booleans,
+  assets, selectors, ordered transformers, and fonts into the existing core-owned types.
+- [x] A dual-backend configuration parity gate compares conservative and marked-event
+  output for structured configuration, duplicate keys, additional documents, invalid
+  selectors, CRLF, and non-ASCII evidence.
 
 Remaining before backend cutover:
 
-- [ ] Convert the marked tree into dependencies, environment constraints, and Flutter
-  configuration using existing core-owned domain types.
-- [ ] Run the same parity cases through conservative and marked-event implementations.
+- [ ] Convert package name and dependency sections/sources from the marked tree into the
+  existing core-owned dependency model.
+- [ ] Extend dual-backend parity to dependency output and the complete dependency fixture
+  suite before changing the public default.
 - [ ] Pass the complete Rust 1.95.0 Linux and Windows verification matrix.
 - [ ] Remove the conservative parser only after the marked backend is the verified default.
 
-The parity harness currently compares the two public entrypoints because the public
-default remains the conservative backend. The next migration slice will add a private
-backend selector and compare conservative and marked-event domain output before changing
-the default.
+The public APIs still use the conservative backend. The marked implementation remains a
+private migration target and cannot leak `yaml-rust2` types into the public contract.
 
 ## Migration Sequence
 
 1. Add `yaml-rust2 = "=0.11.0"` and its Cargo-resolved `Cargo.lock` graph. Completed.
 2. Add a private marked-event adapter and tests for marker byte offsets on LF, CRLF, and
    non-ASCII input. Completed.
-3. Convert the marked tree into existing dependency and configuration domain models.
-4. Run the current dependency/configuration fixtures and the backend-parity matrix through
-   both implementations and require identical normalized output.
-5. Add negative fixtures for duplicate keys, aliases, merge keys, multiple documents,
-   malformed block syntax, and malformed flow syntax.
+3. Convert environment and Flutter configuration into existing domain models and require
+   dual-backend parity. Completed.
+4. Convert package name and dependency sections/sources into the existing dependency model.
+5. Run the complete dependency/configuration fixtures through both implementations and
+   require identical normalized output.
 6. Switch `parse_pubspec` to the marked-event adapter while retaining the public model,
    diagnostic paths, and compatibility fields.
 7. Remove the line-oriented dependency, configuration, and syntax parsers only after the
@@ -151,9 +155,10 @@ $env:RUSTDOCFLAGS = "-D warnings"
 cargo doc --workspace --no-deps --locked
 ```
 
-The marked bridge has additionally passed isolated compilation, unit tests, formatting,
-and Clippy on Rust 1.85.0. That local compatibility check is useful evidence but does not
-replace the required Rust 1.95.0 Linux/Windows matrix.
+The marked bridge and configuration converter have additionally passed isolated
+compilation, nine unit tests, formatting, and Clippy on Rust 1.85.0. That local
+compatibility check is useful evidence but does not replace the required Rust 1.95.0
+Linux/Windows matrix or a complete workspace test run.
 
 ## Primary Sources
 
