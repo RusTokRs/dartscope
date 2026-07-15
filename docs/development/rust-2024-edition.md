@@ -16,8 +16,12 @@ The complete DartScope workspace now declares Rust edition 2024 through the root
 The compiler policy remains Rust 1.95 with the exact Rust 1.95.0 toolchain pinned in
 `rust-toolchain.toml`.
 
-This is a workspace-wide source-compatibility migration. It does not change public JSON
-fields, crate features, package versions, or the Rust MSRV.
+The repository root is a virtual workspace, so the workspace table explicitly declares
+`resolver = "3"`. This keeps dependency selection Rust-version aware under the edition
+2024 policy.
+
+This is a workspace-wide source and dependency-resolution compatibility migration. It
+does not change public JSON fields, crate features, package versions, or the Rust MSRV.
 
 ## Dedicated CI Matrix
 
@@ -33,8 +37,10 @@ normal test job. The matrix contains six checks:
 | Linux | umbrella crate with all features |
 | Windows | umbrella crate with all features |
 
-The normal quality job still owns rustfmt, Clippy with warnings denied, and rustdoc. The
-normal Linux/Windows test matrix still owns the complete workspace test suite.
+Every matrix entry first verifies both `resolver = "3"` and `edition = "2024"` in the
+root manifest. The normal quality job still owns rustfmt, Clippy with warnings denied,
+and rustdoc. The normal Linux/Windows test matrix still owns the complete workspace test
+suite.
 
 ## Edition-Specific Review
 
@@ -53,12 +59,23 @@ A repository code search did not identify explicit uses of `std::env::set_var`,
 switch. This search is only a preliminary audit; compiler and Clippy results remain the
 source of truth.
 
+## Resolver Review
+
+Resolver 3 prefers dependency releases compatible with the workspace `rust-version`.
+Because DartScope is a virtual workspace, the resolver must remain explicit in
+`[workspace]`; relying only on package edition inheritance would leave the workspace on
+its previous resolver.
+
+The current `Cargo.lock` remains the reproducibility boundary for `--locked` checks.
+Any future dependency change must regenerate and review the lockfile with Rust 1.95.0.
+
 ## Required Local Validation
 
 Run with the repository-pinned Rust 1.95.0 toolchain:
 
 ```powershell
 rustc --version
+Select-String -Path Cargo.toml -SimpleMatch 'resolver = "3"'
 Select-String -Path Cargo.toml -SimpleMatch 'edition = "2024"'
 cargo check --workspace --all-targets --locked
 cargo check -p dartscope --no-default-features --locked
@@ -81,7 +98,11 @@ crate package. Rust editions are interoperable across dependency boundaries, so 
 consumer does not need to migrate its own crate to edition 2024 merely to depend on
 DartScope. The consumer must still satisfy DartScope's Rust 1.95 MSRV.
 
+Resolver 3 is a workspace dependency-selection policy and does not alter the public Rust
+or JSON API by itself.
+
 ## Verification State
 
-The manifest and dedicated matrix are implemented. The migration remains unverified
-until the hosted Rust 1.95.0 checks complete successfully on Linux and Windows.
+The manifest, resolver, and dedicated matrix are implemented. The migration remains
+unverified until the hosted Rust 1.95.0 checks complete successfully on Linux and
+Windows.
