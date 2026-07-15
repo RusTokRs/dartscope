@@ -122,3 +122,34 @@ fn accepts_explicitly_empty_asset_lists() {
     assert!(asset.platforms.is_empty());
     assert!(asset.transformers.is_empty());
 }
+
+#[test]
+fn sibling_fields_do_not_leak_nested_list_modes() {
+    let source = concat!(
+        "flutter:\n",
+        "  assets:\n",
+        "    - path: assets/logo.svg\n",
+        "      flavors:\n",
+        "        - development\n",
+        "      unsupported: value\n",
+        "        - not-a-flavor\n",
+        "      transformers:\n",
+        "        - package: vector_graphics_compiler\n",
+        "          args:\n",
+        "            - first\n",
+        "          unsupported: value\n",
+        "            - not-an-arg\n",
+    );
+    let analysis = parse_pubspec_configuration(PubspecInput::new("pubspec.yaml", source));
+    let asset = &analysis.flutter.asset_configurations[0];
+
+    assert_eq!(asset.flavors.as_slice(), ["development"]);
+    assert_eq!(asset.transformers[0].args.as_slice(), ["first"]);
+    assert!(analysis.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "pubspec_unsupported_flutter_asset"
+    }));
+    assert!(analysis.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "pubspec_unsupported_flutter_asset_transformer"
+            || diagnostic.code == "pubspec_invalid_flutter_asset_transformer"
+    }));
+}
