@@ -32,6 +32,10 @@ Do not start a later task because it looks easier while an earlier `ready` task 
 unfinished. A task may be skipped only when it is marked `blocked` with a concrete
 reason in this file.
 
+The complete workspace uses the repository-pinned Rust 1.95.0 toolchain. Workspace
+packages inherit `rust-version = "1.95"`; CI, rustfmt, Clippy, rustdoc, tests, dependency
+reviews, and parser-backend decisions must not target a second Rust version.
+
 Status vocabulary:
 
 | Status | Meaning |
@@ -97,7 +101,7 @@ Baseline reviewed on 2026-07-10.
 | Flutter project inventory | in_progress | `dartscope-flutter`, optional umbrella feature |
 | JSON helpers | implemented | `dartscope-json`; versioned schema is not implemented |
 | CLI smoke workflows | implemented | `dartscope-cli`; CLI integration tests are missing |
-| Hosted CI | implemented | Linux quality gates and Linux/Windows tests configured; first hosted run pending |
+| Hosted CI | implemented | pinned Rust 1.95.0 quality gates and Linux/Windows tests configured; first hosted run pending |
 | Contributor and agent workflow | verified | `AGENTS.md`, `CONTRIBUTING.md`, Rust code standard |
 | Lint/rule engine | planned | crate not created |
 | Parser backend port | planned | current backend is directly implemented in parse crate |
@@ -330,19 +334,23 @@ Acceptance:
 
 ### DS-PUB-002: Structured Pubspec Model
 
-Status: ready. Priority: P1. Owner crates: `dartscope-core`, `dartscope-parse`.
+Status: in_progress. Priority: P1. Owner crates: `dartscope-core`, `dartscope-parse`.
 
-Current parser supports package name and direct dependencies but is not a complete YAML
-parser.
+The primary pubspec model now stores typed dependency sources, environment constraints,
+and common Flutter configuration with compatibility defaults and serialization fixtures.
+The remaining parser is still a conservative YAML subset rather than a complete YAML
+implementation.
 
 Required work:
 
-1. Evaluate a maintained Rust YAML parser against MSRV 1.85 and record the decision.
+1. Evaluate a maintained Rust YAML parser against the pinned Rust 1.95 toolchain and
+   record the decision.
 2. Preserve source spans for dependency keys even if structured parsing is adopted.
 3. Add SDK, path, git, hosted, and workspace dependency source variants.
 4. Parse environment constraints and Flutter `assets`, `fonts`, and localization
    configuration into normalized pubspec-owned types.
 5. Diagnose invalid YAML and unsupported aliases/merge keys.
+6. Harden malformed flow mappings, quote balancing, and wildcard-versus-alias handling.
 
 Acceptance:
 
@@ -350,7 +358,11 @@ Acceptance:
 - nested `sdk`, `path`, `git`, and `hosted` fields are attached to their dependency and
   never emitted as packages;
 - malformed YAML produces a path-attributed diagnostic;
-- serialization fixtures cover every dependency source variant.
+- serialization fixtures cover every dependency source and complete pubspec variant;
+- all focused and workspace checks pass on Rust 1.95.0.
+
+Implementation state and remaining limits are recorded in
+`docs/development/pubspec-model.md`.
 
 ### DS-RESOLVE-003: Package Config Completeness
 
@@ -474,13 +486,14 @@ Rust, Dart, Flutter, and ecosystem conventions.
 
 ### DS-BOOT-001: Workspace Bootstrap
 
-Status: implemented; hosted MSRV verification pending.
+Status: implemented; hosted Rust 1.95 verification pending.
 
 Eight crates, MIT license, root README, fixtures, formatting, tests, clippy, lockfile,
 Linux quality CI, Linux/Windows test CI, contribution guide, agent entrypoint, and
 reference strategy exist. The repository builds independently and has no Athanor
-dependency. Local gates pass on Rust 1.95; the first hosted Rust 1.85 Linux/Windows run
-is still required before this task becomes `verified`.
+dependency. The workspace MSRV is Rust 1.95 and the exact Rust 1.95.0 toolchain is pinned
+for local and hosted checks. The first hosted Rust 1.95.0 Linux/Windows run is still
+required before this task becomes `verified`.
 
 ### DS-PARSE-001: File Analysis MVP
 
@@ -565,9 +578,10 @@ A task is complete only when all applicable items pass:
 - `README.md`, this plan, and `docs/reference-strategy.md` are synchronized;
 - no Athanor or Rustok-specific domain logic was added;
 - no unrelated working-tree changes were reverted;
-- the following commands pass from `D:\DartScope`:
+- the following commands pass from `D:\DartScope` using the pinned Rust 1.95.0 toolchain:
 
 ```powershell
+rustc --version
 cargo fmt --all -- --check
 cargo test --workspace --quiet
 cargo clippy --workspace --all-targets -- -D warnings
@@ -592,8 +606,8 @@ Stop the current task and report the blocker when:
 
 - official sources conflict or do not define the intended behavior;
 - the change requires a breaking public-model or JSON migration not named by the task;
-- a parser backend dependency raises an unresolved license, MSRV, maintenance, or
-  process-execution concern;
+- a parser backend dependency raises an unresolved license, Rust 1.95 compatibility,
+  maintenance, or process-execution concern;
 - a real-project case cannot be reduced without exposing private source;
 - the same finding requires consumer-specific semantics to become meaningful;
 - unrelated user changes overlap the same code and cannot be preserved.
@@ -604,7 +618,7 @@ Do not resolve these conditions by silently expanding scope.
 
 | Milestone | Exit condition |
 | --- | --- |
-| M0 trustworthy bootstrap | implementation complete; first hosted Rust 1.85 CI run pending |
+| M0 trustworthy bootstrap | implementation complete; first hosted Rust 1.95.0 CI run pending |
 | M1 dependable heuristic toolkit | DS-MAINT-001, DS-PARSE-004, DS-PARSE-005, DS-PUB-002, DS-RESOLVE-003 |
 | M2 stable tool boundary | DS-JSON-001, DS-CLI-002, compatibility policy |
 | M3 optional Flutter pipeline | DS-FLUTTER-002 and declared asset/localization slice |
@@ -613,6 +627,6 @@ Do not resolve these conditions by silently expanding scope.
 
 ## Current Recommended Next Step
 
-Implement DS-PUB-002. The parser backend boundary is verified; the next ready task is
-the structured pubspec model, which should replace remaining line-oriented YAML heuristics
-without affecting the parser contract.
+Continue DS-PUB-002. The typed dependency and configuration storage migration is in
+place; next harden wildcard-versus-alias handling and malformed flow mappings, then
+record the YAML backend decision for the pinned Rust 1.95 toolchain.
