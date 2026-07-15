@@ -22,8 +22,9 @@ API, error, documentation, and testing rules apply to every code change.
 
 Use the repository-pinned Rust 1.95.0 toolchain. `rust-toolchain.toml` supplies Cargo,
 rustfmt, Clippy, and rustdoc; all workspace crates inherit `rust-version = "1.95"` and
-`edition = "2024"` from the root manifest. Do not introduce a second Rust version,
-edition, or an unpinned CI toolchain.
+`edition = "2024"` from the root manifest. The virtual workspace explicitly uses Cargo
+resolver 3. Do not introduce a second Rust version, resolver, edition, or an unpinned CI
+toolchain.
 
 The edition migration contract lives in `docs/development/rust-2024-edition.md`.
 
@@ -62,6 +63,7 @@ must satisfy its acceptance criteria and definition of done in the plan.
 Run from `D:\DartScope`:
 
 ```powershell
+Select-String -Path Cargo.toml -SimpleMatch 'resolver = "3"'
 Select-String -Path Cargo.toml -SimpleMatch 'edition = "2024"'
 cargo check --workspace --all-targets --locked
 cargo check -p dartscope --no-default-features --locked
