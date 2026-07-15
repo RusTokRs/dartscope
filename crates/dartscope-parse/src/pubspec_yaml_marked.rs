@@ -19,8 +19,8 @@ pub(crate) fn parse_marked_yaml(source: &str) -> MarkedYamlDocument {
 
 #[derive(Debug)]
 pub(crate) struct MarkedYamlDocument {
-    root: Option<Node>,
-    diagnostics: Vec<DartDiagnostic>,
+    pub(crate) root: Option<Node>,
+    pub(crate) diagnostics: Vec<DartDiagnostic>,
 }
 
 impl MarkedYamlDocument {
@@ -30,9 +30,9 @@ impl MarkedYamlDocument {
 }
 
 #[derive(Debug)]
-struct Node {
-    kind: NodeKind,
-    span: SourceSpan,
+pub(crate) struct Node {
+    pub(crate) kind: NodeKind,
+    pub(crate) span: SourceSpan,
 }
 
 impl Node {
@@ -52,7 +52,7 @@ impl Node {
 }
 
 #[derive(Debug)]
-enum NodeKind {
+pub(crate) enum NodeKind {
     Scalar(String),
     Sequence(Vec<Node>),
     Mapping(Vec<Entry>),
@@ -60,10 +60,10 @@ enum NodeKind {
 }
 
 #[derive(Debug)]
-struct Entry {
-    key: String,
-    key_span: SourceSpan,
-    value: Node,
+pub(crate) struct Entry {
+    pub(crate) key: String,
+    pub(crate) key_span: SourceSpan,
+    pub(crate) value: Node,
 }
 
 enum Frame {
