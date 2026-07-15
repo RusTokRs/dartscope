@@ -1,14 +1,17 @@
 use dartscope_core::pubspec::{PubspecConfiguration, PubspecConfigurationAnalysis};
 use dartscope_core::{DartDiagnostic, PubspecAnalysis, PubspecInput};
 
-use crate::pubspec_syntax::{check_pubspec_syntax, PubspecSyntaxCheck};
+use crate::pubspec_syntax::{
+    append_common_syntax_diagnostics, prepare_pubspec_source, PubspecSyntaxCheck,
+};
 
 /// Parses dependencies and typed configuration into the primary pubspec analysis model.
 pub fn parse_pubspec(input: PubspecInput) -> PubspecAnalysis {
-    let syntax = check_pubspec_syntax(&input.source);
+    let prepared = prepare_pubspec_source(&input.source);
+    let prepared_input = PubspecInput::new(input.path, prepared.source);
     let configuration_analysis =
-        crate::pubspec_configuration::parse_pubspec_configuration(input.clone());
-    let mut analysis = crate::pubspec_dependencies::parse_pubspec(input);
+        crate::pubspec_configuration::parse_pubspec_configuration_prepared(prepared_input.clone());
+    let mut analysis = crate::pubspec_dependencies::parse_pubspec(prepared_input);
 
     let PubspecConfigurationAnalysis {
         environment,
@@ -26,7 +29,12 @@ pub fn parse_pubspec(input: PubspecInput) -> PubspecAnalysis {
             analysis.diagnostics.push(diagnostic);
         }
     }
-    apply_dependency_syntax_check(&mut analysis, &syntax);
+    append_common_syntax_diagnostics(
+        &mut analysis.diagnostics,
+        &analysis.path,
+        &prepared.syntax,
+    );
+    apply_dependency_syntax_check(&mut analysis, &prepared.syntax);
     analysis
 }
 
@@ -135,6 +143,91 @@ flutter:
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "pubspec_unsupported_yaml_alias"));
+    }
+
+    #[test]
+    fn accepts_single_explicit_document_markers() {
+        let analysis = parse_pubspec(PubspecInput::new(
+            "pubspec.yaml",
+            "---\r\nname: демо\r\ndependencies:\r\n  flutter:\r\n    sdk: flutter\r\n...\r\n",
+        ));
+
+        assert_eq!(analysis.package_name.as_deref(), Some("демо"));
+        assert_eq!(analysis.dependencies.len(), 1);
+        assert!(!analysis.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "pubspec_multiple_documents_unsupported"
+        }));
+    }
+
+    #[test]
+    fn ignores_additional_documents() {
+        let analysis = parse_pubspec(PubspecInput::new(
+            "config\\pubspec.yaml",
+            concat!(
+                "name: first\n",
+                "dependencies:\n",
+                "  first: ^1.0.0\n",
+                "---\n",
+                "name: second\n",
+                "dependencies:\n",
+                "  second: ^2.0.0\n",
+            ),
+        ));
+
+        assert_eq!(analysis.package_name.as_deref(), Some("first"));
+        assert_eq!(analysis.dependencies.len(), 1);
+        assert_eq!(analysis.dependencies[0].name, "first");
+        assert!(analysis.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "pubspec_multiple_documents_unsupported"
+                && diagnostic.path.as_deref() == Some("config/pubspec.yaml")
+                && diagnostic
+                    .span
+                    .as_ref()
+                    .is_some_and(|span| span.start_line == 4)
+        }));
+    }
+
+    #[test]
+    fn diagnoses_duplicate_top_level_and_direct_mapping_keys() {
+        let source = concat!(
+            "name: first\r\n",
+            "name: второй\r\n",
+            "dependencies:\r\n",
+            "  shared: ^1.0.0\r\n",
+            "  shared: ^2.0.0\r\n",
+            "environment:\r\n",
+            "  sdk: ^3.4.0\r\n",
+            "  sdk: ^3.5.0\r\n",
+            "flutter:\r\n",
+            "  generate: true\r\n",
+            "  generate: false\r\n",
+        );
+        let analysis = parse_pubspec(PubspecInput::new("config\\pubspec.yaml", source));
+        let duplicates = analysis
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == "pubspec_duplicate_key")
+            .collect::<Vec<_>>();
+
+        assert_eq!(duplicates.len(), 4);
+        assert!(duplicates.iter().all(|diagnostic| {
+            diagnostic.path.as_deref() == Some("config/pubspec.yaml")
+        }));
+        let sdk = duplicates
+            .iter()
+            .find(|diagnostic| {
+                diagnostic
+                    .span
+                    .as_ref()
+                    .is_some_and(|span| span.start_line == 8)
+            })
+            .expect("duplicate environment key diagnostic");
+        let span = sdk.span.as_ref().expect("duplicate key span");
+        let expected_start = source.find("  sdk: ^3.5.0").expect("second sdk") + 2;
+        assert_eq!(span.byte_start, expected_start);
+        assert_eq!(span.byte_end, expected_start + "sdk".len());
+        assert_eq!(span.start_column, 3);
+        assert_eq!(span.end_column, 6);
     }
 
     #[test]
