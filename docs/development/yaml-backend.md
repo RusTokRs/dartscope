@@ -89,13 +89,36 @@ The private adapter must:
 9. avoid filesystem access, includes, implicit command execution, or network access;
 10. emit no `yaml-rust2` type from a public function or public struct.
 
+## Current Preparation Status
+
+Completed before adding the external dependency:
+
+- [x] Both public APIs pass through one private `PreparedPubspecSource` boundary.
+- [x] Document-count, duplicate-key, malformed-flow, alias-policy, and byte-evidence
+  expectations have stable diagnostic codes and regression coverage.
+- [x] `tests/pubspec_backend_parity.rs` compares focused and complete configuration,
+  shared YAML diagnostics, and CRLF/non-ASCII byte evidence on representative sources.
+- [x] The conservative YAML-subset primitives are isolated from the core-owned public
+  model and can be deleted after backend cutover.
+
+Still blocked on an executable Rust 1.95.0 environment:
+
+- [ ] Add the pinned dependency and Cargo-generated lockfile update together.
+- [ ] Implement the `MarkedEventReceiver` bridge and event-to-domain state machine.
+- [ ] Run the same parity cases through conservative and marked-event implementations.
+- [ ] Remove the conservative parser only after Linux and Windows verification passes.
+
+The parity harness currently compares the two public entrypoints because only one backend
+exists. Once the marked-event implementation is present, the harness should accept a
+private backend selector and compare both implementations before changing the default.
+
 ## Migration Sequence
 
 1. Add `yaml-rust2 = "=0.11.0"` and regenerate `Cargo.lock` on Rust 1.95.0.
 2. Add a private marked-event adapter and tests for marker byte offsets on LF, CRLF, and
    non-ASCII input.
-3. Run the current dependency/configuration fixtures through both implementations and
-   require identical normalized output.
+3. Run the current dependency/configuration fixtures and the backend-parity matrix through
+   both implementations and require identical normalized output.
 4. Add negative fixtures for duplicate keys, aliases, merge keys, multiple documents,
    malformed block syntax, and malformed flow syntax.
 5. Switch `parse_pubspec` to the marked-event adapter while retaining the public model,
