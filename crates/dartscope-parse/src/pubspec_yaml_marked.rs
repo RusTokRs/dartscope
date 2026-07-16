@@ -114,7 +114,22 @@ impl<'a> Receiver<'a> {
             .unwrap_or(self.source.len())
     }
 
-    fn finish(self) -> MarkedYamlDocument {
+    fn finish(mut self) -> MarkedYamlDocument {
+        if self.root.is_none() {
+            while let Some(frame) = self.frames.pop() {
+                let node = match frame {
+                    Frame::Sequence { start, items } => Node {
+                        kind: NodeKind::Sequence(items),
+                        span: open_range_span(self.source, self.byte_index(start), start),
+                    },
+                    Frame::Mapping { start, entries, .. } => Node {
+                        kind: NodeKind::Mapping(entries),
+                        span: open_range_span(self.source, self.byte_index(start), start),
+                    },
+                };
+                self.push_node(node);
+            }
+        }
         MarkedYamlDocument {
             root: self.root,
             diagnostics: self.diagnostics,
@@ -331,6 +346,19 @@ fn point_span(source: &str, byte_start: usize, mark: Marker) -> SourceSpan {
         start_column: mark.col() + 1,
         end_line: mark.line(),
         end_column: mark.col() + if byte_end > byte_start { 2 } else { 1 },
+    }
+}
+
+fn open_range_span(source: &str, byte_start: usize, start: Marker) -> SourceSpan {
+    let last_line = source.rsplit_once('\n').map_or(source, |(_, line)| line);
+    let last_line = last_line.strip_suffix('\r').unwrap_or(last_line);
+    SourceSpan {
+        byte_start,
+        byte_end: source.len(),
+        start_line: start.line(),
+        start_column: start.col() + 1,
+        end_line: source.bytes().filter(|byte| *byte == b'\n').count() + 1,
+        end_column: last_line.chars().count() + 1,
     }
 }
 

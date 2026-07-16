@@ -7,6 +7,13 @@ use crate::pubspec_syntax::{
 
 /// Parses dependencies and typed configuration into the primary pubspec analysis model.
 pub fn parse_pubspec(input: PubspecInput) -> PubspecAnalysis {
+    crate::pubspec_backend::parse_pubspec_with_backend(
+        input,
+        crate::pubspec_backend::DEFAULT_PUBSPEC_BACKEND,
+    )
+}
+
+pub(crate) fn parse_pubspec_conservative(input: PubspecInput) -> PubspecAnalysis {
     let prepared = prepare_pubspec_source(&input.source);
     let prepared_input = PubspecInput::new(input.path, prepared.source);
     let configuration_analysis =

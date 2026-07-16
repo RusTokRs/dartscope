@@ -97,72 +97,65 @@ output because its effective value cannot be established without reference expan
 
 ## Current Migration Status
 
-Completed prerequisites and private backend slices:
+Completed migration and cutover slices:
 
 - [x] Both public APIs pass through one private `PreparedPubspecSource` boundary.
-- [x] Document-count, duplicate-key, malformed-flow, alias-policy, and byte-evidence
-  expectations have stable diagnostic codes and regression coverage.
-- [x] `tests/pubspec_backend_parity.rs` compares focused and complete configuration,
-  shared YAML diagnostics, and CRLF/non-ASCII byte evidence on representative sources.
-- [x] The conservative YAML-subset primitives are isolated from the core-owned public
-  model and can be deleted after backend cutover.
+- [x] Document-count, duplicate-key, malformed-flow, indentation, alias-policy, and
+  byte-evidence expectations have stable diagnostic codes and regression coverage.
 - [x] `yaml-rust2 = "=0.11.0"` is declared with default features disabled and the
   Cargo-resolved registry graph is recorded in `Cargo.lock`.
 - [x] A private `MarkedEventReceiver` bridge builds a marked scalar/sequence/mapping tree,
   diagnoses anchors, rejects alias and merge-key values, detects duplicate keys and
   additional documents, and preserves UTF-8 byte offsets and one-based columns across LF,
   CRLF, and non-ASCII input.
-- [x] A private marked-tree converter maps environment constraints, Flutter booleans,
-  assets, selectors, ordered transformers, and fonts into the existing core-owned types.
-- [x] A private dependency converter maps package names, `dependencies`,
-  `dev_dependencies`, and `dependency_overrides`, including scalar, SDK, path, git,
-  hosted, workspace, version, fallback, block-mapping, and flow-mapping source shapes.
+- [x] Marked-tree converters map package names, dependency sections and sources, environment
+  constraints, Flutter booleans, assets, selectors, ordered transformers, and fonts into the
+  existing core-owned types.
 - [x] Bare wildcard constraints are sanitized with a one-byte replacement before marked
-  parsing and restored from syntax evidence without changing any source byte offsets.
-- [x] Dual-backend parity compares package names, dependency order and sections, typed and
+  parsing and restored from syntax evidence without changing source byte offsets.
+- [x] A private backend selector runs the same complete and focused pubspec contracts through
+  conservative and marked implementations.
+- [x] Dual-backend parity covers package names, dependency order and sections, typed and
   compatibility source representations, environment and Flutter configuration, shared
-  diagnostics, CRLF, duplicate keys, and non-ASCII byte evidence.
-- [x] Negative marked-backend tests confirm that alias and merge dependency values do not
-  create fabricated dependencies and malformed inline mappings are omitted with
-  `pubspec_invalid_yaml`.
+  diagnostics, malformed input recovery, CRLF, duplicate keys, and non-ASCII byte evidence.
+- [x] The complete Rust 1.95.0 Linux and Windows matrix passed before cutover.
+- [x] `parse_pubspec` and `parse_pubspec_configuration` now use the marked backend by default.
+- [x] The marked-default workspace passes the complete local Linux Definition Of Done on the
+  repository-pinned Rust 1.95.0 toolchain.
 
-Remaining before backend cutover:
+Remaining cleanup:
 
-- [x] Pass the complete Rust 1.95.0 Linux verification gate.
-- [ ] Pass the hosted Rust 1.95.0 Windows test and edition-2024 matrix.
-- [ ] Switch the public pubspec APIs to the marked backend after the cross-platform matrix is green.
-- [ ] Remove the conservative parser only after the marked backend is the verified default.
+- [ ] Confirm the hosted Rust 1.95.0 Linux and Windows matrix on the marked-default commit.
+- [ ] Remove the conservative dependency/configuration implementation only after that
+  cutover commit is green, while retaining characterization evidence where it remains useful.
+- [ ] Add remaining localization-owned fields and define a versioned policy for validating
+  Flutter flavor and platform names.
 
-The public APIs still use the conservative backend. The marked implementation remains a
-private migration target and cannot leak `yaml-rust2` types into the public contract.
+`yaml-rust2` types remain private to `dartscope-parse`. The conservative implementation is
+retained only as a private parity oracle during the verified cutover window; it is no longer
+the public default.
 
 ## Migration Sequence
 
 1. Add `yaml-rust2 = "=0.11.0"` and its Cargo-resolved `Cargo.lock` graph. Completed.
-2. Add a private marked-event adapter and tests for marker byte offsets on LF, CRLF, and
-   non-ASCII input. Completed.
-3. Convert environment and Flutter configuration into existing domain models and require
-   dual-backend parity. Completed.
-4. Convert package name and dependency sections/sources into the existing dependency model.
-   Completed.
-5. Run representative dependency/configuration contracts through both implementations and
-   require identical normalized output. Completed.
-6. Pass the complete repository-pinned Rust 1.95.0 Linux matrix. Completed.
-7. Pass the hosted Rust 1.95.0 Windows test and edition-2024 matrix.
-8. Switch `parse_pubspec` and the focused configuration API to the marked-event adapter
-   while retaining the public model, diagnostic paths, and compatibility fields.
-9. Remove the line-oriented dependency, configuration, and syntax parsers only after the
-   complete fixture suite passes on Linux and Windows with the marked backend as default.
+2. Add a private marked-event adapter and UTF-8 marker tests. Completed.
+3. Convert environment and Flutter configuration and require dual-backend parity. Completed.
+4. Convert package names and dependency sections/sources. Completed.
+5. Run dependency/configuration contracts through both implementations. Completed.
+6. Pass the repository-pinned Rust 1.95.0 Linux and Windows matrix before cutover. Completed.
+7. Introduce one private backend selector and switch both public pubspec APIs to marked-event
+   parsing without changing the public model or compatibility fields. Completed.
+8. Pass the hosted matrix on the marked-default commit. Pending.
+9. Remove the line-oriented dependency/configuration implementation after the marked-default
+   commit is verified cross-platform. Pending.
 
 ## Verification Gate
 
-The decision is accepted, but dependency compatibility and backend cutover are not
-considered fully verified until these commands run successfully with the repository-pinned
-Rust 1.95.0 toolchain:
+The marked-default tree passes these commands locally on the repository-pinned Rust 1.95.0
+toolchain:
 
 ```powershell
 rustc --version
-cargo update -p yaml-rust2 --precise 0.11.0
 cargo fmt --all -- --check
 cargo test --workspace --locked --quiet
 cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -170,13 +163,9 @@ $env:RUSTDOCFLAGS = "-D warnings"
 cargo doc --workspace --no-deps --locked
 ```
 
-The complete Linux gate now passes on `rustc 1.95.0 (59807616e 2026-04-14)` and
-`cargo 1.95.0 (f2d3ce0bd 2026-03-21)`: Cargo-generated lock refresh,
-`cargo fmt --all -- --check`, 146 workspace tests plus doctests, Clippy with `-D warnings`,
-and rustdoc with `-D warnings`. The gate exposed and fixed three pre-existing repository
-issues: omitted `serde_json` dev-dependency edges in `Cargo.lock`, one stale
-`PubspecFlutterConfiguration` test literal, and Rust 1.95 Clippy let-chain requirements.
-The hosted Windows gate remains required before public backend cutover.
+The pre-cutover commit `4d1380ccdcd634f3200e48b7f2af88a7bbef203a` also received a
+successful `dartscope/ci` status for the Rust 1.95.0 Linux/Windows matrix. The next required
+evidence is the same hosted matrix on the marked-default cutover commit.
 
 ## Primary Sources
 

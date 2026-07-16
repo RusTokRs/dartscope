@@ -50,7 +50,7 @@ fn merge_configuration(
     }
 }
 
-fn sanitize_bare_wildcards(source: &str, syntax: &PubspecSyntaxCheck) -> String {
+pub(crate) fn sanitize_bare_wildcards(source: &str, syntax: &PubspecSyntaxCheck) -> String {
     let mut bytes = source.as_bytes().to_vec();
     for line in source_lines(source) {
         if !syntax.is_bare_wildcard_line(line.number) {

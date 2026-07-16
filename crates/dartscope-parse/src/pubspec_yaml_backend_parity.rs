@@ -1,15 +1,20 @@
 use dartscope_core::{DartDiagnostic, PubspecInput};
 
-use crate::pubspec::parse_pubspec as parse_conservative_complete;
-use crate::pubspec_configuration::parse_pubspec_configuration as parse_conservative;
-use crate::pubspec_yaml_marked_analysis::parse_pubspec as parse_marked_complete;
-use crate::pubspec_yaml_marked_configuration::parse_pubspec_configuration as parse_marked;
+use crate::pubspec_backend::{
+    PubspecBackend, parse_pubspec_configuration_with_backend, parse_pubspec_with_backend,
+};
 
 #[test]
 fn marked_backend_matches_conservative_configuration_contract() {
     for (case, source) in parity_cases() {
-        let conservative = parse_conservative(PubspecInput::new("config\\pubspec.yaml", source));
-        let marked = parse_marked(PubspecInput::new("config\\pubspec.yaml", source));
+        let conservative = parse_pubspec_configuration_with_backend(
+            PubspecInput::new("config\\pubspec.yaml", source),
+            PubspecBackend::Conservative,
+        );
+        let marked = parse_pubspec_configuration_with_backend(
+            PubspecInput::new("config\\pubspec.yaml", source),
+            PubspecBackend::Marked,
+        );
 
         assert_eq!(
             marked.environment, conservative.environment,
@@ -30,9 +35,14 @@ fn marked_backend_matches_conservative_configuration_contract() {
 #[test]
 fn marked_backend_matches_conservative_complete_pubspec_contract() {
     for (case, source) in dependency_parity_cases() {
-        let conservative =
-            parse_conservative_complete(PubspecInput::new("config\\pubspec.yaml", source));
-        let marked = parse_marked_complete(PubspecInput::new("config\\pubspec.yaml", source));
+        let conservative = parse_pubspec_with_backend(
+            PubspecInput::new("config\\pubspec.yaml", source),
+            PubspecBackend::Conservative,
+        );
+        let marked = parse_pubspec_with_backend(
+            PubspecInput::new("config\\pubspec.yaml", source),
+            PubspecBackend::Marked,
+        );
 
         assert_eq!(
             marked.package_name, conservative.package_name,
@@ -70,8 +80,14 @@ fn marked_backend_preserves_crlf_and_unicode_evidence() {
         .find("    - path: assets/иконка.png")
         .expect("asset declaration must exist");
 
-    let conservative = parse_conservative(PubspecInput::new("pubspec.yaml", source));
-    let marked = parse_marked(PubspecInput::new("pubspec.yaml", source));
+    let conservative = parse_pubspec_configuration_with_backend(
+        PubspecInput::new("pubspec.yaml", source),
+        PubspecBackend::Conservative,
+    );
+    let marked = parse_pubspec_configuration_with_backend(
+        PubspecInput::new("pubspec.yaml", source),
+        PubspecBackend::Marked,
+    );
 
     assert_eq!(
         marked.flutter.asset_configurations,

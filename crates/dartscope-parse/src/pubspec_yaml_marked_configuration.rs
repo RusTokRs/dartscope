@@ -6,6 +6,8 @@ use dartscope_core::pubspec::{
 use dartscope_core::{DartDiagnostic, PubspecInput, SourceSpan, normalize_path};
 
 use crate::pubspec_yaml_marked::{Entry, Node, NodeKind, parse_marked_yaml};
+use crate::pubspec_yaml_subset::{leading_space_count, strip_yaml_comment, yaml_key_value};
+use crate::source_lines::source_lines;
 
 const SUPPORTED_ASSET_PLATFORMS: [&str; 6] = ["android", "ios", "web", "linux", "macos", "windows"];
 
@@ -22,6 +24,7 @@ pub(crate) fn parse_pubspec_configuration(input: PubspecInput) -> PubspecConfigu
             .map(|diagnostic| diagnostic.with_path(path.clone()))
             .collect(),
     };
+    append_contextual_yaml_diagnostics(&input.source, &path, &mut analysis);
 
     let Some(root) = document.root.as_ref().and_then(Node::mapping) else {
         return analysis;
@@ -204,6 +207,7 @@ fn parse_assets(
                     );
                     continue;
                 }
+                report_unsupported_asset_fields(entries, path, analysis);
                 PubspecFlutterAssetConfiguration {
                     path: asset_path.to_string(),
                     flavors: scalar_list(last_entry(entries, "flavors"), path, analysis),
@@ -234,6 +238,45 @@ fn parse_assets(
             span: configuration.span.clone(),
         });
         analysis.flutter.asset_configurations.push(configuration);
+    }
+}
+
+fn report_unsupported_asset_fields(
+    entries: &[Entry],
+    path: &str,
+    analysis: &mut PubspecConfigurationAnalysis,
+) {
+    for entry in entries {
+        if !matches!(
+            entry.key.as_str(),
+            "path" | "flavors" | "platforms" | "transformers"
+        ) {
+            push_warning(
+                analysis,
+                path,
+                "pubspec_unsupported_flutter_asset",
+                format!("unsupported Flutter asset field: {}", entry.key),
+                entry.key_span.clone(),
+            );
+        }
+    }
+}
+
+fn report_unsupported_transformer_fields(
+    entries: &[Entry],
+    path: &str,
+    analysis: &mut PubspecConfigurationAnalysis,
+) {
+    for entry in entries {
+        if !matches!(entry.key.as_str(), "package" | "args") {
+            push_warning(
+                analysis,
+                path,
+                "pubspec_unsupported_flutter_asset_transformer",
+                format!("unsupported Flutter asset transformer field: {}", entry.key),
+                entry.key_span.clone(),
+            );
+        }
     }
 }
 
@@ -327,6 +370,7 @@ fn parse_transformers(
             );
             continue;
         };
+        report_unsupported_transformer_fields(entries, path, analysis);
         let args = match last_entry(entries, "args") {
             Some(args) => scalar_sequence(
                 args,
@@ -509,6 +553,102 @@ fn validate_asset_selectors(
     }
 }
 
+fn append_contextual_yaml_diagnostics(
+    source: &str,
+    path: &str,
+    analysis: &mut PubspecConfigurationAnalysis,
+) {
+    let contextual = analysis
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code == "pubspec_invalid_yaml")
+        .filter_map(|diagnostic| {
+            let span = diagnostic.span.as_ref()?;
+            let context = flutter_yaml_error_context(source, span.start_line)?;
+            Some((context, span.clone()))
+        })
+        .collect::<Vec<_>>();
+
+    for (context, span) in contextual {
+        match context {
+            FlutterYamlErrorContext::Asset => push_error(
+                analysis,
+                path,
+                "pubspec_invalid_flutter_asset",
+                "invalid YAML structure in Flutter asset configuration",
+                span,
+            ),
+            FlutterYamlErrorContext::Transformer => push_error(
+                analysis,
+                path,
+                "pubspec_invalid_flutter_asset_transformer",
+                "invalid YAML structure in Flutter asset transformer configuration",
+                span,
+            ),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum FlutterYamlErrorContext {
+    Asset,
+    Transformer,
+}
+
+fn flutter_yaml_error_context(source: &str, target_line: usize) -> Option<FlutterYamlErrorContext> {
+    let mut in_flutter = false;
+    let mut assets_indent = None;
+    let mut transformers_indent = None;
+
+    for line in source_lines(source) {
+        if line.number > target_line {
+            break;
+        }
+        let yaml = strip_yaml_comment(line.text);
+        let trimmed = yaml.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let indent = leading_space_count(line.text);
+        if indent == 0 {
+            in_flutter = matches!(yaml_key_value(trimmed), Some(("flutter", None)));
+            assets_indent = None;
+            transformers_indent = None;
+            continue;
+        }
+        if !in_flutter {
+            continue;
+        }
+
+        if assets_indent.is_some_and(|assets| indent <= assets) {
+            assets_indent = None;
+            transformers_indent = None;
+        }
+        if transformers_indent.is_some_and(|transformers| indent <= transformers) {
+            transformers_indent = None;
+        }
+
+        match yaml_key_value(trimmed) {
+            Some(("assets", None)) => {
+                assets_indent = Some(indent);
+                transformers_indent = None;
+            }
+            Some(("transformers", None)) if assets_indent.is_some() => {
+                transformers_indent = Some(indent);
+            }
+            _ => {}
+        }
+    }
+
+    if transformers_indent.is_some() {
+        Some(FlutterYamlErrorContext::Transformer)
+    } else if assets_indent.is_some() {
+        Some(FlutterYamlErrorContext::Asset)
+    } else {
+        None
+    }
+}
+
 fn source_line_span(source: &str, evidence: &SourceSpan) -> SourceSpan {
     let marker = evidence.byte_start.min(source.len());
     let byte_start = source[..marker].rfind('\n').map_or(0, |index| index + 1);
@@ -533,6 +673,18 @@ fn push_error(
     analysis
         .diagnostics
         .push(DartDiagnostic::error(code, message, Some(span)).with_path(path.to_string()));
+}
+
+fn push_warning(
+    analysis: &mut PubspecConfigurationAnalysis,
+    path: &str,
+    code: &'static str,
+    message: impl Into<String>,
+    span: SourceSpan,
+) {
+    analysis
+        .diagnostics
+        .push(DartDiagnostic::warning(code, message, Some(span)).with_path(path.to_string()));
 }
 
 #[cfg(test)]

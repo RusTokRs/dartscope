@@ -1,4 +1,4 @@
-//! Conservative Dart file and project analysis.
+//! Dart file, project, and structured pubspec analysis.
 
 mod analysis;
 mod backend;
@@ -10,6 +10,7 @@ mod namespace;
 #[path = "pubspec_analysis.rs"]
 mod pubspec;
 mod pubspec_assets;
+mod pubspec_backend;
 #[path = "pubspec_configuration_analysis.rs"]
 mod pubspec_configuration;
 #[path = "pubspec_configuration.rs"]
@@ -22,9 +23,7 @@ mod pubspec_syntax;
 mod pubspec_yaml_backend_parity;
 #[allow(dead_code)]
 mod pubspec_yaml_marked;
-#[allow(dead_code)]
 mod pubspec_yaml_marked_analysis;
-#[allow(dead_code)]
 mod pubspec_yaml_marked_configuration;
 #[allow(dead_code)]
 mod pubspec_yaml_marked_dependencies;

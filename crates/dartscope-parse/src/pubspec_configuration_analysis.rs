@@ -12,6 +12,15 @@ const SUPPORTED_ASSET_PLATFORMS: [&str; 6] = ["android", "ios", "web", "linux", 
 
 /// Parses environment constraints and normalized Flutter pubspec configuration.
 pub fn parse_pubspec_configuration(input: PubspecInput) -> PubspecConfigurationAnalysis {
+    crate::pubspec_backend::parse_pubspec_configuration_with_backend(
+        input,
+        crate::pubspec_backend::DEFAULT_PUBSPEC_BACKEND,
+    )
+}
+
+pub(crate) fn parse_pubspec_configuration_conservative(
+    input: PubspecInput,
+) -> PubspecConfigurationAnalysis {
     let prepared = prepare_pubspec_source(&input.source);
     let mut analysis =
         parse_pubspec_configuration_prepared(PubspecInput::new(input.path, prepared.source));

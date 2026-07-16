@@ -17,6 +17,8 @@ pub(crate) struct DuplicatePubspecKey {
 pub(crate) struct PubspecSyntaxCheck {
     bare_wildcard_lines: Vec<usize>,
     invalid_flow_spans: Vec<SourceSpan>,
+    invalid_indentation_spans: Vec<SourceSpan>,
+    unsupported_alias_spans: Vec<SourceSpan>,
     duplicate_keys: Vec<DuplicatePubspecKey>,
     multiple_document_spans: Vec<SourceSpan>,
 }
@@ -28,6 +30,14 @@ impl PubspecSyntaxCheck {
 
     pub(crate) fn invalid_flow_spans(&self) -> &[SourceSpan] {
         &self.invalid_flow_spans
+    }
+
+    pub(crate) fn invalid_indentation_spans(&self) -> &[SourceSpan] {
+        &self.invalid_indentation_spans
+    }
+
+    pub(crate) fn unsupported_alias_spans(&self) -> &[SourceSpan] {
+        &self.unsupported_alias_spans
     }
 
     pub(crate) fn duplicate_keys(&self) -> &[DuplicatePubspecKey] {
@@ -76,8 +86,31 @@ pub(crate) fn append_common_syntax_diagnostics(
     path: &str,
     syntax: &PubspecSyntaxCheck,
 ) {
+    for span in syntax.invalid_indentation_spans() {
+        push_unique_diagnostic(
+            diagnostics,
+            DartDiagnostic::error(
+                "pubspec_invalid_indentation",
+                "pubspec.yaml indentation must use spaces, not tabs",
+                Some(span.clone()),
+            )
+            .with_path(path),
+        );
+    }
+    for span in syntax.unsupported_alias_spans() {
+        push_unique_diagnostic(
+            diagnostics,
+            DartDiagnostic::warning(
+                "pubspec_unsupported_yaml_alias",
+                "YAML anchors, aliases, and merge keys are not supported by the pubspec parser",
+                Some(span.clone()),
+            )
+            .with_path(path),
+        );
+    }
     for duplicate in syntax.duplicate_keys() {
-        diagnostics.push(
+        push_unique_diagnostic(
+            diagnostics,
             DartDiagnostic::error(
                 "pubspec_duplicate_key",
                 format!("duplicate YAML mapping key: {}", duplicate.key),
@@ -87,7 +120,8 @@ pub(crate) fn append_common_syntax_diagnostics(
         );
     }
     for span in syntax.multiple_document_spans() {
-        diagnostics.push(
+        push_unique_diagnostic(
+            diagnostics,
             DartDiagnostic::error(
                 "pubspec_multiple_documents_unsupported",
                 "pubspec.yaml must contain exactly one YAML document",
@@ -95,6 +129,21 @@ pub(crate) fn append_common_syntax_diagnostics(
             )
             .with_path(path),
         );
+    }
+}
+
+fn push_unique_diagnostic(diagnostics: &mut Vec<DartDiagnostic>, candidate: DartDiagnostic) {
+    let duplicate = diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == candidate.code
+            && diagnostic.span.as_ref().is_some_and(|existing| {
+                candidate
+                    .span
+                    .as_ref()
+                    .is_some_and(|span| existing.start_line == span.start_line)
+            })
+    });
+    if !duplicate {
+        diagnostics.push(candidate);
     }
 }
 
@@ -153,7 +202,15 @@ impl SyntaxScanner {
     }
 
     fn observe_content(&mut self, source_line: SourceLine<'_>) {
-        if self.stop || leading_indentation_contains_tab(source_line.text) {
+        if self.stop {
+            return;
+        }
+        if leading_indentation_contains_tab(source_line.text) {
+            self.syntax.invalid_indentation_spans.push(SourceSpan::line(
+                source_line.number,
+                source_line.byte_start,
+                source_line.text,
+            ));
             return;
         }
 
@@ -166,6 +223,9 @@ impl SyntaxScanner {
 
         let indent = leading_space_count(source_line.text);
         let span = SourceSpan::line(source_line.number, source_line.byte_start, source_line.text);
+        if contains_unsupported_alias_syntax(trimmed) {
+            self.syntax.unsupported_alias_spans.push(span.clone());
+        }
         if indent == 0 {
             self.observe_top_level(trimmed, span);
             return;
@@ -285,6 +345,44 @@ impl SyntaxScanner {
     fn finish(self) -> PubspecSyntaxCheck {
         self.syntax
     }
+}
+
+fn contains_unsupported_alias_syntax(value: &str) -> bool {
+    if value.starts_with("<<:") {
+        return true;
+    }
+    if yaml_key_value(value).is_some_and(|(_, scalar)| scalar == Some("*")) {
+        return false;
+    }
+
+    let mut quote = None;
+    let mut escaped = false;
+    let mut previous = None;
+    for ch in value.chars() {
+        if let Some(active_quote) = quote {
+            if escaped {
+                escaped = false;
+            } else if active_quote == '"' && ch == '\\' {
+                escaped = true;
+            } else if ch == active_quote {
+                quote = None;
+            }
+        } else {
+            match ch {
+                '\'' | '"' => quote = Some(ch),
+                '&' | '*'
+                    if previous.is_none_or(|previous: char| {
+                        previous.is_whitespace() || previous == ':'
+                    }) =>
+                {
+                    return true;
+                }
+                _ => {}
+            }
+        }
+        previous = Some(ch);
+    }
+    false
 }
 
 fn blank_line(bytes: &mut [u8], source_line: SourceLine<'_>) {
