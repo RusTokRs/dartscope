@@ -1,0 +1,89 @@
+name: Finalize declaration inventory
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: finalize-parse006
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply declaration inventory
+        run: python .github/scripts/apply_parse006.py
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Check workspace
+        run: cargo check --workspace --all-targets --locked
+      - name: Check umbrella minimal
+        run: cargo check -p dartscope --no-default-features --locked
+      - name: Check umbrella all features
+        run: cargo check -p dartscope --all-features --locked
+      - name: Run workspace tests
+        run: cargo test --workspace --locked --quiet
+      - name: Check formatting
+        if: runner.os == 'Linux'
+        run: cargo fmt --all -- --check
+      - name: Run Clippy
+        if: runner.os == 'Linux'
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Build documentation
+        if: runner.os == 'Linux'
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --locked
+
+  finalize:
+    name: Commit verified inventory
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply declaration inventory
+        run: python .github/scripts/apply_parse006.py
+      - name: Normalize formatting
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+          cargo fmt --all
+      - name: Remove temporary finalizer
+        run: |
+          rm -rf .github/payloads
+          rm .github/scripts/apply_parse006.py
+          rm .github/workflows/finalize-parse006.yml
+      - name: Commit verified declaration inventory
+        run: |
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat: complete declaration inventory"
+          git push origin HEAD:main
+          echo "FINAL_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Publish finalization status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
+            const sha = process.env.FINAL_SHA || context.sha;
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha,
+              state,
+              context: 'dartscope/declaration-inventory-finalization',
+              description: `Declaration inventory finalization: ${{ job.status }}`,
+            });
