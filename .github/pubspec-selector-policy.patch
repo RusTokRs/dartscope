@@ -1,0 +1,510 @@
+diff --git a/crates/dartscope-core/src/pubspec.rs b/crates/dartscope-core/src/pubspec.rs
+index 46d72e4..d6fd504 100644
+--- a/crates/dartscope-core/src/pubspec.rs
++++ b/crates/dartscope-core/src/pubspec.rs
+@@ -84,6 +84,48 @@ pub struct PubspecEnvironmentConstraint {
+     pub span: SourceSpan,
+ }
+ 
++/// Versioned DartScope policy for Flutter asset flavor and platform selectors.
++///
++/// Version 1 keeps flavor names as non-empty opaque application values and validates
++/// platforms against Flutter's documented six-platform list. The version belongs to the
++/// DartScope output contract rather than a specific Flutter SDK release.
++#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Default)]
++pub enum PubspecFlutterAssetSelectorPolicy {
++    #[default]
++    #[serde(rename = "v1")]
++    V1,
++}
++
++impl PubspecFlutterAssetSelectorPolicy {
++    pub const CURRENT: Self = Self::V1;
++
++    /// Returns the stable numeric policy version.
++    pub const fn version(self) -> u16 {
++        match self {
++            Self::V1 => 1,
++        }
++    }
++
++    /// Returns the platform names accepted by this policy.
++    pub const fn supported_platforms(self) -> &'static [&'static str] {
++        match self {
++            Self::V1 => &["android", "ios", "web", "linux", "macos", "windows"],
++        }
++    }
++
++    /// Returns whether a flavor name is valid under this policy.
++    pub fn accepts_flavor(self, flavor: &str) -> bool {
++        match self {
++            Self::V1 => !flavor.is_empty(),
++        }
++    }
++
++    /// Returns whether a platform name is valid under this policy.
++    pub fn accepts_platform(self, platform: &str) -> bool {
++        self.supported_platforms().contains(&platform)
++    }
++}
++
+ /// Normalized configuration owned by the top-level Flutter mapping.
+ #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
+ pub struct PubspecFlutterConfiguration {
+@@ -91,6 +133,10 @@ pub struct PubspecFlutterConfiguration {
+     pub uses_material_design: Option<bool>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub generate_localizations: Option<bool>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub default_flavor: Option<String>,
++    #[serde(default)]
++    pub asset_selector_policy: PubspecFlutterAssetSelectorPolicy,
+     pub assets: Vec<PubspecFlutterAsset>,
+     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+     pub asset_configurations: Vec<PubspecFlutterAssetConfiguration>,
+diff --git a/crates/dartscope-core/tests/fixtures/pubspec_configuration.json b/crates/dartscope-core/tests/fixtures/pubspec_configuration.json
+index 8150901..8d02017 100644
+--- a/crates/dartscope-core/tests/fixtures/pubspec_configuration.json
++++ b/crates/dartscope-core/tests/fixtures/pubspec_configuration.json
+@@ -17,6 +17,8 @@
+   "flutter": {
+     "uses_material_design": true,
+     "generate_localizations": true,
++    "default_flavor": "production",
++    "asset_selector_policy": "v1",
+     "assets": [
+       {
+         "path": "assets/images/",
+diff --git a/crates/dartscope-core/tests/pubspec_configuration_serialization.rs b/crates/dartscope-core/tests/pubspec_configuration_serialization.rs
+index 8056acb..500698e 100644
+--- a/crates/dartscope-core/tests/pubspec_configuration_serialization.rs
++++ b/crates/dartscope-core/tests/pubspec_configuration_serialization.rs
+@@ -1,7 +1,8 @@
+ use dartscope_core::SourceSpan;
+ use dartscope_core::pubspec::{
+     PubspecConfigurationAnalysis, PubspecEnvironmentConstraint, PubspecFlutterAsset,
+-    PubspecFlutterConfiguration, PubspecFlutterFont, PubspecFlutterFontFamily,
++    PubspecFlutterAssetSelectorPolicy, PubspecFlutterConfiguration, PubspecFlutterFont,
++    PubspecFlutterFontFamily,
+ };
+ 
+ #[test]
+@@ -16,6 +17,8 @@ fn serializes_the_core_pubspec_configuration_shape() {
+         flutter: PubspecFlutterConfiguration {
+             uses_material_design: Some(true),
+             generate_localizations: Some(true),
++            default_flavor: Some("production".to_string()),
++            asset_selector_policy: PubspecFlutterAssetSelectorPolicy::V1,
+             assets: vec![PubspecFlutterAsset {
+                 path: "assets/images/".to_string(),
+                 span: span(80, 98, 7, 1, 19),
+@@ -62,3 +65,25 @@ fn span(
+         end_column,
+     }
+ }
++
++#[test]
++fn defaults_selector_policy_and_default_flavor_for_legacy_payloads() {
++    let legacy = serde_json::json!({
++        "path": "pubspec.yaml",
++        "environment": [],
++        "flutter": {
++            "assets": [],
++            "fonts": []
++        },
++        "diagnostics": []
++    });
++
++    let analysis: PubspecConfigurationAnalysis =
++        serde_json::from_value(legacy).expect("deserialize legacy pubspec configuration");
++
++    assert_eq!(analysis.flutter.default_flavor, None);
++    assert_eq!(
++        analysis.flutter.asset_selector_policy,
++        PubspecFlutterAssetSelectorPolicy::V1
++    );
++}
+diff --git a/crates/dartscope-parse/src/lib.rs b/crates/dartscope-parse/src/lib.rs
+index 30774b3..f5b67fa 100644
+--- a/crates/dartscope-parse/src/lib.rs
++++ b/crates/dartscope-parse/src/lib.rs
+@@ -35,8 +35,9 @@ pub use dartscope_core::pubspec::PubspecConfiguration;
+ pub use pubspec::parse_pubspec;
+ pub use pubspec_configuration::{
+     PubspecConfigurationAnalysis, PubspecEnvironmentConstraint, PubspecFlutterAsset,
+-    PubspecFlutterAssetConfiguration, PubspecFlutterAssetTransformer, PubspecFlutterConfiguration,
+-    PubspecFlutterFont, PubspecFlutterFontFamily, parse_pubspec_configuration,
++    PubspecFlutterAssetConfiguration, PubspecFlutterAssetSelectorPolicy,
++    PubspecFlutterAssetTransformer, PubspecFlutterConfiguration, PubspecFlutterFont,
++    PubspecFlutterFontFamily, parse_pubspec_configuration,
+ };
+ pub use pubspec_source::{
+     PubspecDependencySource, PubspecDependencySourceExt, PubspecDependencySourceField,
+diff --git a/crates/dartscope-parse/src/pubspec_configuration_analysis.rs b/crates/dartscope-parse/src/pubspec_configuration_analysis.rs
+index 3f0658e..d4d4d6e 100644
+--- a/crates/dartscope-parse/src/pubspec_configuration_analysis.rs
++++ b/crates/dartscope-parse/src/pubspec_configuration_analysis.rs
+@@ -2,8 +2,9 @@ use dartscope_core::PubspecInput;
+ 
+ pub use dartscope_core::pubspec::{
+     PubspecConfigurationAnalysis, PubspecEnvironmentConstraint, PubspecFlutterAsset,
+-    PubspecFlutterAssetConfiguration, PubspecFlutterAssetTransformer, PubspecFlutterConfiguration,
+-    PubspecFlutterFont, PubspecFlutterFontFamily,
++    PubspecFlutterAssetConfiguration, PubspecFlutterAssetSelectorPolicy,
++    PubspecFlutterAssetTransformer, PubspecFlutterConfiguration, PubspecFlutterFont,
++    PubspecFlutterFontFamily,
+ };
+ 
+ /// Parses environment constraints and normalized Flutter pubspec configuration.
+@@ -55,6 +56,7 @@ mod tests {
+             "pubspec.yaml",
+             concat!(
+                 "flutter:\n",
++                "  default-flavor: customer-a\n",
+                 "  assets:\n",
+                 "    - path: assets/shared.bin\n",
+                 "      flavors: [customer-a, experimental_2026]\n",
+@@ -63,6 +65,14 @@ mod tests {
+         ));
+ 
+         assert!(analysis.diagnostics.is_empty());
++        assert_eq!(
++            analysis.flutter.default_flavor.as_deref(),
++            Some("customer-a")
++        );
++        assert_eq!(
++            analysis.flutter.asset_selector_policy,
++            PubspecFlutterAssetSelectorPolicy::V1
++        );
+         assert_eq!(
+             analysis.flutter.asset_configurations[0].flavors,
+             ["customer-a", "experimental_2026"]
+diff --git a/crates/dartscope-parse/src/pubspec_yaml_contract.rs b/crates/dartscope-parse/src/pubspec_yaml_contract.rs
+index 248032d..b1334d6 100644
+--- a/crates/dartscope-parse/src/pubspec_yaml_contract.rs
++++ b/crates/dartscope-parse/src/pubspec_yaml_contract.rs
+@@ -13,6 +13,7 @@ fn preserves_structured_configuration_contract() {
+         "    sdk: flutter\n",
+         "flutter:\n",
+         "  generate: true\n",
++        "  default-flavor: production\n",
+         "  assets:\n",
+         "    - path: assets/logo.svg\n",
+         "      flavors: [development, customer-a]\n",
+@@ -29,6 +30,14 @@ fn preserves_structured_configuration_contract() {
+     assert_eq!(analysis.environment[0].name, "sdk");
+     assert_eq!(analysis.environment[0].constraint, "^3.4.0");
+     assert_eq!(analysis.flutter.generate_localizations, Some(true));
++    assert_eq!(
++        analysis.flutter.default_flavor.as_deref(),
++        Some("production")
++    );
++    assert_eq!(
++        analysis.flutter.asset_selector_policy,
++        crate::PubspecFlutterAssetSelectorPolicy::V1
++    );
+     assert_eq!(analysis.flutter.asset_configurations.len(), 1);
+     let asset = &analysis.flutter.asset_configurations[0];
+     assert_eq!(asset.path, "assets/logo.svg");
+diff --git a/crates/dartscope-parse/src/pubspec_yaml_marked_configuration.rs b/crates/dartscope-parse/src/pubspec_yaml_marked_configuration.rs
+index 9c3b02a..3333bb7 100644
+--- a/crates/dartscope-parse/src/pubspec_yaml_marked_configuration.rs
++++ b/crates/dartscope-parse/src/pubspec_yaml_marked_configuration.rs
+@@ -1,7 +1,8 @@
+ use dartscope_core::pubspec::{
+     PubspecConfigurationAnalysis, PubspecEnvironmentConstraint, PubspecFlutterAsset,
+-    PubspecFlutterAssetConfiguration, PubspecFlutterAssetTransformer, PubspecFlutterConfiguration,
+-    PubspecFlutterFont, PubspecFlutterFontFamily,
++    PubspecFlutterAssetConfiguration, PubspecFlutterAssetSelectorPolicy,
++    PubspecFlutterAssetTransformer, PubspecFlutterConfiguration, PubspecFlutterFont,
++    PubspecFlutterFontFamily,
+ };
+ use dartscope_core::{DartDiagnostic, PubspecInput, SourceSpan, normalize_path};
+ 
+@@ -9,8 +10,6 @@ use crate::pubspec_yaml_marked::{Entry, Node, NodeKind, parse_marked_yaml};
+ use crate::pubspec_yaml_subset::{leading_space_count, strip_yaml_comment, yaml_key_value};
+ use crate::source_lines::source_lines;
+ 
+-const SUPPORTED_ASSET_PLATFORMS: [&str; 6] = ["android", "ios", "web", "linux", "macos", "windows"];
+-
+ pub(crate) fn parse_pubspec_configuration(input: PubspecInput) -> PubspecConfigurationAnalysis {
+     let path = normalize_path(input.path);
+     let document = parse_marked_yaml(&input.source);
+@@ -120,6 +119,12 @@ fn parse_flutter(
+     );
+     analysis.flutter.generate_localizations =
+         parse_optional_bool(last_entry(entries, "generate"), "generate", path, analysis);
++    analysis.flutter.default_flavor = parse_optional_flavor(
++        last_entry(entries, "default-flavor"),
++        analysis.flutter.asset_selector_policy,
++        path,
++        analysis,
++    );
+     if let Some(assets) = last_entry(entries, "assets") {
+         parse_assets(assets, source, path, analysis);
+     }
+@@ -151,6 +156,36 @@ fn parse_optional_bool(
+     }
+ }
+ 
++fn parse_optional_flavor(
++    entry: Option<&Entry>,
++    policy: PubspecFlutterAssetSelectorPolicy,
++    path: &str,
++    analysis: &mut PubspecConfigurationAnalysis,
++) -> Option<String> {
++    let entry = entry?;
++    let Some(flavor) = entry.value.scalar_value() else {
++        push_error(
++            analysis,
++            path,
++            "pubspec_invalid_flutter_default_flavor",
++            "flutter.default-flavor must be a non-empty scalar",
++            entry.key_span.clone(),
++        );
++        return None;
++    };
++    if !policy.accepts_flavor(flavor) {
++        push_error(
++            analysis,
++            path,
++            "pubspec_invalid_flutter_default_flavor",
++            "flutter.default-flavor must be a non-empty scalar",
++            entry.key_span.clone(),
++        );
++        return None;
++    }
++    Some(flavor.to_string())
++}
++
+ fn parse_assets(
+     assets: &Entry,
+     source: &str,
+@@ -526,8 +561,9 @@ fn validate_asset_selectors(
+     path: &str,
+     analysis: &mut PubspecConfigurationAnalysis,
+ ) {
++    let policy = analysis.flutter.asset_selector_policy;
+     for flavor in &asset.flavors {
+-        if flavor.is_empty() {
++        if !policy.accepts_flavor(flavor) {
+             push_error(
+                 analysis,
+                 path,
+@@ -538,14 +574,14 @@ fn validate_asset_selectors(
+         }
+     }
+     for platform in &asset.platforms {
+-        if !SUPPORTED_ASSET_PLATFORMS.contains(&platform.as_str()) {
++        if !policy.accepts_platform(platform) {
+             push_error(
+                 analysis,
+                 path,
+                 "pubspec_invalid_flutter_asset_platform",
+                 format!(
+                     "unsupported Flutter asset platform: {platform}; expected one of {}",
+-                    SUPPORTED_ASSET_PLATFORMS.join(", ")
++                    policy.supported_platforms().join(", ")
+                 ),
+                 asset.span.clone(),
+             );
+@@ -701,6 +737,7 @@ mod tests {
+                 "flutter:\n",
+                 "  uses-material-design: true\n",
+                 "  generate: true\n",
++                "  default-flavor: production\n",
+                 "  assets:\n",
+                 "    - path: assets/logo.svg\n",
+                 "      flavors: [development, customer-a]\n",
+@@ -721,6 +758,14 @@ mod tests {
+         assert_eq!(analysis.environment[0].constraint, "^3.4.0");
+         assert_eq!(analysis.flutter.uses_material_design, Some(true));
+         assert_eq!(analysis.flutter.generate_localizations, Some(true));
++        assert_eq!(
++            analysis.flutter.default_flavor.as_deref(),
++            Some("production")
++        );
++        assert_eq!(
++            analysis.flutter.asset_selector_policy,
++            PubspecFlutterAssetSelectorPolicy::V1
++        );
+         assert_eq!(analysis.flutter.asset_configurations.len(), 1);
+         assert_eq!(
+             analysis.flutter.asset_configurations[0].transformers[0].args,
+@@ -730,6 +775,23 @@ mod tests {
+         assert!(analysis.diagnostics.is_empty());
+     }
+ 
++    #[test]
++    fn rejects_empty_or_non_scalar_default_flavors() {
++        for source in [
++            "flutter:\n  default-flavor: ''\n",
++            "flutter:\n  default-flavor: [production]\n",
++        ] {
++            let analysis = parse_pubspec_configuration(PubspecInput::new("pubspec.yaml", source));
++
++            assert_eq!(analysis.flutter.default_flavor, None);
++            assert!(
++                analysis.diagnostics.iter().any(|diagnostic| {
++                    diagnostic.code == "pubspec_invalid_flutter_default_flavor"
++                })
++            );
++        }
++    }
++
+     #[test]
+     fn validates_asset_selectors_with_asset_line_evidence() {
+         let source = concat!(
+diff --git a/crates/dartscope-parse/tests/fixtures/pubspec_analysis.json b/crates/dartscope-parse/tests/fixtures/pubspec_analysis.json
+index aa88b59..0bc5da4 100644
+--- a/crates/dartscope-parse/tests/fixtures/pubspec_analysis.json
++++ b/crates/dartscope-parse/tests/fixtures/pubspec_analysis.json
+@@ -37,6 +37,7 @@
+     ],
+     "flutter": {
+       "generate_localizations": true,
++      "asset_selector_policy": "v1",
+       "assets": [
+         {
+           "path": "assets/",
+diff --git a/crates/dartscope-parse/tests/fixtures/pubspec_asset_configuration.json b/crates/dartscope-parse/tests/fixtures/pubspec_asset_configuration.json
+index 01d1a31..71af747 100644
+--- a/crates/dartscope-parse/tests/fixtures/pubspec_asset_configuration.json
++++ b/crates/dartscope-parse/tests/fixtures/pubspec_asset_configuration.json
+@@ -2,26 +2,28 @@
+   "path": "pubspec.yaml",
+   "environment": [],
+   "flutter": {
++    "default_flavor": "production",
++    "asset_selector_policy": "v1",
+     "assets": [
+       {
+         "path": "assets/plain.json",
+         "span": {
+-          "byte_start": 30,
+-          "byte_end": 53,
+-          "start_line": 4,
++          "byte_start": 59,
++          "byte_end": 82,
++          "start_line": 5,
+           "start_column": 1,
+-          "end_line": 4,
++          "end_line": 5,
+           "end_column": 24
+         }
+       },
+       {
+         "path": "assets/logo.svg",
+         "span": {
+-          "byte_start": 54,
+-          "byte_end": 81,
+-          "start_line": 5,
++          "byte_start": 83,
++          "byte_end": 110,
++          "start_line": 6,
+           "start_column": 1,
+-          "end_line": 5,
++          "end_line": 6,
+           "end_column": 28
+         }
+       }
+@@ -30,11 +32,11 @@
+       {
+         "path": "assets/plain.json",
+         "span": {
+-          "byte_start": 30,
+-          "byte_end": 53,
+-          "start_line": 4,
++          "byte_start": 59,
++          "byte_end": 82,
++          "start_line": 5,
+           "start_column": 1,
+-          "end_line": 4,
++          "end_line": 5,
+           "end_column": 24
+         }
+       },
+@@ -56,32 +58,32 @@
+               "--font-size=14"
+             ],
+             "span": {
+-              "byte_start": 192,
+-              "byte_end": 235,
+-              "start_line": 11,
++              "byte_start": 221,
++              "byte_end": 264,
++              "start_line": 12,
+               "start_column": 1,
+-              "end_line": 11,
++              "end_line": 12,
+               "end_column": 44
+             }
+           },
+           {
+             "package": "png_optimizer",
+             "span": {
+-              "byte_start": 287,
+-              "byte_end": 319,
+-              "start_line": 13,
++              "byte_start": 316,
++              "byte_end": 348,
++              "start_line": 14,
+               "start_column": 1,
+-              "end_line": 13,
++              "end_line": 14,
+               "end_column": 33
+             }
+           }
+         ],
+         "span": {
+-          "byte_start": 54,
+-          "byte_end": 81,
+-          "start_line": 5,
++          "byte_start": 83,
++          "byte_end": 110,
++          "start_line": 6,
+           "start_column": 1,
+-          "end_line": 5,
++          "end_line": 6,
+           "end_column": 28
+         }
+       }
+diff --git a/crates/dartscope-parse/tests/pubspec_asset_configuration.rs b/crates/dartscope-parse/tests/pubspec_asset_configuration.rs
+index 2021c18..c6119fa 100644
+--- a/crates/dartscope-parse/tests/pubspec_asset_configuration.rs
++++ b/crates/dartscope-parse/tests/pubspec_asset_configuration.rs
+@@ -4,6 +4,7 @@ use dartscope_parse::{parse_pubspec, parse_pubspec_configuration};
+ const SOURCE: &str = concat!(
+     "name: demo\n",
+     "flutter:\n",
++    "  default-flavor: production\n",
+     "  assets:\n",
+     "    - assets/plain.json\n",
+     "    - path: assets/logo.svg\n",
+@@ -31,6 +32,14 @@ fn matches_the_structured_asset_configuration_fixture() {
+ #[test]
+ fn complete_pubspec_analysis_embeds_structured_assets() {
+     let analysis = parse_pubspec(PubspecInput::new("pubspec.yaml", SOURCE));
++    assert_eq!(
++        analysis.configuration.flutter.default_flavor.as_deref(),
++        Some("production")
++    );
++    assert_eq!(
++        analysis.configuration.flutter.asset_selector_policy,
++        dartscope_parse::PubspecFlutterAssetSelectorPolicy::V1
++    );
+     let assets = &analysis.configuration.flutter.asset_configurations;
+ 
+     assert_eq!(assets.len(), 2);
+diff --git a/crates/dartscope-parse/tests/pubspec_backend_parity.rs b/crates/dartscope-parse/tests/pubspec_backend_parity.rs
+index 522a814..3a27cad 100644
+--- a/crates/dartscope-parse/tests/pubspec_backend_parity.rs
++++ b/crates/dartscope-parse/tests/pubspec_backend_parity.rs
+@@ -70,6 +70,7 @@ fn parity_cases() -> [(&'static str, &'static str); 4] {
+                 "    sdk: flutter\n",
+                 "flutter:\n",
+                 "  generate: true\n",
++                "  default-flavor: production\n",
+                 "  assets:\n",
+                 "    - path: assets/logo.svg\n",
+                 "      flavors: [development, customer-a]\n",
