@@ -11,6 +11,3 @@ description = "Versioned JSON contracts and serialization helpers for DartScope 
 dartscope-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-
-[dev-dependencies]
-dartscope-flutter.workspace = true
