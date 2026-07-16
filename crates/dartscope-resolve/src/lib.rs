@@ -457,10 +457,14 @@ fn is_relative_uri_path_inside_root(uri: &str) -> bool {
     }
     let mut depth = 0usize;
     for segment in uri.split('/') {
-        match segment {
-            "" | "." => {}
-            ".." if depth == 0 => return false,
-            ".." => depth -= 1,
+        let decoded = percent_decode_str(segment).collect::<Vec<_>>();
+        if decoded.contains(&b'/') || decoded.contains(&b'\\') {
+            return false;
+        }
+        match decoded.as_slice() {
+            b"" | b"." => {}
+            b".." if depth == 0 => return false,
+            b".." => depth -= 1,
             _ => depth += 1,
         }
     }
@@ -695,6 +699,76 @@ mod tests {
             "file:///cache/graphql-5.2.0/lib/client.dart"
         );
         assert_eq!(resolved.project_path, None);
+    }
+
+    #[test]
+    fn resolves_percent_escaped_and_windows_file_uris() {
+        let config = parse_package_config(PackageConfigInput::new(
+            ".dart_tool/package_config.json",
+            r#"{
+  "configVersion": 2,
+  "packages": [
+    {
+      "name": "escaped",
+      "rootUri": "file:///cache/my%20package/",
+      "packageUri": "lib%20src/"
+    },
+    {
+      "name": "windows",
+      "rootUri": "file:///C:/Users/demo/app/",
+      "packageUri": "lib/"
+    }
+  ]
+}"#,
+        ));
+
+        assert!(config.diagnostics.is_empty());
+        let escaped = resolve_package_uri(&config, "package:escaped/api%20client.dart").unwrap();
+        assert_eq!(
+            escaped.resolved_uri,
+            "file:///cache/my%20package/lib%20src/api%20client.dart"
+        );
+        assert_eq!(escaped.project_path, None);
+
+        let windows = resolve_package_uri(&config, "package:windows/main.dart").unwrap();
+        assert_eq!(
+            windows.resolved_uri,
+            "file:///C:/Users/demo/app/lib/main.dart"
+        );
+        assert_eq!(windows.project_path, None);
+    }
+
+    #[test]
+    fn rejects_percent_encoded_uri_traversal() {
+        let invalid_config = parse_package_config(PackageConfigInput::new(
+            ".dart_tool/package_config.json",
+            r#"{
+  "configVersion": 2,
+  "packages": [
+    {"name":"app","rootUri":"../","packageUri":"%2e%2e/outside/"}
+  ]
+}"#,
+        ));
+        assert!(
+            invalid_config
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "package_config_invalid_package_uri" })
+        );
+
+        let valid_config = parse_package_config(PackageConfigInput::new(
+            ".dart_tool/package_config.json",
+            r#"{
+  "configVersion": 2,
+  "packages": [
+    {"name":"app","rootUri":"../","packageUri":"lib/"}
+  ]
+}"#,
+        ));
+        assert!(matches!(
+            resolve_package_uri(&valid_config, "package:app/%2e%2e/secret.dart"),
+            Err(PackageUriResolutionError::InvalidPackageUri(_))
+        ));
     }
 
     #[test]
