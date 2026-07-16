@@ -321,7 +321,7 @@ Alternative backends map their internal syntax trees to `dartscope-core` facts t
 
 ### DS-PARSE-006: Complete Declaration Inventory
 
-Status: planned. Priority: P1. Prerequisite: DS-PARSE-005.
+Status: ready. Priority: P1. Prerequisite: DS-PARSE-005.
 
 Add normalized methods, constructors, fields, getters, setters, operators, and local
 scope ownership. Add enclosing symbol IDs and declaration spans covering the complete
@@ -451,15 +451,27 @@ Acceptance:
 
 ### DS-CLI-002: CLI Contract And Integration Tests
 
-Status: ready. Priority: P1. Owner crate: `dartscope-cli`.
+Status: verified. Priority: P1. Owner crate: `dartscope-cli`.
 
-Required work:
+Implemented slices:
 
-1. Add `--help`, `--version`, command-specific usage, and stable exit-code behavior.
-2. Add integration tests for each command, invalid arguments, missing paths, and
-   environment pairs.
-3. Test project discovery with nested packages and nearest package configurations.
-4. Decide and document symlink behavior and additional ignored generated directories.
+1. Global and command-specific help, package version output, and documented process exit
+   codes for success, internal failure, invalid arguments, and unreadable inputs.
+2. Process-level integration coverage for all seven JSON commands, invalid arguments,
+   missing paths, repeatable environment pairs, and malformed source inputs.
+3. Deterministic nested-package discovery with each package's nearest sibling
+   `.dart_tool/package_config.json`.
+4. Paths containing spaces, exact generated-directory exclusions, and a documented policy
+   that recursive discovery never follows symlink entries.
+5. Stable stdout/stderr separation: successful JSON commands emit one envelope to stdout,
+   while argument and filesystem failures emit one human-readable error to stderr.
+
+Verification:
+
+- malformed Dart and YAML produce successful diagnostic-bearing JSON rather than panics;
+- exact Rust 1.95 formatting and focused CLI tests pass;
+- hosted Linux and Windows workspace tests and feature matrices report success;
+- aggregate `dartscope/ci` reports success.
 
 Acceptance:
 
@@ -593,6 +605,15 @@ Seven CLI command families emit named v1 envelopes. Five public analysis familie
 checked-in model-backed golden fixtures, raw Serde helpers remain explicitly unstable,
 and compatibility plus migration rules are enforced by focused tests on Linux and Windows.
 
+
+### DS-CLI-002: CLI Contract And Integration Tests
+
+Status: verified.
+
+All seven command families have stable help, version, exit-code, stdout/stderr, malformed
+input, environment option, filesystem discovery, paths-with-spaces, generated-directory,
+and symlink behavior covered by process-level tests on Linux and Windows.
+
 ### DS-FLUTTER-001: Inventory Aggregation
 
 Status: verified for current input model.
@@ -683,6 +704,7 @@ Do not resolve these conditions by silently expanding scope.
 
 ## Current Recommended Next Step
 
-Implement `DS-CLI-002` CLI contract and integration tests next. `DS-JSON-001` is verified;
-command help, version output, exit codes, malformed-input behavior, nested project discovery,
-paths containing spaces, and stdout/stderr separation are now the next stable-boundary work.
+Implement `DS-PARSE-006` complete declaration inventory next. The stable tool boundary is
+verified through `DS-JSON-001` and `DS-CLI-002`; methods, constructors, fields, accessors,
+operators, local ownership, complete declaration spans, and stable parent relationships are
+now the first ready semantic-model task.

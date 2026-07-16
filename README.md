@@ -18,9 +18,10 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
   and URI resolution primitives without performing filesystem I/O.
 - `dartscope-flutter` aggregates project-level Flutter inventory (widgets, routes, assets,
   localizations) from the normalized analysis model. It is optional for pure Dart consumers.
-- `dartscope-json` provides JSON serialization helpers. A versioned stable schema is
-  still planned and current pre-1.0 shapes can change with documented migrations.
-- `dartscope-cli` exposes a small command-line wrapper for local smoke testing.
+- `dartscope-json` owns named versioned JSON envelopes and checked-in golden contracts;
+  low-level generic Serde helpers remain available but are not stable command schemas.
+- `dartscope-cli` exposes the stable process boundary with help, version output, documented exit
+  codes, deterministic discovery, and versioned JSON for every analysis command.
 - `dartscope` is a thin umbrella crate with feature-gated re-exports.
 
 ## Non-Goals
@@ -35,19 +36,17 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
 - The first parser backend is line-oriented and conservative. It does not yet provide
   a complete Dart AST or type system; lexical masking prevents findings inside comments
   and strings, but complex annotations and multi-line declarations remain limited.
-- Pubspec parsing understands common dependency, environment, asset, font, and generation
-  shapes, including Flutter asset `flavors`, `platforms`, and ordered `transformers`, but
-  it is not yet backed by a complete YAML parser. YAML aliases and merge keys remain
-  explicitly unsupported. Flow-style environment and top-level Flutter configuration
-  mappings remain unsupported, and selector names are preserved without versioned
-  Flutter validation.
+- Pubspec parsing uses a private `yaml-rust2` marked-event backend for dependencies,
+  environment constraints, assets, fonts, selectors, and transformers. YAML aliases and merge keys
+  remain explicitly unsupported, and selector validation follows the serialized DartScope v1 policy
+  rather than claiming compatibility with every future Flutter SDK.
 - Flutter hints are currently detected during file analysis and aggregated by the
   optional `dartscope-flutter` crate. Moving convention extraction fully behind the
   Flutter boundary requires a normalized, parser-independent call-expression model.
 - Declaration coverage is top-level only. Methods, constructors, fields, getters,
   setters, operators, and local symbols are roadmap work.
-- JSON output is deterministic for implemented APIs but is not yet wrapped in a
-  versioned schema envelope.
+- CLI JSON uses named v1 envelopes and deterministic golden fixtures. Payload fields remain
+  pre-1.0 contracts, so breaking changes require a new schema major and a migration note.
 
 `dartscope-parse` also exposes an object-safe `DartParser` contract for callers that
 need a different source-only parser backend. The built-in `HeuristicDartParser` remains
@@ -70,6 +69,8 @@ with all features. See
 
 ```powershell
 cargo test --workspace
+cargo run -p dartscope-cli -- --help
+cargo run -p dartscope-cli -- --version
 cargo run -p dartscope-cli -- analyze-file path\to\file.dart
 cargo run -p dartscope-cli -- pubspec path\to\pubspec.yaml
 cargo run -p dartscope-cli -- pubspec-config path\to\pubspec.yaml
@@ -80,8 +81,9 @@ cargo run -p dartscope-cli -- uri-graph path\to\flutter_project --env dart.libra
 cargo run -p dartscope-cli -- flutter-inventory path\to\flutter_project
 ```
 
-`analyze-project` recursively scans `.dart` files and `pubspec.yaml` files, skips
-`.git`, `.dart_tool`, `build`, and `target`, and returns a deterministic JSON summary
+`analyze-project` recursively scans regular `.dart` files and `pubspec.yaml` files,
+never follows symlink entries, skips the documented generated/tool directory list, and
+returns a deterministic JSON summary
 plus per-file analysis output. Current output includes top-level string constants,
 GraphQL operation documents from Dart raw string constants, declared operation
 variables, client uses such as `gql(operationConstant)` inside
@@ -91,7 +93,9 @@ from same-file string constants, and high-confidence direct Flutter asset/locali
 references such as `Image.asset(...)`, `AssetImage(...)`, `rootBundle.loadString(...)`,
 `DefaultAssetBundle.of(...).loadString(...)`, and `AppLocalizations.of(context)!.key`.
 Use it as the first real-project feedback loop before adding broader parser or Flutter
-convention support.
+convention support. CLI success writes only JSON to stdout; argument and filesystem errors
+write only to stderr with stable exit codes. See
+[`docs/development/cli-contract.md`](docs/development/cli-contract.md).
 
 File, pubspec, and package-configuration diagnostics include their normalized source
 path. Byte spans account for both LF and CRLF input, so downstream evidence can use the
