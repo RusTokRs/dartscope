@@ -1,6 +1,9 @@
 name: Finalize declaration inventory
 
 on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/finalize-parse006.yml]
   workflow_dispatch:
 
 permissions:
