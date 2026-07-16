@@ -1,0 +1,8 @@
+{
+  "schema": "dartscope.graphql-contracts",
+  "version": 1,
+  "data": {
+    "bindings": [],
+    "unresolved_uses": []
+  }
+}
