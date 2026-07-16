@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apply_rust_1_95_fixes:
-    name: Apply Rust 1.95 gate fixes
+  apply_pubspec_cutover:
+    name: Apply marked pubspec cutover
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -27,30 +27,30 @@ jobs:
         with:
           fetch-depth: 0
       - id: apply
-        name: Apply staged gate patch
+        name: Apply staged pubspec cutover
         shell: bash
         run: |
           set -euo pipefail
           revision="${GITHUB_SHA}"
           shopt -s nullglob
-          parts=(.github/rust195-main.patch.b64.part*)
+          parts=(.github/pubspec-cutover.patch.b64.part*)
 
           if [[ "${GITHUB_EVENT_NAME}" == "push" \
             && "${GITHUB_REF}" == "refs/heads/main" \
             && ${#parts[@]} -gt 0 ]]; then
-            cat "${parts[@]}" > /tmp/rust195-main.patch.gz.b64
-            echo "1bc7fe3a607ccb2b6dbe0e04230fc4074dd3cd2450288dc96e201f07c3055d38  /tmp/rust195-main.patch.gz.b64" \
+            cat "${parts[@]}" > /tmp/pubspec-cutover.patch.gz.b64
+            echo "5c11ac948f0c369e8133abb2995f1d732b28cd7a0d8128c52283775d65ed99ad  /tmp/pubspec-cutover.patch.gz.b64" \
               | sha256sum --check --strict
-            base64 --decode /tmp/rust195-main.patch.gz.b64 \
-              | gzip --decompress > /tmp/rust195-main.patch
-            echo "2c02e78d5d4816c6d25bd06409e65bfdced2daeb25e417e1c14e876d5adbb5c4  /tmp/rust195-main.patch" \
+            base64 --decode /tmp/pubspec-cutover.patch.gz.b64 \
+              | gzip --decompress > /tmp/pubspec-cutover.patch
+            echo "772312a88737b09ab6ed4454c33f2aae953aa9332adb704bc94d57a5a6279b78  /tmp/pubspec-cutover.patch" \
               | sha256sum --check --strict
 
-            git apply --index /tmp/rust195-main.patch
+            git apply --index /tmp/pubspec-cutover.patch
             git rm "${parts[@]}"
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "build: satisfy Rust 1.95 verification gates"
+            git commit -m "feat: switch pubspec parsing to marked backend"
             git push origin HEAD:main
             revision="$(git rev-parse HEAD)"
           fi
@@ -59,12 +59,12 @@ jobs:
 
   quality:
     name: Quality gates
-    needs: apply_rust_1_95_fixes
+    needs: apply_pubspec_cutover
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.apply_rust_1_95_fixes.outputs.revision }}
+          ref: ${{ needs.apply_pubspec_cutover.outputs.revision }}
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
       - name: Check formatting
@@ -78,7 +78,7 @@ jobs:
 
   test:
     name: Tests (${{ matrix.os }})
-    needs: apply_rust_1_95_fixes
+    needs: apply_pubspec_cutover
     strategy:
       fail-fast: false
       matrix:
@@ -87,7 +87,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.apply_rust_1_95_fixes.outputs.revision }}
+          ref: ${{ needs.apply_pubspec_cutover.outputs.revision }}
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal
       - name: Run workspace tests
@@ -95,7 +95,7 @@ jobs:
 
   edition_2024:
     name: Edition 2024 (${{ matrix.os }} / ${{ matrix.check.name }})
-    needs: apply_rust_1_95_fixes
+    needs: apply_pubspec_cutover
     strategy:
       fail-fast: false
       matrix:
@@ -111,7 +111,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.apply_rust_1_95_fixes.outputs.revision }}
+          ref: ${{ needs.apply_pubspec_cutover.outputs.revision }}
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal
       - name: Verify workspace edition settings
@@ -124,7 +124,7 @@ jobs:
 
   report:
     name: Publish aggregate status
-    needs: [apply_rust_1_95_fixes, quality, test, edition_2024]
+    needs: [apply_pubspec_cutover, quality, test, edition_2024]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -133,13 +133,13 @@ jobs:
         with:
           script: |
             const results = [
-              '${{ needs.apply_rust_1_95_fixes.result }}',
+              '${{ needs.apply_pubspec_cutover.result }}',
               '${{ needs.quality.result }}',
               '${{ needs.test.result }}',
               '${{ needs.edition_2024.result }}',
             ];
             const passed = results.every((result) => result === 'success');
-            const revision = '${{ needs.apply_rust_1_95_fixes.outputs.revision }}' || context.sha;
+            const revision = '${{ needs.apply_pubspec_cutover.outputs.revision }}' || context.sha;
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
