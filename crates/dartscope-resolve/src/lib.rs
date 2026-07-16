@@ -122,6 +122,12 @@ pub fn parse_package_config(input: PackageConfigInput) -> PackageConfigAnalysis 
         });
     }
 
+    validate_package_layout(
+        &analysis.path,
+        &analysis.packages,
+        &mut analysis.diagnostics,
+    );
+
     for diagnostic in &mut analysis.diagnostics {
         if diagnostic.path.is_none() {
             diagnostic.path = Some(analysis.path.clone());
@@ -360,6 +366,143 @@ fn valid_semver_identifiers(value: &str, allow_leading_zero_numeric: bool) -> bo
                     || identifier == "0"
                     || !identifier.starts_with('0'))
         })
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct CanonicalDirectory {
+    origin: String,
+    segments: Vec<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct PackageDirectories {
+    name: String,
+    root: CanonicalDirectory,
+    package: CanonicalDirectory,
+}
+
+fn validate_package_layout(
+    config_path: &str,
+    packages: &[DartPackageConfigEntry],
+    diagnostics: &mut Vec<DartDiagnostic>,
+) {
+    let Ok(config_uri) = project_file_uri(config_path) else {
+        return;
+    };
+    let directories = packages
+        .iter()
+        .map(|package| resolve_package_directories(&config_uri, package))
+        .collect::<Vec<_>>();
+
+    for (left_index, left) in directories.iter().enumerate() {
+        let Some(left) = left else {
+            continue;
+        };
+        for right in directories.iter().skip(left_index + 1).flatten() {
+            if left.root == right.root {
+                diagnostics.push(DartDiagnostic::error(
+                    "package_config_duplicate_root",
+                    format!(
+                        "packages {:?} and {:?} resolve to the same rootUri",
+                        left.name, right.name
+                    ),
+                    None,
+                ));
+                continue;
+            }
+
+            let overlap = if directory_contains(&left.root, &right.root) {
+                directories_overlap(&left.package, &right.root).then_some((&left.name, &right.name))
+            } else if directory_contains(&right.root, &left.root) {
+                directories_overlap(&right.package, &left.root).then_some((&right.name, &left.name))
+            } else {
+                None
+            };
+
+            if let Some((outer, nested)) = overlap {
+                diagnostics.push(DartDiagnostic::error(
+                    "package_config_package_uri_root_overlap",
+                    format!(
+                        "packageUri for package {outer:?} overlaps nested package root {nested:?}"
+                    ),
+                    None,
+                ));
+            }
+        }
+    }
+}
+
+fn resolve_package_directories(
+    config_uri: &URI<'_>,
+    package: &DartPackageConfigEntry,
+) -> Option<PackageDirectories> {
+    let root_reference = URIReference::try_from(package.root_uri.as_str()).ok()?;
+    let root_uri = directory_uri(config_uri.resolve(&root_reference), &package.name).ok()?;
+    let package_uri = if let Some(package_uri) = package.package_uri.as_deref() {
+        let reference = URIReference::try_from(package_uri).ok()?;
+        directory_uri(root_uri.resolve(&reference), &package.name).ok()?
+    } else {
+        root_uri.clone()
+    };
+    Some(PackageDirectories {
+        name: package.name.clone(),
+        root: canonical_directory(&root_uri)?,
+        package: canonical_directory(&package_uri)?,
+    })
+}
+
+fn canonical_directory(uri: &URI<'_>) -> Option<CanonicalDirectory> {
+    let value = uri.to_string();
+    let (scheme, remainder) = value.split_once(':')?;
+    let (has_authority, authority, path) = if let Some(hierarchical) = remainder.strip_prefix("//")
+    {
+        let path_start = hierarchical.find('/').unwrap_or(hierarchical.len());
+        (
+            true,
+            &hierarchical[..path_start],
+            &hierarchical[path_start..],
+        )
+    } else {
+        (false, "", remainder)
+    };
+    let origin = if scheme.eq_ignore_ascii_case("file") || has_authority {
+        format!(
+            "{}://{}",
+            scheme.to_ascii_lowercase(),
+            authority.to_ascii_lowercase()
+        )
+    } else {
+        format!("{}:", scheme.to_ascii_lowercase())
+    };
+    let mut segments = Vec::new();
+    for segment in path.trim_matches('/').split('/') {
+        if segment.is_empty() {
+            continue;
+        }
+        let decoded = percent_decode_str(segment).collect::<Vec<_>>();
+        match decoded.as_slice() {
+            b"." => {}
+            b".." => {
+                segments.pop()?;
+            }
+            _ => segments.push(decoded),
+        }
+    }
+    Some(CanonicalDirectory { origin, segments })
+}
+
+fn directory_contains(parent: &CanonicalDirectory, child: &CanonicalDirectory) -> bool {
+    parent.origin == child.origin
+        && parent.segments.len() <= child.segments.len()
+        && parent
+            .segments
+            .iter()
+            .zip(&child.segments)
+            .all(|(parent, child)| parent == child)
+}
+
+fn directories_overlap(left: &CanonicalDirectory, right: &CanonicalDirectory) -> bool {
+    directory_contains(left, right) || directory_contains(right, left)
 }
 
 fn validate_package_entry(
@@ -769,6 +912,52 @@ mod tests {
             resolve_package_uri(&valid_config, "package:app/%2e%2e/secret.dart"),
             Err(PackageUriResolutionError::InvalidPackageUri(_))
         ));
+    }
+
+    #[test]
+    fn allows_nested_roots_outside_the_outer_package_uri() {
+        let analysis = parse_package_config(PackageConfigInput::new(
+            ".dart_tool/package_config.json",
+            r#"{
+      "configVersion": 2,
+      "packages": [
+        {"name":"outer","rootUri":"../","packageUri":"lib/"},
+        {"name":"nested","rootUri":"../tool/","packageUri":"lib/"}
+      ]
+    }"#,
+        ));
+
+        assert!(analysis.diagnostics.is_empty());
+        assert!(resolve_package_uri(&analysis, "package:outer/main.dart").is_ok());
+        assert!(resolve_package_uri(&analysis, "package:nested/main.dart").is_ok());
+    }
+
+    #[test]
+    fn rejects_duplicate_roots_and_package_uri_root_overlap() {
+        let analysis = parse_package_config(PackageConfigInput::new(
+            ".dart_tool/package_config.json",
+            r#"{
+      "configVersion": 2,
+      "packages": [
+        {"name":"outer","rootUri":"../","packageUri":"lib/"},
+        {"name":"nested","rootUri":"../lib/generated/","packageUri":"src/"},
+        {"name":"duplicate_a","rootUri":"file:///cache/%70kg/","packageUri":"lib/"},
+        {"name":"duplicate_b","rootUri":"file:///cache/pkg/","packageUri":"src/"}
+      ]
+    }"#,
+        ));
+        let codes = analysis
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.code.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(codes.contains(&"package_config_duplicate_root"));
+        assert!(codes.contains(&"package_config_package_uri_root_overlap"));
+        assert_eq!(
+            resolve_package_uri(&analysis, "package:outer/main.dart"),
+            Err(PackageUriResolutionError::InvalidConfiguration)
+        );
     }
 
     #[test]
