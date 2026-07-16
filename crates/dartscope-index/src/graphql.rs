@@ -10,7 +10,7 @@ use dartscope_core::{
 };
 
 use crate::parts::analyze_part_links;
-use crate::uri_graph::{build_uri_graph_with_options, DartIndexOptions};
+use crate::uri_graph::{DartIndexOptions, build_uri_graph_with_options};
 
 struct OperationLocation<'a> {
     path: &'a str,

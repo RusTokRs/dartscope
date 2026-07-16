@@ -66,8 +66,7 @@ fn rejects_metadata_attached_to_scalar_assets() {
         "    - assets/logo.png\n",
         "      flavors: [development]\n",
     );
-    let analysis =
-        parse_pubspec_configuration(PubspecInput::new("config\\pubspec.yaml", source));
+    let analysis = parse_pubspec_configuration(PubspecInput::new("config\\pubspec.yaml", source));
 
     assert!(analysis.diagnostics.iter().any(|diagnostic| {
         diagnostic.code == "pubspec_invalid_flutter_asset"
@@ -98,9 +97,11 @@ fn rejects_misindented_transformer_fields_and_items() {
     ] {
         let analysis = parse_pubspec_configuration(PubspecInput::new("pubspec.yaml", source));
 
-        assert!(analysis.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "pubspec_invalid_flutter_asset_transformer"
-        }));
+        assert!(
+            analysis.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "pubspec_invalid_flutter_asset_transformer"
+            })
+        );
     }
 }
 
@@ -145,9 +146,12 @@ fn sibling_fields_do_not_leak_nested_list_modes() {
 
     assert_eq!(asset.flavors.as_slice(), ["development"]);
     assert_eq!(asset.transformers[0].args.as_slice(), ["first"]);
-    assert!(analysis.diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == "pubspec_unsupported_flutter_asset"
-    }));
+    assert!(
+        analysis
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "pubspec_unsupported_flutter_asset" })
+    );
     assert!(analysis.diagnostics.iter().any(|diagnostic| {
         diagnostic.code == "pubspec_unsupported_flutter_asset_transformer"
             || diagnostic.code == "pubspec_invalid_flutter_asset_transformer"

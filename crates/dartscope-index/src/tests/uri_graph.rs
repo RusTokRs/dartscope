@@ -143,13 +143,13 @@ fn part_links_json_schema_fixture_is_stable() {
 #[test]
 fn graphql_contract_json_schema_fixture_is_stable() {
     let project = analyze_project(DartProjectInput::new(
-            ".",
-            vec![DartFileInput::new(
-                "lib/client.dart",
-                "const viewerQuery = r'''\nquery Viewer($id: ID!) { viewer(id: $id) { id } }\n''';\n\nvoid load() {\n  client.query(QueryOptions(document: gql(viewerQuery), variables: {'id': id, 'extra': true}));\n}\n",
-            )],
-            vec![],
-        ));
+        ".",
+        vec![DartFileInput::new(
+            "lib/client.dart",
+            "const viewerQuery = r'''\nquery Viewer($id: ID!) { viewer(id: $id) { id } }\n''';\n\nvoid load() {\n  client.query(QueryOptions(document: gql(viewerQuery), variables: {'id': id, 'extra': true}));\n}\n",
+        )],
+        vec![],
+    ));
 
     let analysis = analyze_graphql_contracts(&project);
 
@@ -231,30 +231,34 @@ fn reports_unknown_and_ambiguous_packages() {
 #[test]
 fn resolves_every_conditional_uri_without_selecting_an_environment() {
     let project = analyze_project(DartProjectInput::new(
-            ".",
-            vec![
-                DartFileInput::new(
-                    "lib/platform.dart",
-                    "import 'src/stub.dart' if (dart.library.io) 'src/io.dart' if (dart.library.js_interop) 'src/web.dart';\n",
-                ),
-                DartFileInput::new("lib/src/stub.dart", "class PlatformApi {}\n"),
-                DartFileInput::new("lib/src/io.dart", "class PlatformApi {}\n"),
-                DartFileInput::new("lib/src/web.dart", "class PlatformApi {}\n"),
-            ],
-            vec![],
-        ));
+        ".",
+        vec![
+            DartFileInput::new(
+                "lib/platform.dart",
+                "import 'src/stub.dart' if (dart.library.io) 'src/io.dart' if (dart.library.js_interop) 'src/web.dart';\n",
+            ),
+            DartFileInput::new("lib/src/stub.dart", "class PlatformApi {}\n"),
+            DartFileInput::new("lib/src/io.dart", "class PlatformApi {}\n"),
+            DartFileInput::new("lib/src/web.dart", "class PlatformApi {}\n"),
+        ],
+        vec![],
+    ));
 
     let graph = build_uri_graph(&project);
 
     assert_eq!(graph.references.len(), 3);
-    assert!(graph
-        .references
-        .iter()
-        .all(|reference| reference.resolution == DartUriResolution::Resolved));
-    assert!(graph
-        .references
-        .iter()
-        .any(|reference| { reference.uri == "src/stub.dart" && reference.condition.is_none() }));
+    assert!(
+        graph
+            .references
+            .iter()
+            .all(|reference| reference.resolution == DartUriResolution::Resolved)
+    );
+    assert!(
+        graph
+            .references
+            .iter()
+            .any(|reference| { reference.uri == "src/stub.dart" && reference.condition.is_none() })
+    );
     assert!(graph.references.iter().any(|reference| {
         reference.uri == "src/io.dart" && reference.condition.as_deref() == Some("dart.library.io")
     }));
@@ -267,18 +271,18 @@ fn resolves_every_conditional_uri_without_selecting_an_environment() {
 #[test]
 fn selects_the_first_matching_conditional_uri_when_environment_is_explicit() {
     let project = analyze_project(DartProjectInput::new(
-            ".",
-            vec![
-                DartFileInput::new(
-                    "lib/platform.dart",
-                    "import 'src/stub.dart' if (flavor == 'prod') 'src/prod.dart' if (flavor == 'dev') 'src/dev.dart';\n",
-                ),
-                DartFileInput::new("lib/src/stub.dart", "class PlatformApi {}\n"),
-                DartFileInput::new("lib/src/prod.dart", "class PlatformApi {}\n"),
-                DartFileInput::new("lib/src/dev.dart", "class PlatformApi {}\n"),
-            ],
-            vec![],
-        ));
+        ".",
+        vec![
+            DartFileInput::new(
+                "lib/platform.dart",
+                "import 'src/stub.dart' if (flavor == 'prod') 'src/prod.dart' if (flavor == 'dev') 'src/dev.dart';\n",
+            ),
+            DartFileInput::new("lib/src/stub.dart", "class PlatformApi {}\n"),
+            DartFileInput::new("lib/src/prod.dart", "class PlatformApi {}\n"),
+            DartFileInput::new("lib/src/dev.dart", "class PlatformApi {}\n"),
+        ],
+        vec![],
+    ));
     let options = DartIndexOptions::default()
         .with_compilation_environment(DartCompilationEnvironment::from_pairs([("flavor", "prod")]));
 
@@ -438,23 +442,23 @@ fn does_not_fall_back_when_the_nearest_package_config_is_invalid() {
 #[test]
 fn requires_an_environment_before_resolving_a_conditional_namespace() {
     let project = analyze_project(DartProjectInput::new(
-            ".",
-            vec![
-                DartFileInput::new(
-                    "lib/stub.dart",
-                    "const viewerQuery = r'''query StubViewer { viewer { id } }''';\n",
-                ),
-                DartFileInput::new(
-                    "lib/io.dart",
-                    "const viewerQuery = r'''query IoViewer { viewer { id } }''';\n",
-                ),
-                DartFileInput::new(
-                    "lib/client.dart",
-                    "import 'stub.dart' if (dart.library.io) 'io.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
-                ),
-            ],
-            vec![],
-        ));
+        ".",
+        vec![
+            DartFileInput::new(
+                "lib/stub.dart",
+                "const viewerQuery = r'''query StubViewer { viewer { id } }''';\n",
+            ),
+            DartFileInput::new(
+                "lib/io.dart",
+                "const viewerQuery = r'''query IoViewer { viewer { id } }''';\n",
+            ),
+            DartFileInput::new(
+                "lib/client.dart",
+                "import 'stub.dart' if (dart.library.io) 'io.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
+            ),
+        ],
+        vec![],
+    ));
 
     let analysis = analyze_graphql_contracts(&project);
 
@@ -469,23 +473,23 @@ fn requires_an_environment_before_resolving_a_conditional_namespace() {
 #[test]
 fn resolves_a_conditional_namespace_when_environment_is_explicit() {
     let project = analyze_project(DartProjectInput::new(
-            ".",
-            vec![
-                DartFileInput::new(
-                    "lib/stub.dart",
-                    "const viewerQuery = r'''query StubViewer { viewer { id } }''';\n",
-                ),
-                DartFileInput::new(
-                    "lib/io.dart",
-                    "const viewerQuery = r'''query IoViewer { viewer { id } }''';\n",
-                ),
-                DartFileInput::new(
-                    "lib/client.dart",
-                    "import 'stub.dart' if (dart.library.io) 'io.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
-                ),
-            ],
-            vec![],
-        ));
+        ".",
+        vec![
+            DartFileInput::new(
+                "lib/stub.dart",
+                "const viewerQuery = r'''query StubViewer { viewer { id } }''';\n",
+            ),
+            DartFileInput::new(
+                "lib/io.dart",
+                "const viewerQuery = r'''query IoViewer { viewer { id } }''';\n",
+            ),
+            DartFileInput::new(
+                "lib/client.dart",
+                "import 'stub.dart' if (dart.library.io) 'io.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
+            ),
+        ],
+        vec![],
+    ));
     let options = DartIndexOptions::default().with_compilation_environment(
         DartCompilationEnvironment::from_pairs([("dart.library.io", "true")]),
     );

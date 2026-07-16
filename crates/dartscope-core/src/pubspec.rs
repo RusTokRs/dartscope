@@ -370,7 +370,10 @@ mod tests {
             diagnostics: Vec::new(),
         };
 
-        assert_eq!(analysis.into_configuration(), PubspecConfiguration::default());
+        assert_eq!(
+            analysis.into_configuration(),
+            PubspecConfiguration::default()
+        );
     }
 
     #[test]

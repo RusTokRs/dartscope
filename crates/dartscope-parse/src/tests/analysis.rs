@@ -23,11 +23,13 @@ typedef Mapper = String Function(int value);
     assert_eq!(analysis.parts[0].uri, "home.g.dart");
     assert!(analysis.flutter.imports_flutter);
     assert_eq!(analysis.flutter.widgets[0].class_name, "HomeScreen");
-    assert!(analysis
-        .declarations
-        .iter()
-        .any(|declaration| declaration.name == "Mapper"
-            && declaration.kind == DartDeclarationKind::Typedef));
+    assert!(
+        analysis
+            .declarations
+            .iter()
+            .any(|declaration| declaration.name == "Mapper"
+                && declaration.kind == DartDeclarationKind::Typedef)
+    );
 }
 
 #[test]
@@ -68,14 +70,18 @@ final title = AppLocalizations.of(context)!.realTitle;\n";
 
     assert_eq!(analysis.imports.len(), 1);
     assert_eq!(analysis.imports[0].uri, "package:flutter/widgets.dart");
-    assert!(analysis
-        .declarations
-        .iter()
-        .any(|item| item.name == "RealScreen"));
-    assert!(!analysis
-        .declarations
-        .iter()
-        .any(|item| item.name == "Commented" || item.name == "StringValue"));
+    assert!(
+        analysis
+            .declarations
+            .iter()
+            .any(|item| item.name == "RealScreen")
+    );
+    assert!(
+        !analysis
+            .declarations
+            .iter()
+            .any(|item| item.name == "Commented" || item.name == "StringValue")
+    );
     assert_eq!(analysis.flutter.assets.len(), 1);
     assert_eq!(analysis.flutter.assets[0].path, "assets/real.png");
     assert_eq!(analysis.flutter.localizations.len(), 1);
@@ -87,34 +93,38 @@ fn reports_unterminated_lexical_constructs_with_source_spans() {
     let source = "class Ready {}\n/* nested /* comment\nfinal value = 'unterminated\n";
     let analysis = analyze_file(DartFileInput::new("lib/broken.dart", source));
 
-    assert!(analysis.diagnostics.iter().any(|diagnostic| diagnostic.code
-        == "unterminated_block_comment"
-        && diagnostic.path.as_deref() == Some("lib/broken.dart")
-        && diagnostic
-            .span
-            .as_ref()
-            .is_some_and(|span| span.start_line == 2)));
-    assert!(!analysis
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.code == "unterminated_string"));
+    assert!(analysis.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "unterminated_block_comment"
+            && diagnostic.path.as_deref() == Some("lib/broken.dart")
+            && diagnostic
+                .span
+                .as_ref()
+                .is_some_and(|span| span.start_line == 2)
+    }));
+    assert!(
+        !analysis
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "unterminated_string")
+    );
 
     let string_analysis = analyze_file(DartFileInput::new(
         "lib/string.dart",
         "final value = 'unterminated\nclass Recovered {}\n",
     ));
-    assert!(string_analysis
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.code == "unterminated_string"
+    assert!(string_analysis.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "unterminated_string"
             && diagnostic
                 .span
                 .as_ref()
-                .is_some_and(|span| span.start_line == 1)));
-    assert!(string_analysis
-        .declarations
-        .iter()
-        .any(|item| item.name == "Recovered"));
+                .is_some_and(|span| span.start_line == 1)
+    }));
+    assert!(
+        string_analysis
+            .declarations
+            .iter()
+            .any(|item| item.name == "Recovered")
+    );
 }
 
 #[test]
@@ -148,10 +158,12 @@ class HomeScreen extends widgets.StatelessWidget {}
     assert!(analysis.declarations.iter().any(|declaration| {
         declaration.name == "UserId" && declaration.kind == DartDeclarationKind::ExtensionType
     }));
-    assert!(!analysis
-        .declarations
-        .iter()
-        .any(|declaration| declaration.name == "on" || declaration.name == "type"));
+    assert!(
+        !analysis
+            .declarations
+            .iter()
+            .any(|declaration| declaration.name == "on" || declaration.name == "type")
+    );
     assert_eq!(analysis.flutter.widgets[0].class_name, "HomeScreen");
     assert_eq!(
         analysis.flutter.widgets[0].base_class,
@@ -238,9 +250,9 @@ export 'src/default.dart' if (dart.library.io) 'src/native.dart' hide Internal;
     assert!(analysis.diagnostics.is_empty());
 
     let single_line = analyze_file(DartFileInput::new(
-            "lib/platform_single_line.dart",
-            "import 'src/stub.dart' if (dart.library.io) 'src/io.dart' if (dart.library.js_interop) 'src/web.dart' show PlatformApi;",
-        ));
+        "lib/platform_single_line.dart",
+        "import 'src/stub.dart' if (dart.library.io) 'src/io.dart' if (dart.library.js_interop) 'src/web.dart' show PlatformApi;",
+    ));
     assert_eq!(single_line.imports[0].configurations.len(), 2);
     assert_eq!(
         single_line.imports[0].configurations[1].condition,
@@ -336,10 +348,12 @@ dev_dependencies:
     assert!(analysis.dependencies.iter().any(|dependency| {
         dependency.name == "http" && dependency.version_or_source.as_deref() == Some("^1.2.0")
     }));
-    assert!(!analysis
-        .dependencies
-        .iter()
-        .any(|dependency| dependency.name == "sdk"));
+    assert!(
+        !analysis
+            .dependencies
+            .iter()
+            .any(|dependency| dependency.name == "sdk")
+    );
 }
 
 #[test]
@@ -360,18 +374,24 @@ fn project_analysis_is_sorted_and_project_diagnostics_keep_source_paths() {
     assert_eq!(analysis.files[1].path, "lib/z.dart");
     assert_eq!(analysis.pubspecs[0].path, "packages/z/pubspec.yaml");
     assert_eq!(analysis.pubspecs[1].path, "pubspec.yaml");
-    assert!(analysis
-        .diagnostics
-        .iter()
-        .all(|diagnostic| diagnostic.path.is_some()));
-    assert!(analysis
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.path.as_deref() == Some("lib/z.dart")));
-    assert!(analysis
-        .diagnostics
-        .iter()
-        .any(|diagnostic| { diagnostic.path.as_deref() == Some("packages/z/pubspec.yaml") }));
+    assert!(
+        analysis
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.path.is_some())
+    );
+    assert!(
+        analysis
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.path.as_deref() == Some("lib/z.dart"))
+    );
+    assert!(
+        analysis
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.path.as_deref() == Some("packages/z/pubspec.yaml") })
+    );
 }
 
 #[test]
@@ -519,11 +539,13 @@ Future<String> loadCopy(BuildContext context) {
         asset.path == "assets/copy/welcome.txt"
             && asset.source == dartscope_core::FlutterAssetSource::DefaultAssetBundleLoadString
     }));
-    assert!(analysis
-        .flutter
-        .localizations
-        .iter()
-        .any(|localization| localization.key == "welcomeMessage"));
+    assert!(
+        analysis
+            .flutter
+            .localizations
+            .iter()
+            .any(|localization| localization.key == "welcomeMessage")
+    );
 }
 
 #[test]
@@ -559,10 +581,12 @@ GoRouter buildRouter() {
     let analysis = analyze_file(DartFileInput::new("lib/routes/app_router.dart", source));
 
     assert_eq!(analysis.flutter.routes.len(), 3);
-    assert!(analysis
-        .string_constants
-        .iter()
-        .any(|constant| { constant.name == "modulesRootPath" && constant.value == "/modules" }));
+    assert!(
+        analysis
+            .string_constants
+            .iter()
+            .any(|constant| { constant.name == "modulesRootPath" && constant.value == "/modules" })
+    );
     assert!(analysis.flutter.routes.iter().any(|route| {
         route.path == "homePath"
             && route.path_kind == FlutterRoutePathKind::Expression
@@ -605,11 +629,13 @@ class App extends StatelessWidget {
     let analysis = analyze_file(DartFileInput::new("lib/main.dart", source));
 
     assert_eq!(analysis.flutter.routes.len(), 2);
-    assert!(!analysis
-        .flutter
-        .routes
-        .iter()
-        .any(|route| route.path == "/commented"));
+    assert!(
+        !analysis
+            .flutter
+            .routes
+            .iter()
+            .any(|route| route.path == "/commented")
+    );
     assert!(analysis.flutter.routes.iter().any(|route| {
         route.constructor == "MaterialApp.routes"
             && route.path == "/"

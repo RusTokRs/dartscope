@@ -1,6 +1,4 @@
-use dartscope_core::pubspec::{
-    PubspecDependencySource, PubspecDependencySourceField,
-};
+use dartscope_core::pubspec::{PubspecDependencySource, PubspecDependencySourceField};
 
 #[test]
 fn serializes_every_pubspec_dependency_source_variant() {
@@ -37,10 +35,9 @@ fn serializes_every_pubspec_dependency_source_variant() {
     ];
 
     let actual = serde_json::to_value(&sources).expect("serialize dependency sources");
-    let expected: serde_json::Value = serde_json::from_str(include_str!(
-        "fixtures/pubspec_dependency_sources.json"
-    ))
-    .expect("parse dependency source fixture");
+    let expected: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/pubspec_dependency_sources.json"))
+            .expect("parse dependency source fixture");
 
     assert_eq!(actual, expected);
     let round_trip: Vec<PubspecDependencySource> =

@@ -1,13 +1,13 @@
 use std::collections::HashSet;
 
 use dartscope_core::{
-    normalize_path, DartDiagnostic, DartPackageConfigEntry, DartResolvedPackageUri,
-    DiagnosticSeverity, PackageConfigAnalysis, PackageConfigInput,
+    DartDiagnostic, DartPackageConfigEntry, DartResolvedPackageUri, DiagnosticSeverity,
+    PackageConfigAnalysis, PackageConfigInput, normalize_path,
 };
-use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
+use percent_encoding::{NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
 use serde::Deserialize;
 use thiserror::Error;
-use uriparse::{URIReference, URI};
+use uriparse::{URI, URIReference};
 
 const SUPPORTED_CONFIG_VERSION: u64 = 2;
 const PROJECT_URI_ROOT: &str = "file:///__dartscope_project__/";
@@ -222,29 +222,29 @@ fn validate_package_entry(
             None,
         ));
     }
-    if let Some(package_uri) = package.package_uri.as_deref() {
-        if !is_relative_uri_path_inside_root(package_uri) {
-            diagnostics.push(DartDiagnostic::error(
-                "package_config_invalid_package_uri",
-                format!(
-                    "packageUri for package {:?} must stay inside rootUri",
-                    package.name
-                ),
-                None,
-            ));
-        }
+    if let Some(package_uri) = package.package_uri.as_deref()
+        && !is_relative_uri_path_inside_root(package_uri)
+    {
+        diagnostics.push(DartDiagnostic::error(
+            "package_config_invalid_package_uri",
+            format!(
+                "packageUri for package {:?} must stay inside rootUri",
+                package.name
+            ),
+            None,
+        ));
     }
-    if let Some(version) = package.language_version.as_deref() {
-        if !is_language_version(version) {
-            diagnostics.push(DartDiagnostic::error(
-                "package_config_invalid_language_version",
-                format!(
-                    "languageVersion for package {:?} must use major.minor",
-                    package.name
-                ),
-                None,
-            ));
-        }
+    if let Some(version) = package.language_version.as_deref()
+        && !is_language_version(version)
+    {
+        diagnostics.push(DartDiagnostic::error(
+            "package_config_invalid_language_version",
+            format!(
+                "languageVersion for package {:?} must use major.minor",
+                package.name
+            ),
+            None,
+        ));
     }
 }
 

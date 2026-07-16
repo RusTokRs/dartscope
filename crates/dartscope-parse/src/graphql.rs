@@ -4,7 +4,7 @@ use dartscope_core::{
 };
 
 use crate::declarations::{is_identifier, next_identifier, variable_name_after_keyword};
-use crate::source_lines::{source_lines, SourceLine};
+use crate::source_lines::{SourceLine, source_lines};
 
 pub(crate) fn extract_graphql_operations(
     source: &str,
@@ -259,13 +259,13 @@ pub(crate) fn extract_graphql_operation_uses(
                 name: callable,
                 kind: DartEnclosingSymbolKind::Callable,
             });
-        } else if brace_depth == 0 {
-            if let Some(variable) = top_level_variable_owner_from_line(trimmed) {
-                pending_symbol = Some(DartEnclosingSymbol {
-                    name: variable,
-                    kind: DartEnclosingSymbolKind::Variable,
-                });
-            }
+        } else if brace_depth == 0
+            && let Some(variable) = top_level_variable_owner_from_line(trimmed)
+        {
+            pending_symbol = Some(DartEnclosingSymbol {
+                name: variable,
+                kind: DartEnclosingSymbolKind::Variable,
+            });
         }
         if trimmed.ends_with('{') {
             let line_symbol = callable_name_from_line(trimmed).map(|name| DartEnclosingSymbol {

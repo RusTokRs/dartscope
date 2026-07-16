@@ -26,14 +26,18 @@ fn validates_uri_and_named_part_ownership() {
     let analysis = analyze_part_links(&project);
 
     assert_eq!(analysis.links.len(), 2);
-    assert!(analysis
-        .links
-        .iter()
-        .all(|link| link.status == DartPartLinkStatus::Matched));
-    assert!(analysis
-        .links
-        .iter()
-        .all(|link| link.part_of_span.is_some()));
+    assert!(
+        analysis
+            .links
+            .iter()
+            .all(|link| link.status == DartPartLinkStatus::Matched)
+    );
+    assert!(
+        analysis
+            .links
+            .iter()
+            .all(|link| link.part_of_span.is_some())
+    );
 }
 
 #[test]

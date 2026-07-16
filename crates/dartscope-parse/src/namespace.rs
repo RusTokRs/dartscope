@@ -4,7 +4,7 @@ use dartscope_core::{
 };
 
 use crate::declarations::{is_identifier, quoted_value};
-use crate::source_lines::{source_lines, SourceLine};
+use crate::source_lines::{SourceLine, source_lines};
 
 struct PendingNamespaceDirective {
     keyword: &'static str,
@@ -56,17 +56,17 @@ pub(crate) fn extract_namespace_directives(
             });
         }
 
-        if masked_trimmed.contains(';') {
-            if let Some(directive) = pending.take() {
-                finish_namespace_directive(
-                    directive,
-                    source_line.number,
-                    source_line.byte_end(),
-                    line,
-                    true,
-                    &mut output,
-                );
-            }
+        if masked_trimmed.contains(';')
+            && let Some(directive) = pending.take()
+        {
+            finish_namespace_directive(
+                directive,
+                source_line.number,
+                source_line.byte_end(),
+                line,
+                true,
+                &mut output,
+            );
         }
     }
 

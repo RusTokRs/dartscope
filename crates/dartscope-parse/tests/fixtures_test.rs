@@ -7,30 +7,40 @@ fn flutter_fixture_reports_widgets_and_dependencies() {
     let analysis = analyze_file(DartFileInput::new("lib/main.dart", source));
 
     assert!(analysis.flutter.imports_flutter);
-    assert!(analysis
-        .flutter
-        .widgets
-        .iter()
-        .any(|widget| widget.class_name == "HomeScreen"));
-    assert!(analysis
-        .declarations
-        .iter()
-        .any(|declaration| declaration.name == "LabelBuilder"));
-    assert!(analysis
-        .flutter
-        .assets
-        .iter()
-        .any(|asset| asset.path == "assets/images/logo.png"));
-    assert!(analysis
-        .flutter
-        .assets
-        .iter()
-        .any(|asset| asset.path == "assets/config/app.json"));
-    assert!(analysis
-        .flutter
-        .localizations
-        .iter()
-        .any(|localization| localization.key == "homeTitle"));
+    assert!(
+        analysis
+            .flutter
+            .widgets
+            .iter()
+            .any(|widget| widget.class_name == "HomeScreen")
+    );
+    assert!(
+        analysis
+            .declarations
+            .iter()
+            .any(|declaration| declaration.name == "LabelBuilder")
+    );
+    assert!(
+        analysis
+            .flutter
+            .assets
+            .iter()
+            .any(|asset| asset.path == "assets/images/logo.png")
+    );
+    assert!(
+        analysis
+            .flutter
+            .assets
+            .iter()
+            .any(|asset| asset.path == "assets/config/app.json")
+    );
+    assert!(
+        analysis
+            .flutter
+            .localizations
+            .iter()
+            .any(|localization| localization.key == "homeTitle")
+    );
 
     let pubspec = include_str!("fixtures/flutter_app/pubspec.yaml");
     let pubspec = parse_pubspec(PubspecInput::new("pubspec.yaml", pubspec));
@@ -48,14 +58,18 @@ fn pure_dart_fixture_does_not_emit_flutter_widgets() {
 
     assert!(!analysis.flutter.imports_flutter);
     assert!(analysis.flutter.widgets.is_empty());
-    assert!(analysis
-        .declarations
-        .iter()
-        .any(|declaration| declaration.name == "Calculator"));
-    assert!(analysis
-        .declarations
-        .iter()
-        .any(|declaration| declaration.name == "add"));
+    assert!(
+        analysis
+            .declarations
+            .iter()
+            .any(|declaration| declaration.name == "Calculator")
+    );
+    assert!(
+        analysis
+            .declarations
+            .iter()
+            .any(|declaration| declaration.name == "add")
+    );
 }
 
 #[test]

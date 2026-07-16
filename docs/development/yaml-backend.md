@@ -128,8 +128,9 @@ Completed prerequisites and private backend slices:
 
 Remaining before backend cutover:
 
-- [ ] Pass the complete Rust 1.95.0 Linux and Windows verification matrix.
-- [ ] Switch the public pubspec APIs to the marked backend after that matrix is green.
+- [x] Pass the complete Rust 1.95.0 Linux verification gate.
+- [ ] Pass the hosted Rust 1.95.0 Windows test and edition-2024 matrix.
+- [ ] Switch the public pubspec APIs to the marked backend after the cross-platform matrix is green.
 - [ ] Remove the conservative parser only after the marked backend is the verified default.
 
 The public APIs still use the conservative backend. The marked implementation remains a
@@ -146,10 +147,11 @@ private migration target and cannot leak `yaml-rust2` types into the public cont
    Completed.
 5. Run representative dependency/configuration contracts through both implementations and
    require identical normalized output. Completed.
-6. Pass the complete repository-pinned Rust 1.95.0 Linux and Windows matrix.
-7. Switch `parse_pubspec` and the focused configuration API to the marked-event adapter
+6. Pass the complete repository-pinned Rust 1.95.0 Linux matrix. Completed.
+7. Pass the hosted Rust 1.95.0 Windows test and edition-2024 matrix.
+8. Switch `parse_pubspec` and the focused configuration API to the marked-event adapter
    while retaining the public model, diagnostic paths, and compatibility fields.
-8. Remove the line-oriented dependency, configuration, and syntax parsers only after the
+9. Remove the line-oriented dependency, configuration, and syntax parsers only after the
    complete fixture suite passes on Linux and Windows with the marked backend as default.
 
 ## Verification Gate
@@ -168,13 +170,13 @@ $env:RUSTDOCFLAGS = "-D warnings"
 cargo doc --workspace --no-deps --locked
 ```
 
-The marked bridge and configuration converter previously passed isolated compilation,
-unit tests, formatting, and Clippy on Rust 1.85.0. The dependency converter, complete
-private parity composition, and negative dependency recovery additionally pass an isolated
-build with the real `yaml-rust2` 0.11.0 dependency on Rust 1.88.0: six focused tests,
-`rustfmt --check`, and Clippy with `-D warnings`. These compatibility checks are useful
-evidence but do not replace the required Rust 1.95.0 Linux/Windows matrix or a complete
-workspace test run.
+The complete Linux gate now passes on `rustc 1.95.0 (59807616e 2026-04-14)` and
+`cargo 1.95.0 (f2d3ce0bd 2026-03-21)`: Cargo-generated lock refresh,
+`cargo fmt --all -- --check`, 146 workspace tests plus doctests, Clippy with `-D warnings`,
+and rustdoc with `-D warnings`. The gate exposed and fixed three pre-existing repository
+issues: omitted `serde_json` dev-dependency edges in `Cargo.lock`, one stale
+`PubspecFlutterConfiguration` test literal, and Rust 1.95 Clippy let-chain requirements.
+The hosted Windows gate remains required before public backend cutover.
 
 ## Primary Sources
 

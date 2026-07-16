@@ -36,6 +36,9 @@ fn complete_pubspec_analysis_embeds_structured_assets() {
     assert_eq!(assets.len(), 2);
     assert_eq!(assets[1].path, "assets/logo.svg");
     assert_eq!(assets[1].transformers.len(), 2);
-    assert_eq!(assets[1].transformers[0].package, "vector_graphics_compiler");
+    assert_eq!(
+        assets[1].transformers[0].package,
+        "vector_graphics_compiler"
+    );
     assert_eq!(assets[1].transformers[1].package, "png_optimizer");
 }

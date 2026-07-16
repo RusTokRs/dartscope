@@ -2,28 +2,20 @@ use dartscope_core::{DartDiagnostic, PubspecInput};
 
 pub use dartscope_core::pubspec::{
     PubspecConfigurationAnalysis, PubspecEnvironmentConstraint, PubspecFlutterAsset,
-    PubspecFlutterAssetConfiguration, PubspecFlutterAssetTransformer,
-    PubspecFlutterConfiguration, PubspecFlutterFont, PubspecFlutterFontFamily,
+    PubspecFlutterAssetConfiguration, PubspecFlutterAssetTransformer, PubspecFlutterConfiguration,
+    PubspecFlutterFont, PubspecFlutterFontFamily,
 };
 
 use crate::pubspec_syntax::{append_common_syntax_diagnostics, prepare_pubspec_source};
 
-const SUPPORTED_ASSET_PLATFORMS: [&str; 6] = [
-    "android", "ios", "web", "linux", "macos", "windows",
-];
+const SUPPORTED_ASSET_PLATFORMS: [&str; 6] = ["android", "ios", "web", "linux", "macos", "windows"];
 
 /// Parses environment constraints and normalized Flutter pubspec configuration.
 pub fn parse_pubspec_configuration(input: PubspecInput) -> PubspecConfigurationAnalysis {
     let prepared = prepare_pubspec_source(&input.source);
-    let mut analysis = parse_pubspec_configuration_prepared(PubspecInput::new(
-        input.path,
-        prepared.source,
-    ));
-    append_common_syntax_diagnostics(
-        &mut analysis.diagnostics,
-        &analysis.path,
-        &prepared.syntax,
-    );
+    let mut analysis =
+        parse_pubspec_configuration_prepared(PubspecInput::new(input.path, prepared.source));
+    append_common_syntax_diagnostics(&mut analysis.diagnostics, &analysis.path, &prepared.syntax);
     analysis
 }
 
@@ -187,10 +179,12 @@ mod tests {
             ),
         ));
 
-        assert!(!analysis
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "pubspec_unsupported_flutter_asset"));
+        assert!(
+            !analysis
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "pubspec_unsupported_flutter_asset")
+        );
     }
 
     #[test]

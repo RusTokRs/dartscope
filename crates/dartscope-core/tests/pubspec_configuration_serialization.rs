@@ -1,8 +1,8 @@
+use dartscope_core::SourceSpan;
 use dartscope_core::pubspec::{
     PubspecConfigurationAnalysis, PubspecEnvironmentConstraint, PubspecFlutterAsset,
     PubspecFlutterConfiguration, PubspecFlutterFont, PubspecFlutterFontFamily,
 };
-use dartscope_core::SourceSpan;
 
 #[test]
 fn serializes_the_core_pubspec_configuration_shape() {
@@ -20,6 +20,7 @@ fn serializes_the_core_pubspec_configuration_shape() {
                 path: "assets/images/".to_string(),
                 span: span(80, 98, 7, 1, 19),
             }],
+            asset_configurations: Vec::new(),
             fonts: vec![PubspecFlutterFontFamily {
                 family: "Inter".to_string(),
                 fonts: vec![PubspecFlutterFont {
@@ -35,10 +36,9 @@ fn serializes_the_core_pubspec_configuration_shape() {
     };
 
     let actual = serde_json::to_value(&analysis).expect("serialize pubspec configuration");
-    let expected: serde_json::Value = serde_json::from_str(include_str!(
-        "fixtures/pubspec_configuration.json"
-    ))
-    .expect("parse pubspec configuration fixture");
+    let expected: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/pubspec_configuration.json"))
+            .expect("parse pubspec configuration fixture");
 
     assert_eq!(actual, expected);
     let round_trip: PubspecConfigurationAnalysis =

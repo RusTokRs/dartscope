@@ -1,10 +1,10 @@
-use dartscope_core::{normalize_path, DartDiagnostic, PubspecInput, SourceSpan};
 pub use dartscope_core::pubspec::{
     PubspecConfigurationAnalysis, PubspecEnvironmentConstraint, PubspecFlutterAsset,
     PubspecFlutterConfiguration, PubspecFlutterFont, PubspecFlutterFontFamily,
 };
+use dartscope_core::{DartDiagnostic, PubspecInput, SourceSpan, normalize_path};
 
-use crate::source_lines::{attach_diagnostic_paths, source_lines, SourceLine};
+use crate::source_lines::{SourceLine, attach_diagnostic_paths, source_lines};
 
 /// Parses environment constraints and common Flutter pubspec configuration.
 pub fn parse_pubspec_configuration(input: PubspecInput) -> PubspecConfigurationAnalysis {
@@ -115,11 +115,13 @@ impl ConfigurationParser {
             ));
             return;
         };
-        self.analysis.environment.push(PubspecEnvironmentConstraint {
-            name: yaml_scalar(name).to_string(),
-            constraint: yaml_scalar(constraint).to_string(),
-            span: mapping_key_span(&span, indent, trimmed),
-        });
+        self.analysis
+            .environment
+            .push(PubspecEnvironmentConstraint {
+                name: yaml_scalar(name).to_string(),
+                constraint: yaml_scalar(constraint).to_string(),
+                span: mapping_key_span(&span, indent, trimmed),
+            });
     }
 
     fn observe_flutter(&mut self, trimmed: &str, indent: usize, span: SourceSpan) {
@@ -167,12 +169,7 @@ impl ConfigurationParser {
         }
     }
 
-    fn parse_flutter_bool(
-        &mut self,
-        key: &str,
-        value: &str,
-        span: SourceSpan,
-    ) -> Option<bool> {
+    fn parse_flutter_bool(&mut self, key: &str, value: &str, span: SourceSpan) -> Option<bool> {
         match yaml_scalar(value) {
             "true" => Some(true),
             "false" => Some(false),
@@ -446,10 +443,8 @@ flutter:
           weight: 700
           style: normal
 "#;
-        let analysis = parse_pubspec_configuration(PubspecInput::new(
-            "packages\\demo\\pubspec.yaml",
-            source,
-        ));
+        let analysis =
+            parse_pubspec_configuration(PubspecInput::new("packages\\demo\\pubspec.yaml", source));
 
         assert_eq!(analysis.path, "packages/demo/pubspec.yaml");
         assert_eq!(analysis.environment.len(), 2);
@@ -463,7 +458,10 @@ flutter:
         assert_eq!(analysis.flutter.fonts[0].family, "Inter");
         assert_eq!(analysis.flutter.fonts[0].fonts.len(), 2);
         assert_eq!(analysis.flutter.fonts[0].fonts[1].weight, Some(700));
-        assert_eq!(analysis.flutter.fonts[0].fonts[1].style.as_deref(), Some("normal"));
+        assert_eq!(
+            analysis.flutter.fonts[0].fonts[1].style.as_deref(),
+            Some("normal")
+        );
         assert!(analysis.diagnostics.is_empty());
     }
 
@@ -492,10 +490,8 @@ flutter:
             "        - asset: fonts/Inter.ttf\n",
             "          weight: 750\n",
         );
-        let analysis = parse_pubspec_configuration(PubspecInput::new(
-            "config\\pubspec.yaml",
-            source,
-        ));
+        let analysis =
+            parse_pubspec_configuration(PubspecInput::new("config\\pubspec.yaml", source));
 
         assert!(analysis.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "pubspec_invalid_flutter_boolean"

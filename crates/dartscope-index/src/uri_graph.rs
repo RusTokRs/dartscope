@@ -6,7 +6,7 @@ use dartscope_core::{
     DartUriReferenceKind, DartUriResolution, SourceSpan,
 };
 use dartscope_resolve::{
-    resolve_package_uri as resolve_configured_package_uri, PackageUriResolutionError,
+    PackageUriResolutionError, resolve_package_uri as resolve_configured_package_uri,
 };
 
 use crate::paths::{has_uri_scheme, normalize_joined_path, parent_path};

@@ -116,9 +116,9 @@ pub fn analyze_project_with_parser(
 #[cfg(test)]
 mod tests {
     use super::{
-        analyze_project_with_parser, DartLanguageVersionCoverage, DartParser, DartParserCapability,
-        DartParserCapabilityStatus, DartParserCapabilitySupport, DartParserMetadata,
-        HeuristicDartParser,
+        DartLanguageVersionCoverage, DartParser, DartParserCapability, DartParserCapabilityStatus,
+        DartParserCapabilitySupport, DartParserMetadata, HeuristicDartParser,
+        analyze_project_with_parser,
     };
     use crate::analyze_file;
     use dartscope_core::{DartFileAnalysis, DartFileInput, DartProjectInput};

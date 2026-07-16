@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use dartscope_core::{
-    normalize_path, DartDiagnostic, PubspecAnalysis, PubspecDependency, PubspecDependencySection,
-    PubspecInput, SourceSpan,
+    DartDiagnostic, PubspecAnalysis, PubspecDependency, PubspecDependencySection, PubspecInput,
+    SourceSpan, normalize_path,
 };
 
 use crate::pubspec_source::parse_normalized_dependency_source;
@@ -110,11 +110,13 @@ impl DependencyBuilder {
         };
 
         match scalar {
-            Some(value) if value.trim_start().starts_with('{') => {
-                if !parse_flow_mapping_fields(value, "", &mut builder.fields) {
-                    return None;
-                }
+            Some(value)
+                if value.trim_start().starts_with('{')
+                    && !parse_flow_mapping_fields(value, "", &mut builder.fields) =>
+            {
+                return None;
             }
+            Some(value) if value.trim_start().starts_with('{') => {}
             Some(value) => builder.scalar = Some(yaml_scalar(value).to_string()),
             None => {}
         }
@@ -394,10 +396,10 @@ fn normalize_dependency_source(
     if fields.contains_key("hosted") || fields.keys().any(|key| key.starts_with("hosted.")) {
         return Some(format_source_fields("hosted", fields));
     }
-    if fields.len() == 1 {
-        if let Some(version) = fields.get("version") {
-            return Some(version.clone());
-        }
+    if fields.len() == 1
+        && let Some(version) = fields.get("version")
+    {
+        return Some(version.clone());
     }
 
     Some(
@@ -587,7 +589,10 @@ dependencies:
             source_for(&analysis, "hosted_package"),
             Some("hosted:name=hosted_package;url=https://pub.example.com;version=^2.0.0")
         );
-        assert_eq!(source_for(&analysis, "workspace_package"), Some("workspace"));
+        assert_eq!(
+            source_for(&analysis, "workspace_package"),
+            Some("workspace")
+        );
         assert!(!analysis.dependencies.iter().any(|dependency| matches!(
             dependency.name.as_str(),
             "sdk" | "path" | "git" | "url" | "ref"
@@ -620,7 +625,10 @@ dependencies:
             source_for(&analysis, "hosted_package"),
             Some("hosted:name=hosted_package;url=https://pub.example.com;version=^2.0.0")
         );
-        assert_eq!(source_for(&analysis, "workspace_package"), Some("workspace"));
+        assert_eq!(
+            source_for(&analysis, "workspace_package"),
+            Some("workspace")
+        );
         assert!(analysis.diagnostics.is_empty());
     }
 
@@ -665,10 +673,12 @@ dependencies:
             diagnostic.code == "pubspec_unsupported_yaml_alias"
                 && diagnostic.path.as_deref() == Some("config/pubspec.yaml")
         }));
-        assert!(analysis
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "pubspec_invalid_yaml"));
+        assert!(
+            analysis
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "pubspec_invalid_yaml")
+        );
     }
 
     #[test]

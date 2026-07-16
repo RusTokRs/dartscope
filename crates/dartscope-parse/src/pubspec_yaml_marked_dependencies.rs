@@ -222,10 +222,10 @@ fn normalize_dependency_source(fields: &BTreeMap<String, String>) -> Option<Stri
     if fields.contains_key("hosted") || fields.keys().any(|key| key.starts_with("hosted.")) {
         return Some(format_source_fields("hosted", fields));
     }
-    if fields.len() == 1 {
-        if let Some(version) = fields.get("version") {
-            return Some(version.clone());
-        }
+    if fields.len() == 1
+        && let Some(version) = fields.get("version")
+    {
+        return Some(version.clone());
     }
     Some(
         fields

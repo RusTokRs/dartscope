@@ -339,11 +339,11 @@ Acceptance:
 
 Status: in_progress. Priority: P1. Owner crates: `dartscope-core`, `dartscope-parse`.
 
-The primary pubspec model now stores typed dependency sources, environment constraints,
+The primary pubspec model stores typed dependency sources, environment constraints,
 fonts, and complete Flutter asset configurations with paths, flavors, platforms, ordered
-transformers, compatibility defaults, source spans, and serialization fixtures. The
-remaining parser is still a conservative YAML subset rather than a complete YAML
-implementation.
+transformers, compatibility defaults, source spans, and serialization fixtures. A private
+`yaml-rust2` marked-event backend now produces the same normalized model as the conservative
+backend; the public cutover is waiting only on the hosted Windows gate.
 
 Implemented slices:
 
@@ -355,20 +355,20 @@ Implemented slices:
    path-attributed invalid-YAML diagnostics.
 4. Flutter asset `path`, `flavors`, `platforms`, and ordered `transformers` with optional
    scalar arguments, plus the compatibility path-only `assets` projection.
-5. A documented decision to use `yaml-rust2` 0.11.x through a private marked-event
-   adapter on the pinned Rust 1.95.0 toolchain.
+5. `yaml-rust2 = "=0.11.0"`, a Cargo-generated lock graph, a private marked-event AST,
+   domain conversion for configuration and dependencies, and dual-backend parity coverage.
+6. The complete Linux Definition Of Done passes on the repository-pinned Rust 1.95.0
+   toolchain: lock refresh, rustfmt, workspace tests, Clippy, and rustdoc.
 
 Remaining work:
 
-1. Add the exact `yaml-rust2` dependency and regenerated `Cargo.lock` together on Rust
-   1.95.0.
-2. Implement the private marked-event adapter while preserving dependency, environment,
-   asset, font, and transformer spans.
-3. Require normalized-output parity between the current fixtures and the marked-event
-   implementation before switching the public parser.
+1. Pass the hosted Rust 1.95.0 Windows test and edition-2024 matrix.
+2. Switch the public complete and focused pubspec APIs to the marked backend after the
+   Linux/Windows matrix is green.
+3. Remove the conservative dependency/configuration parser only after the marked backend
+   is the verified default.
 4. Add remaining localization-owned fields and define a versioned policy for validating
    Flutter flavor and platform names.
-5. Run focused and full Rust 1.95.0 quality, test, documentation, and edition-2024 gates.
 
 Acceptance:
 
@@ -378,10 +378,10 @@ Acceptance:
 - malformed YAML produces a path-attributed diagnostic;
 - serialization fixtures cover every dependency source and complete pubspec variant;
 - structured Flutter assets preserve selectors, transformer order, arguments, and spans;
-- all focused and workspace checks pass on Rust 1.95.0.
+- all focused and workspace checks pass on Rust 1.95.0 on Linux and Windows.
 
 Implementation state and remaining limits are recorded in
-`docs/development/pubspec-model.md`.
+`docs/development/pubspec-model.md` and `docs/development/yaml-backend.md`.
 
 ### DS-RESOLVE-003: Package Config Completeness
 

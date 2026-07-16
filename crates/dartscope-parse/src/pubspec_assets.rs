@@ -7,7 +7,7 @@ use crate::pubspec_yaml_subset::{
     leading_indentation_contains_tab, leading_space_count, parse_inline_sequence,
     set_or_matches_indent, strip_yaml_comment, yaml_key_value, yaml_scalar,
 };
-use crate::source_lines::{source_lines, SourceLine};
+use crate::source_lines::{SourceLine, source_lines};
 
 pub(crate) struct PubspecAssetParse {
     pub(crate) found_section: bool,
@@ -93,11 +93,7 @@ impl AssetParser {
         }
 
         let indent = leading_space_count(source_line.text);
-        let span = SourceSpan::line(
-            source_line.number,
-            source_line.byte_start,
-            source_line.text,
-        );
+        let span = SourceSpan::line(source_line.number, source_line.byte_start, source_line.text);
         if indent == 0 {
             self.finish_asset();
             self.in_flutter = matches!(yaml_key_value(trimmed), Some(("flutter", None)));
@@ -259,11 +255,7 @@ impl AssetParser {
         span: SourceSpan,
     ) {
         let parent_indent = self.transformer_indent.unwrap_or_default();
-        if !set_or_matches_indent(
-            &mut self.transformer_property_indent,
-            indent,
-            parent_indent,
-        ) {
+        if !set_or_matches_indent(&mut self.transformer_property_indent, indent, parent_indent) {
             self.push_diagnostic(DartDiagnostic::error(
                 "pubspec_invalid_flutter_asset_transformer",
                 "Flutter asset transformer fields must use consistent indentation",
@@ -352,13 +344,7 @@ impl AssetParser {
         }
     }
 
-    fn push_selector(
-        &mut self,
-        item: &str,
-        indent: usize,
-        mode: AssetMode,
-        span: SourceSpan,
-    ) {
+    fn push_selector(&mut self, item: &str, indent: usize, mode: AssetMode, span: SourceSpan) {
         let parent_indent = self.asset_property_indent.unwrap_or_default();
         if !set_or_matches_indent(&mut self.selector_item_indent, indent, parent_indent) {
             self.push_diagnostic(DartDiagnostic::error(

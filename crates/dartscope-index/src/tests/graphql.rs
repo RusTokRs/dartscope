@@ -151,23 +151,23 @@ fn does_not_resolve_a_cross_file_name_without_an_import() {
 #[test]
 fn resolves_an_unqualified_operation_through_a_direct_import() {
     let project = analyze_project(DartProjectInput::new(
-            ".",
-            vec![
-                DartFileInput::new(
-                    "lib/documents.dart",
-                    "const viewerQuery = r'''query Viewer { viewer { id } }''';\n",
-                ),
-                DartFileInput::new(
-                    "lib/other.dart",
-                    "const viewerQuery = r'''query OtherViewer { otherViewer { id } }''';\n",
-                ),
-                DartFileInput::new(
-                    "lib/client.dart",
-                    "import 'documents.dart' show viewerQuery;\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
-                ),
-            ],
-            vec![],
-        ));
+        ".",
+        vec![
+            DartFileInput::new(
+                "lib/documents.dart",
+                "const viewerQuery = r'''query Viewer { viewer { id } }''';\n",
+            ),
+            DartFileInput::new(
+                "lib/other.dart",
+                "const viewerQuery = r'''query OtherViewer { otherViewer { id } }''';\n",
+            ),
+            DartFileInput::new(
+                "lib/client.dart",
+                "import 'documents.dart' show viewerQuery;\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
+            ),
+        ],
+        vec![],
+    ));
 
     let analysis = analyze_graphql_contracts(&project);
 
@@ -192,19 +192,19 @@ fn respects_prefix_show_and_hide_when_resolving_direct_imports() {
         "import 'documents.dart' show otherQuery;",
     ] {
         let project = analyze_project(DartProjectInput::new(
-                ".",
-                vec![
-                    DartFileInput::new("lib/documents.dart", operation),
-                    DartFileInput::new("lib/duplicate.dart", operation),
-                    DartFileInput::new(
-                        "lib/client.dart",
-                        format!(
-                            "{import}\nvoid load() {{ client.query(QueryOptions(document: gql(viewerQuery))); }}"
-                        ),
+            ".",
+            vec![
+                DartFileInput::new("lib/documents.dart", operation),
+                DartFileInput::new("lib/duplicate.dart", operation),
+                DartFileInput::new(
+                    "lib/client.dart",
+                    format!(
+                        "{import}\nvoid load() {{ client.query(QueryOptions(document: gql(viewerQuery))); }}"
                     ),
-                ],
-                vec![],
-            ));
+                ),
+            ],
+            vec![],
+        ));
 
         let analysis = analyze_graphql_contracts(&project);
 
@@ -223,23 +223,23 @@ fn respects_prefix_show_and_hide_when_resolving_direct_imports() {
 #[test]
 fn resolves_an_operation_through_a_re_export_namespace() {
     let project = analyze_project(DartProjectInput::new(
-            ".",
-            vec![
-                DartFileInput::new(
-                    "lib/src/documents.dart",
-                    "const viewerQuery = r'''query Viewer { viewer { id } }''';\n",
-                ),
-                DartFileInput::new(
-                    "lib/api.dart",
-                    "export 'src/documents.dart' show viewerQuery;\n",
-                ),
-                DartFileInput::new(
-                    "lib/client.dart",
-                    "import 'api.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
-                ),
-            ],
-            vec![],
-        ));
+        ".",
+        vec![
+            DartFileInput::new(
+                "lib/src/documents.dart",
+                "const viewerQuery = r'''query Viewer { viewer { id } }''';\n",
+            ),
+            DartFileInput::new(
+                "lib/api.dart",
+                "export 'src/documents.dart' show viewerQuery;\n",
+            ),
+            DartFileInput::new(
+                "lib/client.dart",
+                "import 'api.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
+            ),
+        ],
+        vec![],
+    ));
 
     let analysis = analyze_graphql_contracts(&project);
 
@@ -260,18 +260,18 @@ fn reports_ambiguous_imported_operations_and_ignores_private_exports() {
     let public_operation = "const viewerQuery = r'''query Viewer { viewer { id } }''';\n";
     let private_operation = "const _privateQuery = r'''query PrivateViewer { viewer { id } }''';\n";
     let project = analyze_project(DartProjectInput::new(
-            ".",
-            vec![
-                DartFileInput::new("lib/a.dart", public_operation),
-                DartFileInput::new("lib/b.dart", public_operation),
-                DartFileInput::new("lib/private.dart", private_operation),
-                DartFileInput::new(
-                    "lib/client.dart",
-                    "import 'a.dart';\nimport 'b.dart';\nimport 'private.dart';\nvoid load() {\n  client.query(QueryOptions(document: gql(viewerQuery)));\n  client.query(QueryOptions(document: gql(_privateQuery)));\n}",
-                ),
-            ],
-            vec![],
-        ));
+        ".",
+        vec![
+            DartFileInput::new("lib/a.dart", public_operation),
+            DartFileInput::new("lib/b.dart", public_operation),
+            DartFileInput::new("lib/private.dart", private_operation),
+            DartFileInput::new(
+                "lib/client.dart",
+                "import 'a.dart';\nimport 'b.dart';\nimport 'private.dart';\nvoid load() {\n  client.query(QueryOptions(document: gql(viewerQuery)));\n  client.query(QueryOptions(document: gql(_privateQuery)));\n}",
+            ),
+        ],
+        vec![],
+    ));
 
     let analysis = analyze_graphql_contracts(&project);
 
@@ -290,23 +290,23 @@ fn reports_ambiguous_imported_operations_and_ignores_private_exports() {
 #[test]
 fn resolves_operations_between_validated_sibling_parts() {
     let project = analyze_project(DartProjectInput::new(
-            ".",
-            vec![
-                DartFileInput::new(
-                    "lib/api.dart",
-                    "part 'src/documents.dart';\npart 'src/client.dart';\n",
-                ),
-                DartFileInput::new(
-                    "lib/src/documents.dart",
-                    "part of '../api.dart';\nconst viewerQuery = r'''query Viewer { viewer { id } }''';\n",
-                ),
-                DartFileInput::new(
-                    "lib/src/client.dart",
-                    "part of '../api.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
-                ),
-            ],
-            vec![],
-        ));
+        ".",
+        vec![
+            DartFileInput::new(
+                "lib/api.dart",
+                "part 'src/documents.dart';\npart 'src/client.dart';\n",
+            ),
+            DartFileInput::new(
+                "lib/src/documents.dart",
+                "part of '../api.dart';\nconst viewerQuery = r'''query Viewer { viewer { id } }''';\n",
+            ),
+            DartFileInput::new(
+                "lib/src/client.dart",
+                "part of '../api.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
+            ),
+        ],
+        vec![],
+    ));
 
     let analysis = analyze_graphql_contracts(&project);
 
@@ -326,20 +326,20 @@ fn resolves_operations_between_validated_sibling_parts() {
 #[test]
 fn imports_public_operations_declared_in_a_validated_part() {
     let project = analyze_project(DartProjectInput::new(
-            ".",
-            vec![
-                DartFileInput::new("lib/api.dart", "part 'src/documents.dart';\n"),
-                DartFileInput::new(
-                    "lib/src/documents.dart",
-                    "part of '../api.dart';\nconst viewerQuery = r'''query Viewer { viewer { id } }''';\n",
-                ),
-                DartFileInput::new(
-                    "lib/client.dart",
-                    "import 'api.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
-                ),
-            ],
-            vec![],
-        ));
+        ".",
+        vec![
+            DartFileInput::new("lib/api.dart", "part 'src/documents.dart';\n"),
+            DartFileInput::new(
+                "lib/src/documents.dart",
+                "part of '../api.dart';\nconst viewerQuery = r'''query Viewer { viewer { id } }''';\n",
+            ),
+            DartFileInput::new(
+                "lib/client.dart",
+                "import 'api.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
+            ),
+        ],
+        vec![],
+    ));
 
     let analysis = analyze_graphql_contracts(&project);
 
@@ -358,20 +358,20 @@ fn imports_public_operations_declared_in_a_validated_part() {
 #[test]
 fn excludes_a_part_that_declares_a_different_owner() {
     let project = analyze_project(DartProjectInput::new(
-            ".",
-            vec![
-                DartFileInput::new("lib/api.dart", "part 'src/documents.dart';\n"),
-                DartFileInput::new(
-                    "lib/src/documents.dart",
-                    "part of '../other.dart';\nconst viewerQuery = r'''query Viewer { viewer { id } }''';\n",
-                ),
-                DartFileInput::new(
-                    "lib/client.dart",
-                    "import 'api.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
-                ),
-            ],
-            vec![],
-        ));
+        ".",
+        vec![
+            DartFileInput::new("lib/api.dart", "part 'src/documents.dart';\n"),
+            DartFileInput::new(
+                "lib/src/documents.dart",
+                "part of '../other.dart';\nconst viewerQuery = r'''query Viewer { viewer { id } }''';\n",
+            ),
+            DartFileInput::new(
+                "lib/client.dart",
+                "import 'api.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
+            ),
+        ],
+        vec![],
+    ));
 
     let analysis = analyze_graphql_contracts(&project);
 
@@ -386,23 +386,20 @@ fn excludes_a_part_that_declares_a_different_owner() {
 #[test]
 fn does_not_assign_a_named_part_claimed_by_multiple_libraries() {
     let project = analyze_project(DartProjectInput::new(
-            ".",
-            vec![
-                DartFileInput::new(
-                    "lib/a.dart",
-                    "library shared;\npart 'shared.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
-                ),
-                DartFileInput::new(
-                    "lib/b.dart",
-                    "library shared;\npart 'shared.dart';\n",
-                ),
-                DartFileInput::new(
-                    "lib/shared.dart",
-                    "part of shared;\nconst viewerQuery = r'''query Viewer { viewer { id } }''';\n",
-                ),
-            ],
-            vec![],
-        ));
+        ".",
+        vec![
+            DartFileInput::new(
+                "lib/a.dart",
+                "library shared;\npart 'shared.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
+            ),
+            DartFileInput::new("lib/b.dart", "library shared;\npart 'shared.dart';\n"),
+            DartFileInput::new(
+                "lib/shared.dart",
+                "part of shared;\nconst viewerQuery = r'''query Viewer { viewer { id } }''';\n",
+            ),
+        ],
+        vec![],
+    ));
 
     let analysis = analyze_graphql_contracts(&project);
 

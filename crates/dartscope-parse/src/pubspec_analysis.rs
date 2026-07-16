@@ -2,7 +2,7 @@ use dartscope_core::pubspec::{PubspecConfiguration, PubspecConfigurationAnalysis
 use dartscope_core::{DartDiagnostic, PubspecAnalysis, PubspecInput};
 
 use crate::pubspec_syntax::{
-    append_common_syntax_diagnostics, prepare_pubspec_source, PubspecSyntaxCheck,
+    PubspecSyntaxCheck, append_common_syntax_diagnostics, prepare_pubspec_source,
 };
 
 /// Parses dependencies and typed configuration into the primary pubspec analysis model.
@@ -29,11 +29,7 @@ pub fn parse_pubspec(input: PubspecInput) -> PubspecAnalysis {
             analysis.diagnostics.push(diagnostic);
         }
     }
-    append_common_syntax_diagnostics(
-        &mut analysis.diagnostics,
-        &analysis.path,
-        &prepared.syntax,
-    );
+    append_common_syntax_diagnostics(&mut analysis.diagnostics, &analysis.path, &prepared.syntax);
     apply_dependency_syntax_check(&mut analysis, &prepared.syntax);
     analysis
 }
@@ -94,7 +90,10 @@ flutter:
         assert_eq!(analysis.dependencies.len(), 1);
         assert_eq!(analysis.configuration.environment.len(), 1);
         assert_eq!(analysis.configuration.environment[0].name, "sdk");
-        assert_eq!(analysis.configuration.flutter.generate_localizations, Some(true));
+        assert_eq!(
+            analysis.configuration.flutter.generate_localizations,
+            Some(true)
+        );
         assert_eq!(analysis.configuration.flutter.assets.len(), 1);
         assert!(analysis.diagnostics.is_empty());
     }
@@ -126,10 +125,12 @@ flutter:
             analysis.dependencies[0].version_or_source.as_deref(),
             Some("*")
         );
-        assert!(!analysis
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "pubspec_unsupported_yaml_alias"));
+        assert!(
+            !analysis
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "pubspec_unsupported_yaml_alias")
+        );
     }
 
     #[test]
@@ -139,10 +140,12 @@ flutter:
             "name: demo\ndependencies:\n  aliased: *defaults\n",
         ));
 
-        assert!(analysis
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "pubspec_unsupported_yaml_alias"));
+        assert!(
+            analysis
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "pubspec_unsupported_yaml_alias")
+        );
     }
 
     #[test]
@@ -154,9 +157,12 @@ flutter:
 
         assert_eq!(analysis.package_name.as_deref(), Some("демо"));
         assert_eq!(analysis.dependencies.len(), 1);
-        assert!(!analysis.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "pubspec_multiple_documents_unsupported"
-        }));
+        assert!(
+            !analysis
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "pubspec_multiple_documents_unsupported" })
+        );
     }
 
     #[test]
@@ -210,9 +216,11 @@ flutter:
             .collect::<Vec<_>>();
 
         assert_eq!(duplicates.len(), 4);
-        assert!(duplicates.iter().all(|diagnostic| {
-            diagnostic.path.as_deref() == Some("config/pubspec.yaml")
-        }));
+        assert!(
+            duplicates
+                .iter()
+                .all(|diagnostic| { diagnostic.path.as_deref() == Some("config/pubspec.yaml") })
+        );
         let sdk = duplicates
             .iter()
             .find(|diagnostic| {

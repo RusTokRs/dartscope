@@ -2,11 +2,7 @@ use crate::pubspec_syntax::{flow_delimiters_are_balanced, prepare_pubspec_source
 
 #[test]
 fn identifies_bare_wildcards_but_not_named_aliases() {
-    let source = concat!(
-        "dependencies:\n",
-        "  wildcard: *\n",
-        "  alias: *defaults\n",
-    );
+    let source = concat!("dependencies:\n", "  wildcard: *\n", "  alias: *defaults\n",);
     let prepared = prepare_pubspec_source(source);
 
     assert!(prepared.syntax.is_bare_wildcard_line(2));
@@ -15,11 +11,7 @@ fn identifies_bare_wildcards_but_not_named_aliases() {
 
 #[test]
 fn retains_dependency_section_after_tab_indentation() {
-    let source = concat!(
-        "dependencies:\n",
-        "\tinvalid: any\n",
-        "  wildcard: *\n",
-    );
+    let source = concat!("dependencies:\n", "\tinvalid: any\n", "  wildcard: *\n",);
     let prepared = prepare_pubspec_source(source);
 
     assert!(prepared.syntax.is_bare_wildcard_line(3));

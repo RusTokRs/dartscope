@@ -37,11 +37,13 @@ fn defaults_configuration_when_deserializing_legacy_json() {
 
     assert!(analysis.configuration.environment.is_empty());
     assert!(analysis.configuration.flutter.assets.is_empty());
-    assert!(analysis
-        .configuration
-        .flutter
-        .asset_configurations
-        .is_empty());
+    assert!(
+        analysis
+            .configuration
+            .flutter
+            .asset_configurations
+            .is_empty()
+    );
     assert!(analysis.configuration.flutter.fonts.is_empty());
 }
 

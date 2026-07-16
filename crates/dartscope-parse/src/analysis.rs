@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use dartscope_core::{
-    normalize_path, Confidence, DartDeclaration, DartDiagnostic, DartFileAnalysis, DartFileInput,
+    Confidence, DartDeclaration, DartDiagnostic, DartFileAnalysis, DartFileInput,
     DartLibraryDirective, DartPart, DartPartOf, DartProjectAnalysis, DartProjectInput,
-    DartProjectSummary, FlutterWidgetHint, SourceSpan,
+    DartProjectSummary, FlutterWidgetHint, SourceSpan, normalize_path,
 };
 use dartscope_resolve::parse_package_config;
 
@@ -14,15 +14,15 @@ use crate::declarations::{
     string_constant_from_line,
 };
 use crate::flutter_hints::{
-    count_char, flutter_asset_from_line, flutter_localization_from_line, material_route_from_line,
-    pending_route_from_line, route_constructor_is_complete, should_finish_route_hint,
-    starts_material_routes_map, PendingRouteHint,
+    PendingRouteHint, count_char, flutter_asset_from_line, flutter_localization_from_line,
+    material_route_from_line, pending_route_from_line, route_constructor_is_complete,
+    should_finish_route_hint, starts_material_routes_map,
 };
 use crate::graphql::{extract_graphql_operation_uses, extract_graphql_operations};
 use crate::lexical::mask_non_code;
 use crate::namespace::{directive_uri, extract_namespace_directives};
 use crate::pubspec::parse_pubspec;
-use crate::source_lines::{attach_diagnostic_paths, source_lines, SourceLine};
+use crate::source_lines::{SourceLine, attach_diagnostic_paths, source_lines};
 
 pub(crate) fn analyze_file_heuristic(input: DartFileInput) -> DartFileAnalysis {
     let lexical = mask_non_code(&input.source);

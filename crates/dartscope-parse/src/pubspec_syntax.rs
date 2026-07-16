@@ -5,7 +5,7 @@ use dartscope_core::{DartDiagnostic, SourceSpan};
 use crate::pubspec_yaml_subset::{
     leading_indentation_contains_tab, leading_space_count, strip_yaml_comment, yaml_key_value,
 };
-use crate::source_lines::{source_lines, SourceLine};
+use crate::source_lines::{SourceLine, source_lines};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) struct DuplicatePubspecKey {
@@ -203,12 +203,7 @@ impl SyntaxScanner {
             );
     }
 
-    fn observe_direct_mapping_key(
-        &mut self,
-        trimmed: &str,
-        indent: usize,
-        span: &SourceSpan,
-    ) {
+    fn observe_direct_mapping_key(&mut self, trimmed: &str, indent: usize, span: &SourceSpan) {
         if !self.in_direct_mapping {
             return;
         }
@@ -226,12 +221,7 @@ impl SyntaxScanner {
         self.record_key(key, indent, trimmed, span.clone(), false);
     }
 
-    fn observe_dependency_syntax(
-        &mut self,
-        trimmed: &str,
-        indent: usize,
-        span: SourceSpan,
-    ) {
+    fn observe_dependency_syntax(&mut self, trimmed: &str, indent: usize, span: SourceSpan) {
         if !self.in_dependency_section {
             return;
         }
@@ -352,9 +342,7 @@ fn find_mapping_colon(value: &str) -> Option<usize> {
         match ch {
             '\'' | '"' => quote = Some(ch),
             ':' => {
-                let is_separator = chars
-                    .peek()
-                    .is_none_or(|(_, next)| next.is_whitespace());
+                let is_separator = chars.peek().is_none_or(|(_, next)| next.is_whitespace());
                 if is_separator {
                     return Some(index);
                 }
@@ -400,11 +388,8 @@ pub(crate) fn flow_delimiters_are_balanced(value: &str) -> bool {
                     return false;
                 }
             }
-            ']' => {
-                if delimiters.pop() != Some('[') {
-                    return false;
-                }
-            }
+            ']' if delimiters.pop() != Some('[') => return false,
+            ']' => {}
             _ => {}
         }
     }

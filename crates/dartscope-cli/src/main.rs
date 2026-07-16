@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use dartscope::{
-    analyze_file, analyze_graphql_contracts_with_options, analyze_project,
-    build_uri_graph_with_options, extract_flutter_inventory, parse_pubspec,
-    parse_pubspec_configuration, to_json_pretty, DartCompilationEnvironment, DartFileInput,
-    DartIndexOptions, DartProjectInput, PackageConfigInput, PubspecInput,
+    DartCompilationEnvironment, DartFileInput, DartIndexOptions, DartProjectInput,
+    PackageConfigInput, PubspecInput, analyze_file, analyze_graphql_contracts_with_options,
+    analyze_project, build_uri_graph_with_options, extract_flutter_inventory, parse_pubspec,
+    parse_pubspec_configuration, to_json_pretty,
 };
 
 fn main() -> ExitCode {

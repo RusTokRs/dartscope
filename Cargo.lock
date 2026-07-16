@@ -32,6 +32,7 @@ name = "dartscope-core"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "thiserror",
 ]
 
@@ -69,6 +70,7 @@ dependencies = [
  "dartscope-core",
  "dartscope-resolve",
  "serde",
+ "serde_json",
  "yaml-rust2",
 ]
 

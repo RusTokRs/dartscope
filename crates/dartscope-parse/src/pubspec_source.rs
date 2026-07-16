@@ -1,6 +1,6 @@
 use dartscope_core::PubspecDependency;
 pub use dartscope_core::pubspec::{
-    parse_normalized_dependency_source, PubspecDependencySource, PubspecDependencySourceField,
+    PubspecDependencySource, PubspecDependencySourceField, parse_normalized_dependency_source,
 };
 
 /// Compatibility extension for callers importing the pre-migration parse-crate trait.
