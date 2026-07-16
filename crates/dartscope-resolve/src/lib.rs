@@ -284,7 +284,7 @@ fn is_generated_timestamp(value: &str) -> bool {
     let month = number(5, 7);
     let day = number(8, 10);
     let hour = number(11, 13);
-    let minute = numberX14, 16);
+    let minute = number(14, 16);
     let second = number(17, 19);
     year > 0
         && (1..=12).contains(&month)
