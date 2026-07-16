@@ -1,18 +1,15 @@
 use std::collections::BTreeMap;
 
 use dartscope_core::{
-    normalize_path, DartDiagnostic, PubspecAnalysis, PubspecDependency, PubspecDependencySection,
-    PubspecInput,
+    DartDiagnostic, PubspecAnalysis, PubspecDependency, PubspecDependencySection, PubspecInput,
+    normalize_path,
 };
 
 use crate::pubspec_source::parse_normalized_dependency_source;
 use crate::pubspec_syntax::PubspecSyntaxCheck;
-use crate::pubspec_yaml_marked::{parse_marked_yaml, Entry, Node, NodeKind};
+use crate::pubspec_yaml_marked::{Entry, Node, NodeKind, parse_marked_yaml};
 
-pub(crate) fn parse_pubspec(
-    input: PubspecInput,
-    syntax: &PubspecSyntaxCheck,
-) -> PubspecAnalysis {
+pub(crate) fn parse_pubspec(input: PubspecInput, syntax: &PubspecSyntaxCheck) -> PubspecAnalysis {
     let path = normalize_path(input.path);
     let document = parse_marked_yaml(&input.source);
     let mut analysis = PubspecAnalysis {
@@ -341,10 +338,12 @@ mod tests {
         assert_eq!(analysis.dependencies.len(), 2);
         assert_eq!(analysis.dependencies[0].span.byte_start, expected);
         assert_eq!(analysis.dependencies[0].span.start_column, 3);
-        assert!(analysis
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "pubspec_duplicate_key"));
+        assert!(
+            analysis
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "pubspec_duplicate_key")
+        );
     }
 
     fn source_for<'a>(analysis: &'a PubspecAnalysis, name: &str) -> Option<&'a str> {
