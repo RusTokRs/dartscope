@@ -15,56 +15,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apply_pubspec_cutover:
-    name: Apply marked pubspec cutover
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    outputs:
-      revision: ${{ steps.apply.outputs.revision }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - id: apply
-        name: Apply staged pubspec cutover
-        shell: bash
-        run: |
-          set -euo pipefail
-          revision="${GITHUB_SHA}"
-          shopt -s nullglob
-          parts=(.github/pubspec-cutover.patch.b64.part*)
-
-          if [[ "${GITHUB_EVENT_NAME}" == "push" \
-            && "${GITHUB_REF}" == "refs/heads/main" \
-            && ${#parts[@]} -gt 0 ]]; then
-            cat "${parts[@]}" > /tmp/pubspec-cutover.patch.gz.b64
-            echo "7b811a1793b6a99eb81f97eae6c8a3246e23ee28b80d4d7002ddc3ced484e76b  /tmp/pubspec-cutover.patch.gz.b64" \
-              | sha256sum --check --strict
-            base64 --decode /tmp/pubspec-cutover.patch.gz.b64 \
-              | gzip --decompress > /tmp/pubspec-cutover.patch
-            echo "e4c35b899516fbb17c15312e8b039ba28e8829681fb41b9fc5d88e0778ac91be  /tmp/pubspec-cutover.patch" \
-              | sha256sum --check --strict
-
-            git apply --index /tmp/pubspec-cutover.patch
-            git rm "${parts[@]}"
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "feat: switch pubspec parsing to marked backend"
-            git push origin HEAD:main
-            revision="$(git rev-parse HEAD)"
-          fi
-
-          echo "revision=${revision}" >> "${GITHUB_OUTPUT}"
-
   quality:
     name: Quality gates
-    needs: apply_pubspec_cutover
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.apply_pubspec_cutover.outputs.revision }}
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
       - name: Check formatting
@@ -78,7 +33,6 @@ jobs:
 
   test:
     name: Tests (${{ matrix.os }})
-    needs: apply_pubspec_cutover
     strategy:
       fail-fast: false
       matrix:
@@ -86,8 +40,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.apply_pubspec_cutover.outputs.revision }}
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal
       - name: Run workspace tests
@@ -95,7 +47,6 @@ jobs:
 
   edition_2024:
     name: Edition 2024 (${{ matrix.os }} / ${{ matrix.check.name }})
-    needs: apply_pubspec_cutover
     strategy:
       fail-fast: false
       matrix:
@@ -110,8 +61,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.apply_pubspec_cutover.outputs.revision }}
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal
       - name: Verify workspace edition settings
@@ -124,7 +73,7 @@ jobs:
 
   report:
     name: Publish aggregate status
-    needs: [apply_pubspec_cutover, quality, test, edition_2024]
+    needs: [quality, test, edition_2024]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -133,17 +82,15 @@ jobs:
         with:
           script: |
             const results = [
-              '${{ needs.apply_pubspec_cutover.result }}',
               '${{ needs.quality.result }}',
               '${{ needs.test.result }}',
               '${{ needs.edition_2024.result }}',
             ];
             const passed = results.every((result) => result === 'success');
-            const revision = '${{ needs.apply_pubspec_cutover.outputs.revision }}' || context.sha;
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              sha: revision,
+              sha: context.sha,
               state: passed ? 'success' : 'failure',
               context: 'dartscope/ci',
               description: passed
