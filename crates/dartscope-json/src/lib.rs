@@ -140,8 +140,10 @@ mod tests {
             .collect::<HashSet<_>>();
 
         assert_eq!(schemas.len(), JsonContract::ALL.len());
-        assert!(JsonContract::ALL
-            .into_iter()
-            .all(|contract| contract.version() > 0));
+        assert!(
+            JsonContract::ALL
+                .into_iter()
+                .all(|contract| contract.version() > 0)
+        );
     }
 }
