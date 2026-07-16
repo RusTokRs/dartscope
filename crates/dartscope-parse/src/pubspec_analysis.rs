@@ -1,77 +1,8 @@
-use dartscope_core::pubspec::{PubspecConfiguration, PubspecConfigurationAnalysis};
-use dartscope_core::{DartDiagnostic, PubspecAnalysis, PubspecInput};
-
-use crate::pubspec_syntax::{
-    PubspecSyntaxCheck, append_common_syntax_diagnostics, prepare_pubspec_source,
-};
+use dartscope_core::{PubspecAnalysis, PubspecInput};
 
 /// Parses dependencies and typed configuration into the primary pubspec analysis model.
 pub fn parse_pubspec(input: PubspecInput) -> PubspecAnalysis {
-    crate::pubspec_backend::parse_pubspec_with_backend(
-        input,
-        crate::pubspec_backend::DEFAULT_PUBSPEC_BACKEND,
-    )
-}
-
-pub(crate) fn parse_pubspec_conservative(input: PubspecInput) -> PubspecAnalysis {
-    let prepared = prepare_pubspec_source(&input.source);
-    let prepared_input = PubspecInput::new(input.path, prepared.source);
-    let configuration_analysis =
-        crate::pubspec_configuration::parse_pubspec_configuration_prepared(prepared_input.clone());
-    let mut analysis = crate::pubspec_dependencies::parse_pubspec(prepared_input);
-
-    let PubspecConfigurationAnalysis {
-        environment,
-        flutter,
-        diagnostics,
-        ..
-    } = configuration_analysis;
-
-    analysis.configuration = PubspecConfiguration {
-        environment,
-        flutter,
-    };
-    for diagnostic in diagnostics {
-        if !analysis.diagnostics.contains(&diagnostic) {
-            analysis.diagnostics.push(diagnostic);
-        }
-    }
-    append_common_syntax_diagnostics(&mut analysis.diagnostics, &analysis.path, &prepared.syntax);
-    apply_dependency_syntax_check(&mut analysis, &prepared.syntax);
-    analysis
-}
-
-fn apply_dependency_syntax_check(analysis: &mut PubspecAnalysis, syntax: &PubspecSyntaxCheck) {
-    analysis.diagnostics.retain(|diagnostic| {
-        diagnostic.code != "pubspec_unsupported_yaml_alias"
-            || !diagnostic
-                .span
-                .as_ref()
-                .is_some_and(|span| syntax.is_bare_wildcard_line(span.start_line))
-    });
-
-    for span in syntax.invalid_flow_spans() {
-        analysis
-            .dependencies
-            .retain(|dependency| dependency.span.start_line != span.start_line);
-        let already_reported = analysis.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "pubspec_invalid_yaml"
-                && diagnostic
-                    .span
-                    .as_ref()
-                    .is_some_and(|existing| existing.start_line == span.start_line)
-        });
-        if !already_reported {
-            analysis.diagnostics.push(
-                DartDiagnostic::error(
-                    "pubspec_invalid_yaml",
-                    "invalid inline dependency source mapping",
-                    Some(span.clone()),
-                )
-                .with_path(analysis.path.clone()),
-            );
-        }
-    }
+    crate::pubspec_backend::parse_pubspec(input)
 }
 
 #[cfg(test)]

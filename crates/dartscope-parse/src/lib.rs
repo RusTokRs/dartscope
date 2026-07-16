@@ -9,18 +9,13 @@ mod lexical;
 mod namespace;
 #[path = "pubspec_analysis.rs"]
 mod pubspec;
-mod pubspec_assets;
 mod pubspec_backend;
 #[path = "pubspec_configuration_analysis.rs"]
 mod pubspec_configuration;
-#[path = "pubspec_configuration.rs"]
-mod pubspec_configuration_legacy;
-#[path = "pubspec.rs"]
-mod pubspec_dependencies;
 mod pubspec_source;
 mod pubspec_syntax;
 #[cfg(test)]
-mod pubspec_yaml_backend_parity;
+mod pubspec_yaml_contract;
 #[allow(dead_code)]
 mod pubspec_yaml_marked;
 mod pubspec_yaml_marked_analysis;
