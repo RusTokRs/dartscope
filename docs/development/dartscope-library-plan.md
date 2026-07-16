@@ -389,22 +389,34 @@ Implementation state and remaining limits are recorded in
 
 ### DS-RESOLVE-003: Package Config Completeness
 
-Status: ready. Priority: P1. Owner crate: `dartscope-resolve`.
+Status: verified. Priority: P1. Owner crate: `dartscope-resolve`.
 
-Required work:
+Implemented slices:
 
-1. Preserve and validate optional `generated`, `generator`, and `generatorVersion`
-   metadata according to the official format.
-2. Validate duplicate/overlapping roots and package-URI containment across entries.
-3. Add absolute file URI, percent escape, nested root, and Windows URI fixtures.
-4. Document whether one invalid entry invalidates the complete configuration.
+1. Preserve `generated`, `generator`, and `generatorVersion`, validate the UTC timestamp
+   and Semantic Version formats, and retain unknown extension fields by ignoring them.
+2. Resolve roots and package-URI directories to canonical scheme/authority and decoded path
+   segments before cross-entry comparison.
+3. Reject duplicate roots and both normative package-URI/nested-root overlap directions while
+   allowing nested package roots whose accessible package directories remain disjoint.
+4. Reject literal and percent-encoded traversal or encoded path separators in `packageUri`
+   and incoming `package:` URI paths.
+5. Cover relative and absolute file URIs, percent escapes, nested roots, external cache roots,
+   and Windows `file:///C:/...` paths.
+
+Invalidation policy:
+
+- any error diagnostic invalidates the complete package configuration, and
+  `resolve_package_uri` returns `InvalidConfiguration`;
+- optional generator metadata format problems are warnings and do not block resolution;
+- extension fields remain ignored for forward compatibility.
 
 Acceptance:
 
 - official package-config v2 examples parse;
-- every normative invalid case has a diagnostic code and test;
+- every normative invalid case has a stable diagnostic code and test;
 - resolution never escapes a package root or synthetic project root;
-- extension fields remain ignored for forward compatibility.
+- exact Rust 1.95 quality, tests, rustdoc, edition, and feature checks pass on Linux and Windows.
 
 ### DS-JSON-001: Versioned JSON Contracts
 
