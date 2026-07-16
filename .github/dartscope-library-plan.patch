@@ -1,0 +1,130 @@
+diff --git a/docs/development/dartscope-library-plan.md b/docs/development/dartscope-library-plan.md
+index d7206bf..013d18e 100644
+--- a/docs/development/dartscope-library-plan.md
++++ b/docs/development/dartscope-library-plan.md
+@@ -90,22 +90,22 @@ fixture. The living source map is `docs/reference-strategy.md`.
+ 
+ ## Verified Baseline
+ 
+-Baseline reviewed on 2026-07-10.
++Baseline reviewed on 2026-07-16.
+ 
+ | Area | Status | Evidence in repository |
+ | --- | --- | --- |
+-| Rust workspace and eight crates | implemented | root `Cargo.toml`; hosted Rust 1.95.0 edition-2024 checks pending |
++| Rust workspace and eight crates | verified | root `Cargo.toml`; exact Rust 1.95.0 Linux/Windows quality, test, edition, and feature matrix passed |
+ | Core normalized model | implemented | `dartscope-core`; pre-1.0 compatibility work remains |
+-| File and pubspec heuristic analysis | in_progress | `dartscope-parse`, unit and project fixtures |
++| File and pubspec analysis | in_progress | heuristic Dart backend plus marked `yaml-rust2` pubspec backend; unit and project fixtures |
+ | Package config v2 and package URI resolution | in_progress | `dartscope-resolve`, six resolver tests |
+ | URI graph, parts, and GraphQL linking | in_progress | `dartscope-index`, deterministic JSON contract tests |
+ | Flutter project inventory | in_progress | `dartscope-flutter`, optional umbrella feature |
+ | JSON helpers | implemented | `dartscope-json`; versioned schema is not implemented |
+ | CLI smoke workflows | implemented | `dartscope-cli`; CLI integration tests are missing |
+-| Hosted CI | implemented | Rust 1.95.0 quality/tests plus Linux/Windows edition-2024 matrix configured; first hosted run pending |
++| Hosted CI | verified | Rust 1.95.0 quality, Linux/Windows tests, edition-2024, and umbrella feature matrix publish granular and aggregate statuses |
+ | Contributor and agent workflow | verified | `AGENTS.md`, `CONTRIBUTING.md`, Rust code standard |
+ | Lint/rule engine | planned | crate not created |
+-| Parser backend port | planned | current backend is directly implemented in parse crate |
++| Parser backend port | verified | `DartParser` capability contract, default heuristic backend, injection path, and backend documentation |
+ 
+ Current verified behaviors include:
+ 
+@@ -337,13 +337,13 @@ Acceptance:
+ 
+ ### DS-PUB-002: Structured Pubspec Model
+ 
+-Status: in_progress. Priority: P1. Owner crates: `dartscope-core`, `dartscope-parse`.
++Status: verified. Priority: P1. Owner crates: `dartscope-core`, `dartscope-parse`.
+ 
+ The primary pubspec model stores typed dependency sources, environment constraints, fonts,
+ and complete Flutter asset configurations with paths, flavors, platforms, ordered
+ transformers, compatibility defaults, source spans, and serialization fixtures. The
+-`yaml-rust2` marked-event implementation is now the public default behind one private backend
+-selector; the conservative implementation remains temporarily as a parity oracle.
++`yaml-rust2` marked-event implementation is the sole runtime dependency/configuration backend;
++its parser types remain private to `dartscope-parse`.
+ 
+ Implemented slices:
+ 
+@@ -357,19 +357,19 @@ Implemented slices:
+    scalar arguments, plus the compatibility path-only `assets` projection.
+ 5. `yaml-rust2 = "=0.11.0"`, a Cargo-generated lock graph, a private marked-event AST, and
+    domain conversion for configuration and dependencies.
+-6. One private backend selector and dual-backend parity for complete and focused APIs,
+-   including CRLF, Unicode byte evidence, duplicate keys, malformed inputs, aliases, and
+-   source normalization.
+-7. The complete pre-cutover Rust 1.95.0 Linux/Windows matrix passed with `dartscope/ci`.
+-8. The public complete and focused pubspec APIs now select the marked backend by default, and
+-   the marked-default workspace passes the complete local Linux Rust 1.95.0 Definition Of Done.
+-
+-Remaining work:
+-
+-1. Pass the hosted Rust 1.95.0 Linux/Windows matrix on the marked-default cutover commit.
+-2. Remove the conservative dependency/configuration parser after that cutover is verified.
+-3. Add remaining localization-owned fields and define a versioned policy for validating
+-   Flutter flavor and platform names.
++6. Pre-cutover dual-backend parity for complete and focused APIs, including CRLF, Unicode byte
++   evidence, duplicate keys, malformed inputs, aliases, and source normalization.
++7. Public complete and focused APIs switched to the marked backend without changing public
++   models, compatibility fields, diagnostic paths, or ordering.
++8. Exact Rust 1.95.0 quality, tests, rustdoc, and edition/feature checks passed locally and on
++   hosted Linux/Windows runners. Commit `566edbb0da58799d227a4615713631aefaf25978`
++   received all granular success statuses and aggregate `dartscope/ci` success.
++9. Conservative dependency/configuration/asset runtime modules removed after hosted cutover
++   verification; representative former parity inputs remain explicit marked contract tests.
++10. `flutter.default-flavor` normalized, selector validation exposed as
++    `PubspecFlutterAssetSelectorPolicy::V1`, and older JSON defaulted to no default flavor plus
++    policy `v1`. Commit `88e65e3c017b58ec9b64907efdeaa0e8d2ee67af` passed every hosted Rust 1.95.0
++    Linux/Windows quality, test, edition, and feature context plus aggregate `dartscope/ci`.
+ 
+ Acceptance:
+ 
+@@ -379,6 +379,8 @@ Acceptance:
+ - malformed YAML produces a path-attributed diagnostic;
+ - serialization fixtures cover every dependency source and complete pubspec variant;
+ - structured Flutter assets preserve selectors, transformer order, arguments, and spans;
++- `flutter.default-flavor` is normalized and selector validation is governed by an explicit
++  serialized policy version;
+ - public pubspec APIs use the private marked backend without exposing `yaml-rust2` types;
+ - all focused and workspace checks pass on Rust 1.95.0 on Linux and Windows.
+ 
+@@ -507,15 +509,15 @@ Rust, Dart, Flutter, and ecosystem conventions.
+ 
+ ### DS-BOOT-001: Workspace Bootstrap
+ 
+-Status: implemented; hosted Rust 1.95 verification pending.
++Status: verified.
+ 
+ Eight crates, MIT license, root README, fixtures, formatting, tests, clippy, lockfile,
+ Linux quality CI, Linux/Windows test CI, contribution guide, agent entrypoint, and
+ reference strategy exist. The repository builds independently and has no Athanor
+ dependency. The workspace MSRV is Rust 1.95, the exact Rust 1.95.0 toolchain is pinned,
+-and the virtual workspace uses edition 2024 with resolver 3. The first hosted quality,
+-Linux/Windows test, and edition-matrix runs are still required before this task becomes
+-`verified`.
++and the virtual workspace uses edition 2024 with resolver 3. Hosted quality,
++Linux/Windows tests, edition-2024, and umbrella feature checks pass and publish granular
++plus aggregate commit statuses.
+ 
+ ### DS-PARSE-001: File Analysis MVP
+ 
+@@ -638,7 +640,7 @@ Do not resolve these conditions by silently expanding scope.
+ 
+ | Milestone | Exit condition |
+ | --- | --- |
+-| M0 trustworthy bootstrap | implementation complete; first hosted Rust 1.95.0 CI run pending |
++| M0 trustworthy bootstrap | verified on exact Rust 1.95.0 across hosted Linux/Windows quality, tests, edition, and feature checks |
+ | M1 dependable heuristic toolkit | DS-MAINT-001, DS-PARSE-004, DS-PARSE-005, DS-PUB-002, DS-RESOLVE-003 |
+ | M2 stable tool boundary | DS-JSON-001, DS-CLI-002, compatibility policy |
+ | M3 optional Flutter pipeline | DS-FLUTTER-002 and declared asset/localization slice |
+@@ -647,6 +649,6 @@ Do not resolve these conditions by silently expanding scope.
+ 
+ ## Current Recommended Next Step
+ 
+-Complete DS-PUB-002 by verifying the marked-default cutover on the hosted Rust 1.95.0
+-Linux/Windows matrix, then remove the conservative pubspec implementation while retaining
+-the normalized public model and regression evidence.
++Implement `DS-RESOLVE-003` package-config completeness next. `DS-PUB-002` is verified;
++localization options beyond `flutter.generate` remain owned by `DS-FLUTTER-003` through an
++explicit `l10n.yaml` input.

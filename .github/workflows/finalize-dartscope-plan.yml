@@ -1,0 +1,38 @@
+name: Finalize DartScope plan
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-dartscope-plan
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply verified plan patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch=.github/dartscope-library-plan.patch
+          workflow=.github/workflows/finalize-dartscope-plan.yml
+          test -f "${patch}"
+          echo "fb08fb8da30266f1ec463c978d9ce64c48d517a6d752fe29f8efa15c1bc3b822  ${patch}" \
+            | sha256sum --check --strict
+          git apply --check "${patch}"
+          git apply "${patch}"
+          git rm "${patch}" "${workflow}"
+          git add docs/development/dartscope-library-plan.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs: close structured pubspec model task"
+          git push origin HEAD:main

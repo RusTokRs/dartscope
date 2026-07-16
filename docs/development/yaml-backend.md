@@ -97,7 +97,7 @@ output because its effective value cannot be established without reference expan
 
 ## Current Migration Status
 
-Completed migration and cutover slices:
+The parser migration and cleanup are complete:
 
 - [x] Both public APIs pass through one private `PreparedPubspecSource` boundary.
 - [x] Document-count, duplicate-key, malformed-flow, indentation, alias-policy, and
@@ -113,27 +113,29 @@ Completed migration and cutover slices:
   existing core-owned types.
 - [x] Bare wildcard constraints are sanitized with a one-byte replacement before marked
   parsing and restored from syntax evidence without changing source byte offsets.
-- [x] A private backend selector runs the same complete and focused pubspec contracts through
-  conservative and marked implementations.
-- [x] Dual-backend parity covers package names, dependency order and sections, typed and
-  compatibility source representations, environment and Flutter configuration, shared
-  diagnostics, malformed input recovery, CRLF, duplicate keys, and non-ASCII byte evidence.
-- [x] The complete Rust 1.95.0 Linux and Windows matrix passed before cutover.
-- [x] `parse_pubspec` and `parse_pubspec_configuration` now use the marked backend by default.
-- [x] The marked-default workspace passes the complete local Linux Definition Of Done on the
-  repository-pinned Rust 1.95.0 toolchain.
+- [x] Pre-cutover dual-backend parity covered package names, dependency order and sections,
+  typed and compatibility source representations, environment and Flutter configuration,
+  shared diagnostics, malformed input recovery, CRLF, duplicate keys, and non-ASCII byte
+  evidence.
+- [x] `parse_pubspec` and `parse_pubspec_configuration` use the marked backend by default.
+- [x] The marked-default tree passed the complete local Linux Definition Of Done and the
+  hosted Rust 1.95.0 Linux/Windows matrix. Commit `566edbb0da58799d227a4615713631aefaf25978`
+  received successful quality, Linux/Windows tests, all six edition/feature checks, and the
+  aggregate `dartscope/ci` status.
+- [x] The conservative dependency, configuration, and structured-asset runtime modules were
+  removed after cross-platform verification. Their representative source matrix remains as
+  explicit marked-backend contract tests.
 
-Remaining cleanup:
+The final `DS-PUB-002` model slice adds `flutter.default-flavor` and the public
+`PubspecFlutterAssetSelectorPolicy::V1`. Policy v1 treats non-empty flavor names as opaque
+application values and validates platforms against `android`, `ios`, `web`, `linux`, `macos`,
+and `windows`. Localization configuration beyond `flutter.generate` remains an explicit
+`l10n.yaml` input owned by `DS-FLUTTER-003`, not the pubspec model. Commit `88e65e3c017b58ec9b64907efdeaa0e8d2ee67af` passed the hosted Rust 1.95.0 Linux/Windows matrix for this final model slice.
 
-- [ ] Confirm the hosted Rust 1.95.0 Linux and Windows matrix on the marked-default commit.
-- [ ] Remove the conservative dependency/configuration implementation only after that
-  cutover commit is green, while retaining characterization evidence where it remains useful.
-- [ ] Add remaining localization-owned fields and define a versioned policy for validating
-  Flutter flavor and platform names.
-
-`yaml-rust2` types remain private to `dartscope-parse`. The conservative implementation is
-retained only as a private parity oracle during the verified cutover window; it is no longer
-the public default.
+`yaml-rust2` types remain private to `dartscope-parse`. The small line-evidence scanner is
+retained only for stable compatibility diagnostics that require raw indentation and wildcard
+information; dependency and configuration values are constructed exclusively from the marked
+YAML tree.
 
 ## Migration Sequence
 
@@ -143,16 +145,17 @@ the public default.
 4. Convert package names and dependency sections/sources. Completed.
 5. Run dependency/configuration contracts through both implementations. Completed.
 6. Pass the repository-pinned Rust 1.95.0 Linux and Windows matrix before cutover. Completed.
-7. Introduce one private backend selector and switch both public pubspec APIs to marked-event
-   parsing without changing the public model or compatibility fields. Completed.
-8. Pass the hosted matrix on the marked-default commit. Pending.
-9. Remove the line-oriented dependency/configuration implementation after the marked-default
-   commit is verified cross-platform. Pending.
+7. Switch both public pubspec APIs to marked-event parsing without changing public models or
+   compatibility fields. Completed.
+8. Pass the hosted matrix on the marked-default commit. Completed.
+9. Remove the conservative dependency/configuration implementation and retain explicit
+   marked contract tests. Completed.
+10. Normalize `flutter.default-flavor` and expose selector validation policy v1 without
+    changing legacy JSON readability. Completed.
 
 ## Verification Gate
 
-The marked-default tree passes these commands locally on the repository-pinned Rust 1.95.0
-toolchain:
+The marked-only tree passes these commands on the repository-pinned Rust 1.95.0 toolchain:
 
 ```powershell
 rustc --version
@@ -163,9 +166,10 @@ $env:RUSTDOCFLAGS = "-D warnings"
 cargo doc --workspace --no-deps --locked
 ```
 
-The pre-cutover commit `4d1380ccdcd634f3200e48b7f2af88a7bbef203a` also received a
-successful `dartscope/ci` status for the Rust 1.95.0 Linux/Windows matrix. The next required
-evidence is the same hosted matrix on the marked-default cutover commit.
+The hosted verification commit `566edbb0da58799d227a4615713631aefaf25978` published
+successful statuses for quality, workspace tests on Linux and Windows, workspace/all-targets
+and umbrella minimal/all-features checks on both operating systems, and aggregate
+`dartscope/ci`. The selector-policy extension also passed the complete hosted matrix on commit `88e65e3c017b58ec9b64907efdeaa0e8d2ee67af`.
 
 ## Primary Sources
 

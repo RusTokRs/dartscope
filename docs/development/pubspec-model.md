@@ -7,7 +7,7 @@ status: active
 
 # Structured Pubspec Model
 
-`DS-PUB-002` is in progress. DartScope exposes two source-only pubspec APIs:
+`DS-PUB-002` is verified. DartScope exposes two source-only pubspec APIs:
 
 - `parse_pubspec` returns the primary complete model with package name, dependency sections, typed dependency sources, environment constraints, and common Flutter configuration;
 - `parse_pubspec_configuration` returns the focused configuration analysis for callers and CLI smoke tests that do not need dependencies.
@@ -35,16 +35,20 @@ executable Rust 1.95.0 environment.
   identical environment, Flutter configuration, common YAML diagnostics, and CRLF/Unicode
   evidence across representative positive and negative sources.
 - [x] Select and document `yaml-rust2` 0.11.x as the private marked-event backend.
-- [ ] Add `yaml-rust2 = "=0.11.0"` with default features disabled and regenerate
+- [x] Add `yaml-rust2 = "=0.11.0"` with default features disabled and regenerate
   `Cargo.lock` using Rust 1.95.0.
-- [ ] Implement the private marked-event adapter and run the parity harness against both
-  implementations before switching the public parser.
-- [ ] Run formatting, focused tests, workspace tests, Clippy, rustdoc, Linux/Windows tests,
+- [x] Implement the private marked-event adapter, pass dual-backend parity, and switch both
+  public APIs without changing the public contract.
+- [x] Run formatting, focused tests, workspace tests, Clippy, rustdoc, Linux/Windows tests,
   and the edition-2024 matrix on Rust 1.95.0.
+- [x] Remove the conservative runtime modules after hosted cutover verification while
+  retaining the source matrix as explicit marked contract tests.
+- [x] Normalize `flutter.default-flavor` and expose
+  `PubspecFlutterAssetSelectorPolicy::V1` with backwards-compatible Serde defaults.
 
 ## Core Ownership
 
-Dependency-source and configuration models live in `dartscope-core::pubspec`. This includes `PubspecDependencySource`, `PubspecConfiguration`, `PubspecConfigurationAnalysis`, environment constraints, Flutter asset configurations and transformers, font families, and font assets.
+Dependency-source and configuration models live in `dartscope-core::pubspec`. This includes `PubspecDependencySource`, `PubspecConfiguration`, `PubspecConfigurationAnalysis`, environment constraints, Flutter `default-flavor`, the versioned asset-selector policy, asset configurations and transformers, font families, and font assets.
 
 Source normalization and the inherent `PubspecDependency::structured_source()` API also live in core. `dartscope-parse` keeps its previous root re-exports and `PubspecDependencySourceExt` as compatibility shims.
 
@@ -54,7 +58,7 @@ Source normalization and the inherent `PubspecDependency::structured_source()` A
 
 Checked-in JSON fixtures cover every dependency source variant, the focused environment/Flutter configuration shape, structured Flutter asset mappings, and the migrated complete `PubspecAnalysis` shape. Tests cover serialization round trips, typed-plus-legacy parser output, legacy-only dependency deserialization, legacy analysis payloads without configuration, and older Flutter configuration payloads without extended asset fields.
 
-The integration parity harness in `tests/pubspec_backend_parity.rs` is the migration gate for the private YAML backend. It compares the focused and complete APIs before a second implementation exists, then will compare conservative and marked-event implementations without changing the public contract.
+The pre-cutover dual-backend parity matrix established the migration contract. After the marked backend passed the hosted Linux/Windows cutover gate, the conservative runtime modules were removed and the same representative sources were retained in `pubspec_yaml_contract.rs` as explicit normalized-output, diagnostic, and source-evidence tests.
 
 ## Parser Hardening
 
@@ -69,15 +73,16 @@ The complete parser now applies a private syntax-validation stage before depende
 - optional leading `---` and trailing `...` markers are blanked without changing source length, while a second document is diagnosed and excluded from both public parser paths;
 - duplicate top-level keys and duplicate direct keys in dependency, environment, and Flutter mappings produce `pubspec_duplicate_key` diagnostics with exact key spans.
 
-The structured asset stage additionally distinguishes mapping separators from colons inside plain scalars, rejects metadata attached to scalar list entries, checks sibling/nested indentation, and resets list modes at mapping boundaries. Its YAML-subset primitives are isolated in `pubspec_yaml_subset.rs` so they can be removed with the marked-event adapter.
+The marked asset conversion additionally distinguishes mapping separators from colons inside plain scalars, rejects metadata attached to scalar list entries, diagnoses sibling/nested indentation errors, and resets list context at mapping boundaries. `pubspec_yaml_subset.rs` now contains only the small raw-line helpers still required for stable indentation, comment, and wildcard evidence.
 
-Asset selector validation follows the official Flutter boundary:
+Asset selector validation is represented by `PubspecFlutterAssetSelectorPolicy::V1`:
 
-- flavor names are application-defined and remain opaque, but empty names are invalid;
+- flavor names and `flutter.default-flavor` are application-defined opaque values, but empty names are invalid;
 - platform names must be one of `android`, `ios`, `web`, `linux`, `macos`, or `windows`;
-- invalid selectors remain visible in normalized output and carry explicit diagnostics rather than being silently dropped.
+- invalid selectors remain visible in normalized output and carry explicit diagnostics rather than being silently dropped;
+- the policy version belongs to the DartScope serialization contract and defaults to `v1` when older JSON omits it.
 
-These stages are transitional and will be removed after the marked-event YAML adapter provides the same behavior.
+These compatibility diagnostics remain outside the public model but are intentionally retained around the marked adapter because YAML events alone do not preserve every raw indentation and wildcard distinction in the established diagnostic contract.
 
 ## YAML Backend
 
@@ -85,8 +90,10 @@ The maintained backend decision is accepted in [`yaml-backend.md`](yaml-backend.
 
 - use `yaml-rust2` 0.11.x through a private marked-event adapter;
 - initially pin `=0.11.0` with default features disabled;
-- preserve byte evidence through `Marker::index` and reject aliases through explicit parser events;
-- add the dependency and generated `Cargo.lock` update together only when the complete Rust 1.95.0 gates can run.
+- convert marked character indices through a precomputed UTF-8 character-to-byte table and
+  reject aliases through explicit parser events;
+- keep the dependency, generated lock graph, and complete Rust 1.95.0 verification state
+  together.
 
 Deprecated `serde_yaml` and `serde_yml` are rejected. Other maintained candidates remain documented as alternatives rather than dependencies.
 
@@ -96,6 +103,7 @@ Deprecated `serde_yaml` and `serde_yml` are rejected. Other maintained candidate
 
 - `PubspecEnvironmentConstraint` values with exact key spans;
 - `uses_material_design` and `generate_localizations` booleans;
+- optional `default_flavor` and versioned `asset_selector_policy`;
 - the compatibility `assets` projection with one path and span per declaration;
 - primary `asset_configurations` with paths, optional opaque `flavors`, validated `platforms`, and ordered transformer packages with scalar `args`;
 - Flutter font families, asset paths, optional styles, and validated weights from 100 through 900.
@@ -120,16 +128,24 @@ cargo run -p dartscope-cli -- pubspec path\to\pubspec.yaml
 
 `version_or_source` remains serialized beside `source` until a versioned JSON contract defines its removal. New consumers should read `source` or call `structured_source()` rather than parsing the compatibility string.
 
-The additive `configuration` field changes new `pubspec` and `analyze-project` JSON output. Older JSON remains readable because the field has a Serde default. The additive `asset_configurations` field is independently defaulted and keeps the path-only `assets` field intact during the pre-1.0 transition.
+The additive `configuration` field changes new `pubspec` and `analyze-project` JSON output. Older JSON remains readable because the field has a Serde default. The additive `asset_configurations`, `default_flavor`, and `asset_selector_policy` fields are independently defaulted; older payloads receive no default flavor and selector policy `v1`, while the path-only `assets` field remains intact during the pre-1.0 transition.
 
 ## Explicit Limitations
 
-The current production implementation is still a conservative indentation-aware parser, not a complete YAML implementation. Aliases and merge keys remain unsupported by policy. Flow-style environment and top-level Flutter configuration mappings are not supported yet. Asset mappings must currently begin with `path`. Duplicate keys are diagnosed, but invalid input may still retain both conflicting normalized entries until the marked-event adapter owns mapping construction. Selector diagnostics currently point to the containing asset declaration because individual selector-item spans are not yet retained.
+Aliases and merge keys remain unsupported by policy and are never reference-expanded. An
+anchored node may be interpreted only as its literal local value after an unsupported-alias
+diagnostic. Duplicate mapping keys are diagnosed with exact key spans; duplicate dependency
+entries remain visible as source evidence for compatibility. Selector diagnostics currently
+point to the containing asset declaration because individual selector-item spans are not yet
+part of the public model. Localization options beyond `flutter.generate` belong to the future
+explicit `l10n.yaml` input under `DS-FLUTTER-003`; they are not pubspec-owned fields.
 
 ## Verification State
 
-The implementation and regression-test changes are present, but this task remains
-`in_progress`, not `verified`. `rustup` is present in the current environment, but DNS access
-to the Rust distribution service and GitHub is unavailable, so Rust 1.95.0, Cargo checks,
-and a local repository checkout cannot be obtained. A successful hosted quality/test/edition
-run has not been observed for this head.
+The marked backend is the sole runtime pubspec dependency/configuration implementation. The
+marked-only tree passes formatting, workspace tests, Clippy, and rustdoc on the exact Rust
+1.95.0 toolchain. Hosted commit `566edbb0da58799d227a4615713631aefaf25978`
+received successful quality, Linux and Windows workspace-test, all six edition/feature, and
+aggregate `dartscope/ci` statuses. The `default-flavor` and selector-policy v1 extension passed the full exact Rust 1.95.0
+matrix locally and on hosted Linux/Windows commit `88e65e3c017b58ec9b64907efdeaa0e8d2ee67af`. `DS-PUB-002` is therefore
+`verified`; localization catalog work continues separately under `DS-FLUTTER-003`.
