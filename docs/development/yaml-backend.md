@@ -32,9 +32,9 @@ types must remain private and must not appear in `dartscope-core` or public APIs
   character indices plus line and column coordinates. The private adapter precomputes a
   UTF-8 character-to-byte table before converting markers to `SourceSpan`; this preserves
   byte evidence for LF, CRLF, and non-ASCII sources without rescanning the input per event.
-- Aliases are emitted as an explicit `Event::Alias`, so DartScope can continue rejecting
-  anchors, aliases, and merge keys with path-attributed diagnostics instead of silently
-  resolving them.
+- Aliases are emitted as an explicit `Event::Alias`, so DartScope can diagnose anchors and
+  reject alias or merge-key resolution with path-attributed diagnostics instead of silently
+  expanding YAML references.
 - The parser works from in-memory input and does not require filesystem or process I/O.
 
 DartScope will use the low-level marked event API, not `YamlLoader`, because the public
@@ -78,7 +78,7 @@ The private adapter must:
 
 1. accept only the in-memory UTF-8 source from `PubspecInput`;
 2. reject streams containing more than one YAML document;
-3. reject anchors, aliases, and merge keys with stable diagnostic codes;
+3. diagnose anchors and reject alias or merge-key values without resolving references;
 4. reject duplicate mapping keys rather than choosing first-wins or last-wins behavior;
 5. convert marked character indices and verified line/column coordinates into byte-based
    `SourceSpan` values;
@@ -89,6 +89,11 @@ The private adapter must:
 8. keep `version_or_source` only as the documented pre-1.0 compatibility field;
 9. avoid filesystem access, includes, implicit command execution, or network access;
 10. emit no `yaml-rust2` type from a public function or public struct.
+
+An anchored mapping may still be interpreted as its literal local value after the stable
+unsupported-alias diagnostic is emitted. DartScope never resolves another node through that
+anchor. A dependency whose value is an alias or merge mapping is omitted from normalized
+output because its effective value cannot be established without reference expansion.
 
 ## Current Migration Status
 
@@ -104,8 +109,9 @@ Completed prerequisites and private backend slices:
 - [x] `yaml-rust2 = "=0.11.0"` is declared with default features disabled and the
   Cargo-resolved registry graph is recorded in `Cargo.lock`.
 - [x] A private `MarkedEventReceiver` bridge builds a marked scalar/sequence/mapping tree,
-  rejects aliases and merge keys, detects duplicate keys and additional documents, and
-  preserves UTF-8 byte offsets and one-based columns across LF, CRLF, and non-ASCII input.
+  diagnoses anchors, rejects alias and merge-key values, detects duplicate keys and
+  additional documents, and preserves UTF-8 byte offsets and one-based columns across LF,
+  CRLF, and non-ASCII input.
 - [x] A private marked-tree converter maps environment constraints, Flutter booleans,
   assets, selectors, ordered transformers, and fonts into the existing core-owned types.
 - [x] A private dependency converter maps package names, `dependencies`,
@@ -116,6 +122,9 @@ Completed prerequisites and private backend slices:
 - [x] Dual-backend parity compares package names, dependency order and sections, typed and
   compatibility source representations, environment and Flutter configuration, shared
   diagnostics, CRLF, duplicate keys, and non-ASCII byte evidence.
+- [x] Negative marked-backend tests confirm that alias and merge dependency values do not
+  create fabricated dependencies and malformed inline mappings are omitted with
+  `pubspec_invalid_yaml`.
 
 Remaining before backend cutover:
 
@@ -160,11 +169,12 @@ cargo doc --workspace --no-deps --locked
 ```
 
 The marked bridge and configuration converter previously passed isolated compilation,
-unit tests, formatting, and Clippy on Rust 1.85.0. The dependency converter and complete
-private parity composition additionally pass an isolated build with the real
-`yaml-rust2` 0.11.0 dependency on Rust 1.88.0: four focused tests, `rustfmt --check`, and
-Clippy with `-D warnings`. These compatibility checks are useful evidence but do not
-replace the required Rust 1.95.0 Linux/Windows matrix or a complete workspace test run.
+unit tests, formatting, and Clippy on Rust 1.85.0. The dependency converter, complete
+private parity composition, and negative dependency recovery additionally pass an isolated
+build with the real `yaml-rust2` 0.11.0 dependency on Rust 1.88.0: six focused tests,
+`rustfmt --check`, and Clippy with `-D warnings`. These compatibility checks are useful
+evidence but do not replace the required Rust 1.95.0 Linux/Windows matrix or a complete
+workspace test run.
 
 ## Primary Sources
 
