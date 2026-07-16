@@ -39,11 +39,11 @@ jobs:
             && "${GITHUB_REF}" == "refs/heads/main" \
             && ${#parts[@]} -gt 0 ]]; then
             cat "${parts[@]}" > /tmp/pubspec-cutover.patch.gz.b64
-            echo "5c11ac948f0c369e8133abb2995f1d732b28cd7a0d8128c52283775d65ed99ad  /tmp/pubspec-cutover.patch.gz.b64" \
+            echo "7b811a1793b6a99eb81f97eae6c8a3246e23ee28b80d4d7002ddc3ced484e76b  /tmp/pubspec-cutover.patch.gz.b64" \
               | sha256sum --check --strict
             base64 --decode /tmp/pubspec-cutover.patch.gz.b64 \
               | gzip --decompress > /tmp/pubspec-cutover.patch
-            echo "772312a88737b09ab6ed4454c33f2aae953aa9332adb704bc94d57a5a6279b78  /tmp/pubspec-cutover.patch" \
+            echo "e4c35b899516fbb17c15312e8b039ba28e8829681fb41b9fc5d88e0778ac91be  /tmp/pubspec-cutover.patch" \
               | sha256sum --check --strict
 
             git apply --index /tmp/pubspec-cutover.patch
