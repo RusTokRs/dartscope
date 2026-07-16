@@ -5,8 +5,7 @@ use dartscope::{
 
 macro_rules! assert_golden {
     ($contract:expr, $value:expr, $expected:expr) => {{
-        let actual =
-            to_json_contract_pretty($contract, $value).expect("contract must serialize");
+        let actual = to_json_contract_pretty($contract, $value).expect("contract must serialize");
         assert_eq!(actual, $expected.trim_end());
     }};
 }
