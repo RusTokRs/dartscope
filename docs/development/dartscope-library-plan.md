@@ -420,15 +420,28 @@ Acceptance:
 
 ### DS-JSON-001: Versioned JSON Contracts
 
-Status: ready. Priority: P1. Owner crates: `dartscope-json`, `dartscope-cli`.
+Status: verified. Priority: P1. Owner crates: `dartscope-json`, `dartscope-cli`.
 
-Required work:
+Implemented slices:
 
-1. Define envelopes with `schema`, `version`, and `data` for each CLI command family.
-2. Add checked-in golden fixtures for file analysis, project analysis, URI graph,
-   GraphQL contracts, and Flutter inventory.
-3. Add a documented compatibility policy for additive and breaking changes.
-4. Keep low-level generic Serde helpers available but stop calling them stable schemas.
+1. Define a seven-family `JsonContract` registry and stable `{schema, version, data}`
+   envelope with independent major versions.
+2. Emit named v1 envelopes from every CLI JSON command, including pubspec and
+   pubspec-configuration commands.
+3. Check in golden fixtures bound to the real file-analysis, project-analysis,
+   URI-graph, GraphQL-contract, and Flutter-inventory models.
+4. Document additive and breaking compatibility rules, deterministic ordering,
+   and migration-history requirements.
+5. Retain generic `to_json` and `to_json_pretty` helpers while explicitly documenting
+   that raw Serde output is not a stable command-facing schema.
+
+Verification:
+
+- schema names are unique and every registered schema/version has a migration entry;
+- golden changes fail focused tests until fixtures and compatibility documentation move;
+- all seven CLI commands emit exactly `schema`, `version`, and `data` at the top level;
+- exact Rust 1.95 formatting, Clippy, tests, rustdoc, edition, and feature checks pass;
+- hosted Linux and Windows test and feature matrices report success.
 
 Acceptance:
 
@@ -571,6 +584,15 @@ Same-file, same-library, direct-import, and re-export visibility are supported w
 combinators, privacy, cycles, conditional environments, call compatibility, and
 variable compatibility.
 
+
+### DS-JSON-001: Versioned JSON Contracts
+
+Status: verified.
+
+Seven CLI command families emit named v1 envelopes. Five public analysis families have
+checked-in model-backed golden fixtures, raw Serde helpers remain explicitly unstable,
+and compatibility plus migration rules are enforced by focused tests on Linux and Windows.
+
 ### DS-FLUTTER-001: Inventory Aggregation
 
 Status: verified for current input model.
@@ -661,6 +683,6 @@ Do not resolve these conditions by silently expanding scope.
 
 ## Current Recommended Next Step
 
-Implement `DS-RESOLVE-003` package-config completeness next. `DS-PUB-002` is verified;
-localization options beyond `flutter.generate` remain owned by `DS-FLUTTER-003` through an
-explicit `l10n.yaml` input.
+Implement `DS-CLI-002` CLI contract and integration tests next. `DS-JSON-001` is verified;
+command help, version output, exit codes, malformed-input behavior, nested project discovery,
+paths containing spaces, and stdout/stderr separation are now the next stable-boundary work.
