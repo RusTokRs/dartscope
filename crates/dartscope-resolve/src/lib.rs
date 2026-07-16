@@ -942,7 +942,9 @@ mod tests {
         {"name":"outer","rootUri":"../","packageUri":"lib/"},
         {"name":"nested","rootUri":"../lib/generated/","packageUri":"src/"},
         {"name":"duplicate_a","rootUri":"file:///cache/%70kg/","packageUri":"lib/"},
-        {"name":"duplicate_b","rootUri":"file:///cache/pkg/","packageUri":"src/"}
+        {"name":"duplicate_b","rootUri":"file:///cache/pkg/","packageUri":"src/"},
+        {"name":"outer_reverse","rootUri":"file:///workspace/","packageUri":"tool/generated/"},
+        {"name":"nested_reverse","rootUri":"file:///workspace/tool/","packageUri":"lib/"}
       ]
     }"#,
         ));
@@ -954,6 +956,13 @@ mod tests {
 
         assert!(codes.contains(&"package_config_duplicate_root"));
         assert!(codes.contains(&"package_config_package_uri_root_overlap"));
+        assert_eq!(
+            codes
+                .iter()
+                .filter(|code| **code == "package_config_package_uri_root_overlap")
+                .count(),
+            2
+        );
         assert_eq!(
             resolve_package_uri(&analysis, "package:outer/main.dart"),
             Err(PackageUriResolutionError::InvalidConfiguration)
