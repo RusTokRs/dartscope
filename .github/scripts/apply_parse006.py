@@ -26,7 +26,16 @@ for source_name, target_name in [
 ]:
     shutil.move(payload / source_name, destination / target_name)
 
-subprocess.run(['git', 'apply', str(payload / 'parse006.patch')], check=True)
+subprocess.run(
+    [
+        'git',
+        'apply',
+        '--ignore-space-change',
+        '--ignore-whitespace',
+        str(payload / 'parse006.patch'),
+    ],
+    check=True,
+)
 
 replace_once(
     'README.md',
