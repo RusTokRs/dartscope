@@ -23,7 +23,10 @@ pub use dartscope_index::{
 };
 
 #[cfg(feature = "json")]
-pub use dartscope_json::{to_json, to_json_pretty};
+pub use dartscope_json::{
+    JsonContract, VersionedJsonEnvelope, to_json, to_json_contract, to_json_contract_pretty,
+    to_json_pretty,
+};
 
 #[cfg(feature = "flutter")]
 pub use dartscope_flutter::{
