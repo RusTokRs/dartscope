@@ -37,6 +37,7 @@
     ],
     "flutter": {
       "generate_localizations": true,
+      "asset_selector_policy": "v1",
       "assets": [
         {
           "path": "assets/",

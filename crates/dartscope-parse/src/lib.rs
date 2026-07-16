@@ -35,8 +35,9 @@ pub use dartscope_core::pubspec::PubspecConfiguration;
 pub use pubspec::parse_pubspec;
 pub use pubspec_configuration::{
     PubspecConfigurationAnalysis, PubspecEnvironmentConstraint, PubspecFlutterAsset,
-    PubspecFlutterAssetConfiguration, PubspecFlutterAssetTransformer, PubspecFlutterConfiguration,
-    PubspecFlutterFont, PubspecFlutterFontFamily, parse_pubspec_configuration,
+    PubspecFlutterAssetConfiguration, PubspecFlutterAssetSelectorPolicy,
+    PubspecFlutterAssetTransformer, PubspecFlutterConfiguration, PubspecFlutterFont,
+    PubspecFlutterFontFamily, parse_pubspec_configuration,
 };
 pub use pubspec_source::{
     PubspecDependencySource, PubspecDependencySourceExt, PubspecDependencySourceField,

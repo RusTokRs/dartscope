@@ -84,6 +84,48 @@ pub struct PubspecEnvironmentConstraint {
     pub span: SourceSpan,
 }
 
+/// Versioned DartScope policy for Flutter asset flavor and platform selectors.
+///
+/// Version 1 keeps flavor names as non-empty opaque application values and validates
+/// platforms against Flutter's documented six-platform list. The version belongs to the
+/// DartScope output contract rather than a specific Flutter SDK release.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Default)]
+pub enum PubspecFlutterAssetSelectorPolicy {
+    #[default]
+    #[serde(rename = "v1")]
+    V1,
+}
+
+impl PubspecFlutterAssetSelectorPolicy {
+    pub const CURRENT: Self = Self::V1;
+
+    /// Returns the stable numeric policy version.
+    pub const fn version(self) -> u16 {
+        match self {
+            Self::V1 => 1,
+        }
+    }
+
+    /// Returns the platform names accepted by this policy.
+    pub const fn supported_platforms(self) -> &'static [&'static str] {
+        match self {
+            Self::V1 => &["android", "ios", "web", "linux", "macos", "windows"],
+        }
+    }
+
+    /// Returns whether a flavor name is valid under this policy.
+    pub fn accepts_flavor(self, flavor: &str) -> bool {
+        match self {
+            Self::V1 => !flavor.is_empty(),
+        }
+    }
+
+    /// Returns whether a platform name is valid under this policy.
+    pub fn accepts_platform(self, platform: &str) -> bool {
+        self.supported_platforms().contains(&platform)
+    }
+}
+
 /// Normalized configuration owned by the top-level Flutter mapping.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub struct PubspecFlutterConfiguration {
@@ -91,6 +133,10 @@ pub struct PubspecFlutterConfiguration {
     pub uses_material_design: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generate_localizations: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_flavor: Option<String>,
+    #[serde(default)]
+    pub asset_selector_policy: PubspecFlutterAssetSelectorPolicy,
     pub assets: Vec<PubspecFlutterAsset>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub asset_configurations: Vec<PubspecFlutterAssetConfiguration>,

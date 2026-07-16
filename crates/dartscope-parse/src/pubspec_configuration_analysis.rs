@@ -2,8 +2,9 @@ use dartscope_core::PubspecInput;
 
 pub use dartscope_core::pubspec::{
     PubspecConfigurationAnalysis, PubspecEnvironmentConstraint, PubspecFlutterAsset,
-    PubspecFlutterAssetConfiguration, PubspecFlutterAssetTransformer, PubspecFlutterConfiguration,
-    PubspecFlutterFont, PubspecFlutterFontFamily,
+    PubspecFlutterAssetConfiguration, PubspecFlutterAssetSelectorPolicy,
+    PubspecFlutterAssetTransformer, PubspecFlutterConfiguration, PubspecFlutterFont,
+    PubspecFlutterFontFamily,
 };
 
 /// Parses environment constraints and normalized Flutter pubspec configuration.
@@ -55,6 +56,7 @@ mod tests {
             "pubspec.yaml",
             concat!(
                 "flutter:\n",
+                "  default-flavor: customer-a\n",
                 "  assets:\n",
                 "    - path: assets/shared.bin\n",
                 "      flavors: [customer-a, experimental_2026]\n",
@@ -63,6 +65,14 @@ mod tests {
         ));
 
         assert!(analysis.diagnostics.is_empty());
+        assert_eq!(
+            analysis.flutter.default_flavor.as_deref(),
+            Some("customer-a")
+        );
+        assert_eq!(
+            analysis.flutter.asset_selector_policy,
+            PubspecFlutterAssetSelectorPolicy::V1
+        );
         assert_eq!(
             analysis.flutter.asset_configurations[0].flavors,
             ["customer-a", "experimental_2026"]

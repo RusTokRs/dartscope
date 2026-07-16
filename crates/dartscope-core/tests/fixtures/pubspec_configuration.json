@@ -17,6 +17,8 @@
   "flutter": {
     "uses_material_design": true,
     "generate_localizations": true,
+    "default_flavor": "production",
+    "asset_selector_policy": "v1",
     "assets": [
       {
         "path": "assets/images/",

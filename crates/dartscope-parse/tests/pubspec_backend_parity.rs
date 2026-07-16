@@ -70,6 +70,7 @@ fn parity_cases() -> [(&'static str, &'static str); 4] {
                 "    sdk: flutter\n",
                 "flutter:\n",
                 "  generate: true\n",
+                "  default-flavor: production\n",
                 "  assets:\n",
                 "    - path: assets/logo.svg\n",
                 "      flavors: [development, customer-a]\n",

@@ -1,7 +1,8 @@
 use dartscope_core::SourceSpan;
 use dartscope_core::pubspec::{
     PubspecConfigurationAnalysis, PubspecEnvironmentConstraint, PubspecFlutterAsset,
-    PubspecFlutterConfiguration, PubspecFlutterFont, PubspecFlutterFontFamily,
+    PubspecFlutterAssetSelectorPolicy, PubspecFlutterConfiguration, PubspecFlutterFont,
+    PubspecFlutterFontFamily,
 };
 
 #[test]
@@ -16,6 +17,8 @@ fn serializes_the_core_pubspec_configuration_shape() {
         flutter: PubspecFlutterConfiguration {
             uses_material_design: Some(true),
             generate_localizations: Some(true),
+            default_flavor: Some("production".to_string()),
+            asset_selector_policy: PubspecFlutterAssetSelectorPolicy::V1,
             assets: vec![PubspecFlutterAsset {
                 path: "assets/images/".to_string(),
                 span: span(80, 98, 7, 1, 19),
@@ -61,4 +64,26 @@ fn span(
         end_line: line,
         end_column,
     }
+}
+
+#[test]
+fn defaults_selector_policy_and_default_flavor_for_legacy_payloads() {
+    let legacy = serde_json::json!({
+        "path": "pubspec.yaml",
+        "environment": [],
+        "flutter": {
+            "assets": [],
+            "fonts": []
+        },
+        "diagnostics": []
+    });
+
+    let analysis: PubspecConfigurationAnalysis =
+        serde_json::from_value(legacy).expect("deserialize legacy pubspec configuration");
+
+    assert_eq!(analysis.flutter.default_flavor, None);
+    assert_eq!(
+        analysis.flutter.asset_selector_policy,
+        PubspecFlutterAssetSelectorPolicy::V1
+    );
 }

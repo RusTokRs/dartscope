@@ -13,6 +13,7 @@ fn preserves_structured_configuration_contract() {
         "    sdk: flutter\n",
         "flutter:\n",
         "  generate: true\n",
+        "  default-flavor: production\n",
         "  assets:\n",
         "    - path: assets/logo.svg\n",
         "      flavors: [development, customer-a]\n",
@@ -29,6 +30,14 @@ fn preserves_structured_configuration_contract() {
     assert_eq!(analysis.environment[0].name, "sdk");
     assert_eq!(analysis.environment[0].constraint, "^3.4.0");
     assert_eq!(analysis.flutter.generate_localizations, Some(true));
+    assert_eq!(
+        analysis.flutter.default_flavor.as_deref(),
+        Some("production")
+    );
+    assert_eq!(
+        analysis.flutter.asset_selector_policy,
+        crate::PubspecFlutterAssetSelectorPolicy::V1
+    );
     assert_eq!(analysis.flutter.asset_configurations.len(), 1);
     let asset = &analysis.flutter.asset_configurations[0];
     assert_eq!(asset.path, "assets/logo.svg");

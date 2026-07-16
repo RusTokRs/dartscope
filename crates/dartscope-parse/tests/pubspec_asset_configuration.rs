@@ -4,6 +4,7 @@ use dartscope_parse::{parse_pubspec, parse_pubspec_configuration};
 const SOURCE: &str = concat!(
     "name: demo\n",
     "flutter:\n",
+    "  default-flavor: production\n",
     "  assets:\n",
     "    - assets/plain.json\n",
     "    - path: assets/logo.svg\n",
@@ -31,6 +32,14 @@ fn matches_the_structured_asset_configuration_fixture() {
 #[test]
 fn complete_pubspec_analysis_embeds_structured_assets() {
     let analysis = parse_pubspec(PubspecInput::new("pubspec.yaml", SOURCE));
+    assert_eq!(
+        analysis.configuration.flutter.default_flavor.as_deref(),
+        Some("production")
+    );
+    assert_eq!(
+        analysis.configuration.flutter.asset_selector_policy,
+        dartscope_parse::PubspecFlutterAssetSelectorPolicy::V1
+    );
     let assets = &analysis.configuration.flutter.asset_configurations;
 
     assert_eq!(assets.len(), 2);

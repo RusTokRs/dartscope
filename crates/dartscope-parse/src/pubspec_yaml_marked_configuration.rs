@@ -1,15 +1,14 @@
 use dartscope_core::pubspec::{
     PubspecConfigurationAnalysis, PubspecEnvironmentConstraint, PubspecFlutterAsset,
-    PubspecFlutterAssetConfiguration, PubspecFlutterAssetTransformer, PubspecFlutterConfiguration,
-    PubspecFlutterFont, PubspecFlutterFontFamily,
+    PubspecFlutterAssetConfiguration, PubspecFlutterAssetSelectorPolicy,
+    PubspecFlutterAssetTransformer, PubspecFlutterConfiguration, PubspecFlutterFont,
+    PubspecFlutterFontFamily,
 };
 use dartscope_core::{DartDiagnostic, PubspecInput, SourceSpan, normalize_path};
 
 use crate::pubspec_yaml_marked::{Entry, Node, NodeKind, parse_marked_yaml};
 use crate::pubspec_yaml_subset::{leading_space_count, strip_yaml_comment, yaml_key_value};
 use crate::source_lines::source_lines;
-
-const SUPPORTED_ASSET_PLATFORMS: [&str; 6] = ["android", "ios", "web", "linux", "macos", "windows"];
 
 pub(crate) fn parse_pubspec_configuration(input: PubspecInput) -> PubspecConfigurationAnalysis {
     let path = normalize_path(input.path);
@@ -120,6 +119,12 @@ fn parse_flutter(
     );
     analysis.flutter.generate_localizations =
         parse_optional_bool(last_entry(entries, "generate"), "generate", path, analysis);
+    analysis.flutter.default_flavor = parse_optional_flavor(
+        last_entry(entries, "default-flavor"),
+        analysis.flutter.asset_selector_policy,
+        path,
+        analysis,
+    );
     if let Some(assets) = last_entry(entries, "assets") {
         parse_assets(assets, source, path, analysis);
     }
@@ -149,6 +154,36 @@ fn parse_optional_bool(
             None
         }
     }
+}
+
+fn parse_optional_flavor(
+    entry: Option<&Entry>,
+    policy: PubspecFlutterAssetSelectorPolicy,
+    path: &str,
+    analysis: &mut PubspecConfigurationAnalysis,
+) -> Option<String> {
+    let entry = entry?;
+    let Some(flavor) = entry.value.scalar_value() else {
+        push_error(
+            analysis,
+            path,
+            "pubspec_invalid_flutter_default_flavor",
+            "flutter.default-flavor must be a non-empty scalar",
+            entry.key_span.clone(),
+        );
+        return None;
+    };
+    if !policy.accepts_flavor(flavor) {
+        push_error(
+            analysis,
+            path,
+            "pubspec_invalid_flutter_default_flavor",
+            "flutter.default-flavor must be a non-empty scalar",
+            entry.key_span.clone(),
+        );
+        return None;
+    }
+    Some(flavor.to_string())
 }
 
 fn parse_assets(
@@ -526,8 +561,9 @@ fn validate_asset_selectors(
     path: &str,
     analysis: &mut PubspecConfigurationAnalysis,
 ) {
+    let policy = analysis.flutter.asset_selector_policy;
     for flavor in &asset.flavors {
-        if flavor.is_empty() {
+        if !policy.accepts_flavor(flavor) {
             push_error(
                 analysis,
                 path,
@@ -538,14 +574,14 @@ fn validate_asset_selectors(
         }
     }
     for platform in &asset.platforms {
-        if !SUPPORTED_ASSET_PLATFORMS.contains(&platform.as_str()) {
+        if !policy.accepts_platform(platform) {
             push_error(
                 analysis,
                 path,
                 "pubspec_invalid_flutter_asset_platform",
                 format!(
                     "unsupported Flutter asset platform: {platform}; expected one of {}",
-                    SUPPORTED_ASSET_PLATFORMS.join(", ")
+                    policy.supported_platforms().join(", ")
                 ),
                 asset.span.clone(),
             );
@@ -701,6 +737,7 @@ mod tests {
                 "flutter:\n",
                 "  uses-material-design: true\n",
                 "  generate: true\n",
+                "  default-flavor: production\n",
                 "  assets:\n",
                 "    - path: assets/logo.svg\n",
                 "      flavors: [development, customer-a]\n",
@@ -721,6 +758,14 @@ mod tests {
         assert_eq!(analysis.environment[0].constraint, "^3.4.0");
         assert_eq!(analysis.flutter.uses_material_design, Some(true));
         assert_eq!(analysis.flutter.generate_localizations, Some(true));
+        assert_eq!(
+            analysis.flutter.default_flavor.as_deref(),
+            Some("production")
+        );
+        assert_eq!(
+            analysis.flutter.asset_selector_policy,
+            PubspecFlutterAssetSelectorPolicy::V1
+        );
         assert_eq!(analysis.flutter.asset_configurations.len(), 1);
         assert_eq!(
             analysis.flutter.asset_configurations[0].transformers[0].args,
@@ -728,6 +773,23 @@ mod tests {
         );
         assert_eq!(analysis.flutter.fonts[0].fonts[0].weight, Some(400));
         assert!(analysis.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn rejects_empty_or_non_scalar_default_flavors() {
+        for source in [
+            "flutter:\n  default-flavor: ''\n",
+            "flutter:\n  default-flavor: [production]\n",
+        ] {
+            let analysis = parse_pubspec_configuration(PubspecInput::new("pubspec.yaml", source));
+
+            assert_eq!(analysis.flutter.default_flavor, None);
+            assert!(
+                analysis.diagnostics.iter().any(|diagnostic| {
+                    diagnostic.code == "pubspec_invalid_flutter_default_flavor"
+                })
+            );
+        }
     }
 
     #[test]
