@@ -1,0 +1,18 @@
+{
+  "schema": "dartscope.flutter-inventory",
+  "version": 1,
+  "data": {
+    "widgets": [],
+    "routes": [],
+    "assets": [],
+    "localizations": [],
+    "flutter_file_paths": [],
+    "summary": {
+      "flutter_files": 0,
+      "widgets": 0,
+      "routes": 0,
+      "assets": 0,
+      "localizations": 0
+    }
+  }
+}
