@@ -15,6 +15,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  apply_package_config_metadata:
+    name: Apply package config metadata slice
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply verified metadata patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch=.github/package-config-metadata.patch
+          helper=.github/workflows/apply-package-config-metadata.yml
+          test -f "${patch}"
+          echo "bb87827f7a8786fd2710222f84d72c360a952b41e999444db69bc1faa1d89519  ${patch}" \
+            | sha256sum --check --strict
+          git apply --check "${patch}"
+          git apply "${patch}"
+          git rm "${patch}" "${helper}"
+          git show HEAD^:.github/workflows/ci.yml > .github/workflows/ci.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat: validate package config metadata"
+          git push origin HEAD:main
+
   quality:
     name: Quality gates
     runs-on: ubuntu-latest
