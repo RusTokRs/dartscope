@@ -1,4 +1,4 @@
-name: Verify reverse package root overlap
+name: Finalize package config completeness
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   statuses: write
 
 concurrency:
-  group: apply-reverse-package-root-overlap
+  group: finalize-package-config-completeness
   cancel-in-progress: false
 
 jobs:
@@ -20,75 +20,146 @@ jobs:
         with:
           fetch-depth: 0
       - id: apply
-        name: Add reverse overlap fixture
+        name: Update package config documentation
         continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+          import textwrap
 
-          path = Path('crates/dartscope-resolve/src/lib.rs')
-          text = path.read_text()
-          package_marker = '        {"name":"duplicate_b","rootUri":"file:///cache/pkg/","packageUri":"src/"}\n'
-          package_replacement = (
-              '        {"name":"duplicate_b","rootUri":"file:///cache/pkg/","packageUri":"src/"},\n'
-              '        {"name":"outer_reverse","rootUri":"file:///workspace/","packageUri":"tool/generated/"},\n'
-              '        {"name":"nested_reverse","rootUri":"file:///workspace/tool/","packageUri":"lib/"}\n'
-          )
-          assert text.count(package_marker) == 1
-          text = text.replace(package_marker, package_replacement, 1)
+          plan = Path('docs/development/dartscope-library-plan.md')
+          text = plan.read_text()
+          old = textwrap.dedent('''
+          ### DS-RESOLVE-003: Package Config Completeness
 
-          assertion_marker = '        assert!(codes.contains(&"package_config_package_uri_root_overlap"));\n'
-          assertion_replacement = (
-              assertion_marker
-              + '        assert_eq!(\n'
-              + '            codes\n'
-              + '                .iter()\n'
-              + '                .filter(|code| **code == "package_config_package_uri_root_overlap")\n'
-              + '                .count(),\n'
-              + '            2\n'
-              + '        );\n'
-          )
-          assert text.count(assertion_marker) == 1
-          text = text.replace(assertion_marker, assertion_replacement, 1)
-          path.write_text(text)
+          Status: ready. Priority: P1. Owner crate: `dartscope-resolve`.
+
+          Required work:
+
+          1. Preserve and validate optional `generated`, `generator`, and `generatorVersion`
+             metadata according to the official format.
+          2. Validate duplicate/overlapping roots and package-URI containment across entries.
+          3. Add absolute file URI, percent escape, nested root, and Windows URI fixtures.
+          4. Document whether one invalid entry invalidates the complete configuration.
+
+          Acceptance:
+
+          - official package-config v2 examples parse;
+          - every normative invalid case has a diagnostic code and test;
+          - resolution never escapes a package root or synthetic project root;
+          - extension fields remain ignored for forward compatibility.
+          ''').lstrip()
+          new = textwrap.dedent('''
+          ### DS-RESOLVE-003: Package Config Completeness
+
+          Status: verified. Priority: P1. Owner crate: `dartscope-resolve`.
+
+          Implemented slices:
+
+          1. Preserve `generated`, `generator`, and `generatorVersion`, validate the UTC timestamp
+             and Semantic Version formats, and retain unknown extension fields by ignoring them.
+          2. Resolve roots and package-URI directories to canonical scheme/authority and decoded path
+             segments before cross-entry comparison.
+          3. Reject duplicate roots and both normative package-URI/nested-root overlap directions while
+             allowing nested package roots whose accessible package directories remain disjoint.
+          4. Reject literal and percent-encoded traversal or encoded path separators in `packageUri`
+             and incoming `package:` URI paths.
+          5. Cover relative and absolute file URIs, percent escapes, nested roots, external cache roots,
+             and Windows `file:///C:/...` paths.
+
+          Invalidation policy:
+
+          - any error diagnostic invalidates the complete package configuration, and
+            `resolve_package_uri` returns `InvalidConfiguration`;
+          - optional generator metadata format problems are warnings and do not block resolution;
+          - extension fields remain ignored for forward compatibility.
+
+          Acceptance:
+
+          - official package-config v2 examples parse;
+          - every normative invalid case has a stable diagnostic code and test;
+          - resolution never escapes a package root or synthetic project root;
+          - exact Rust 1.95 quality, tests, rustdoc, edition, and feature checks pass on Linux and Windows.
+          ''').lstrip()
+          assert text.count(old) == 1
+          plan.write_text(text.replace(old, new, 1))
+
+          note = Path('docs/development/package-config.md')
+          assert not note.exists()
+          note.write_text(textwrap.dedent('''
+          # Package Configuration Resolution
+
+          DartScope implements Dart package configuration version 2 in `dartscope-resolve`.
+          The public model retains package entries and optional generator metadata while URI parsing,
+          canonical directory comparison, and containment checks remain private implementation details.
+
+          ## Validation policy
+
+          Parsing preserves valid entries even when diagnostics are produced. Resolution is stricter:
+          any error diagnostic makes the complete configuration invalid and
+          `resolve_package_uri` returns `PackageUriResolutionError::InvalidConfiguration`.
+          Invalid optional `generated`, `generator`, or `generatorVersion` values produce warnings and
+          are omitted from the normalized model, so they do not block otherwise valid resolution.
+
+          Unknown JSON properties are ignored for forward compatibility.
+
+          ## URI normalization and containment
+
+          `rootUri` is resolved relative to the package-config file URI and normalized as a directory.
+          `packageUri` is resolved relative to its package root. Canonical comparison uses a normalized
+          scheme and authority plus percent-decoded path segments.
+
+          The resolver rejects:
+
+          - duplicate package root directories, including percent-escape-equivalent spellings;
+          - a package URI directory that contains a nested package root;
+          - a package URI directory that is contained by a nested package root;
+          - literal or percent-encoded traversal outside the package root;
+          - percent-encoded slash or backslash separators inside relative package paths.
+
+          Nested roots remain valid when the outer package URI directory and nested root are disjoint.
+          Absolute external and Windows file URIs are preserved, while only URIs under DartScope's
+          synthetic project root receive a normalized `project_path`.
+
+          ## Diagnostic codes
+
+          - `package_config_duplicate_root`
+          - `package_config_package_uri_root_overlap`
+          - `package_config_invalid_package_uri`
+          - `package_config_invalid_root_uri`
+          - `package_config_invalid_generated`
+          - `package_config_invalid_generator`
+          - `package_config_invalid_generator_version`
+
+          Normative behavior follows Dart's package-config v2 specification in
+          `dart-lang/language/accepted/2.8/language-versioning/package-config-file-v2.md`.
+          ''').lstrip())
           PY
-      - id: verify
-        name: Verify with Rust 1.95
+      - id: commit
+        name: Commit package config documentation
         if: steps.apply.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
-          rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
-          cargo fmt --all
-          cargo test -p dartscope-resolve --locked --quiet
-          cargo clippy -p dartscope-resolve --all-targets --locked -- -D warnings
-          cargo fmt --all -- --check
-      - id: commit
-        name: Commit reverse overlap fixture
-        if: steps.verify.outcome == 'success'
-        continue-on-error: true
-        shell: bash
-        run: |
-          git add crates/dartscope-resolve/src/lib.rs
+          git add docs/development/dartscope-library-plan.md docs/development/package-config.md
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "test: cover reverse package root overlap"
+          git commit -m "docs: verify package config completeness"
       - id: push
-        name: Push reverse overlap fixture
+        name: Push package config documentation
         if: steps.commit.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: git push origin HEAD:main
-      - name: Publish fixture status
+      - name: Publish documentation status
         if: always()
         uses: actions/github-script@v7
         with:
           script: |
             const outcomes = {
               apply: '${{ steps.apply.outcome }}',
-              verify: '${{ steps.verify.outcome }}',
               commit: '${{ steps.commit.outcome }}',
               push: '${{ steps.push.outcome }}',
             };
@@ -98,6 +169,6 @@ jobs:
               repo: context.repo.repo,
               sha: context.sha,
               state: passed ? 'success' : 'failure',
-              context: 'dartscope/package-config-reverse-overlap',
+              context: 'dartscope/package-config-docs',
               description: Object.entries(outcomes).map(([key, value]) => `${key}=${value}`).join(', '),
             });
