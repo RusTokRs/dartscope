@@ -15,6 +15,76 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  apply_package_config_uri_security:
+    name: Verify and apply package config URI security
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      statuses: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: apply
+        name: Apply staged patch
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch=.github/package-config-uri-security.patch
+          test -f "${patch}"
+          git apply --check "${patch}"
+          git apply "${patch}"
+      - id: verify
+        name: Verify resolver slice on Rust 1.95
+        if: steps.apply.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+          cargo +1.95.0 fmt --all -- --check
+          cargo +1.95.0 test -p dartscope-resolve --locked --quiet
+          cargo +1.95.0 clippy -p dartscope-resolve --all-targets --locked -- -D warnings
+      - id: commit
+        name: Create feature commit
+        if: steps.verify.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          git rm .github/package-config-uri-security.patch
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix: reject encoded package URI traversal"
+      - id: push
+        name: Push feature commit
+        if: steps.commit.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: git push origin HEAD:main
+      - name: Publish slice diagnostics
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const outcomes = {
+              apply: '${{ steps.apply.outcome }}',
+              verify: '${{ steps.verify.outcome }}',
+              commit: '${{ steps.commit.outcome }}',
+              push: '${{ steps.push.outcome }}',
+            };
+            for (const [key, outcome] of Object.entries(outcomes)) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: outcome === 'success' ? 'success' : 'failure',
+                context: `dartscope/package-config-uri-${key}`,
+                description: `${key}: ${outcome}`,
+              });
+            }
+
   quality:
     name: Quality gates
     runs-on: ubuntu-latest
