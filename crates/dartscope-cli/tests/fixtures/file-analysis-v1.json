@@ -1,0 +1,25 @@
+{
+  "schema": "dartscope.file-analysis",
+  "version": 1,
+  "data": {
+    "path": "lib/main.dart",
+    "language": "dart",
+    "library": null,
+    "imports": [],
+    "exports": [],
+    "parts": [],
+    "part_of": null,
+    "declarations": [],
+    "string_constants": [],
+    "graphql_operations": [],
+    "graphql_operation_uses": [],
+    "flutter": {
+      "imports_flutter": false,
+      "widgets": [],
+      "routes": [],
+      "assets": [],
+      "localizations": []
+    },
+    "diagnostics": []
+  }
+}
