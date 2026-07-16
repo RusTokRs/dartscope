@@ -282,6 +282,12 @@ pub struct DartDeclaration {
     pub span: SourceSpan,
     pub extends: Option<String>,
     pub mixes_in: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_symbol_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declaration_span: Option<SourceSpan>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -475,7 +481,7 @@ pub enum DartGraphqlOperationType {
     Subscription,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DartDeclarationKind {
     Class,
@@ -486,6 +492,13 @@ pub enum DartDeclarationKind {
     Typedef,
     Function,
     Variable,
+    Method,
+    Constructor,
+    Field,
+    Getter,
+    Setter,
+    Operator,
+    LocalVariable,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]

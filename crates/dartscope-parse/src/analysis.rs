@@ -1,17 +1,17 @@
 use std::collections::HashMap;
 
 use dartscope_core::{
-    Confidence, DartDeclaration, DartDiagnostic, DartFileAnalysis, DartFileInput,
-    DartLibraryDirective, DartPart, DartPartOf, DartProjectAnalysis, DartProjectInput,
-    DartProjectSummary, FlutterWidgetHint, SourceSpan, normalize_path,
+    Confidence, DartDiagnostic, DartFileAnalysis, DartFileInput, DartLibraryDirective, DartPart,
+    DartPartOf, DartProjectAnalysis, DartProjectInput, DartProjectSummary, FlutterWidgetHint,
+    SourceSpan, normalize_path,
 };
 use dartscope_resolve::parse_package_config;
 
 use crate::backend::{DartParser, HeuristicDartParser};
+use crate::declaration_inventory::collect_declaration_inventory;
 use crate::declarations::{
-    collect_string_constant_values, declaration_from_line, directive_like_without_semicolon,
-    is_flutter_base, is_flutter_import, library_directive_name, part_of_value,
-    string_constant_from_line,
+    collect_string_constant_values, directive_like_without_semicolon, is_flutter_base,
+    is_flutter_import, library_directive_name, part_of_value, string_constant_from_line,
 };
 use crate::flutter_hints::{
     PendingRouteHint, count_char, flutter_asset_from_line, flutter_localization_from_line,
@@ -41,6 +41,8 @@ struct FileAnalysisState {
     pending_route: Option<PendingRouteHint>,
     material_routes_depth: Option<usize>,
     string_constants: HashMap<String, String>,
+    source: String,
+    masked_source: String,
 }
 
 impl FileAnalysisState {
@@ -66,6 +68,8 @@ impl FileAnalysisState {
             pending_route: None,
             material_routes_depth: None,
             string_constants: collect_string_constant_values(&input.source, masked_source),
+            source: input.source.clone(),
+            masked_source: masked_source.to_string(),
         }
     }
 
@@ -186,42 +190,18 @@ impl FileAnalysisState {
                     span: span.clone(),
                 });
             }
-        } else if starts_keyword(code_trimmed, "part") {
-            if let Some(uri) = directive_uri(source_trimmed, "part") {
-                self.analysis.parts.push(DartPart {
-                    uri,
-                    span: span.clone(),
-                });
-            }
-        } else if let Some(declaration) = declaration_from_line(code_trimmed, indent, span.clone())
+        } else if starts_keyword(code_trimmed, "part")
+            && let Some(uri) = directive_uri(source_trimmed, "part")
         {
-            self.push_declaration(declaration, source_trimmed, indent, span);
-        }
-    }
-
-    fn push_declaration(
-        &mut self,
-        declaration: DartDeclaration,
-        trimmed: &str,
-        indent: usize,
-        span: &SourceSpan,
-    ) {
-        if let Some(base_class) = declaration
-            .extends
-            .clone()
-            .filter(|base| is_flutter_base(base))
-        {
-            self.analysis.flutter.widgets.push(FlutterWidgetHint {
-                class_name: declaration.name.clone(),
-                base_class,
-                confidence: Confidence::High,
+            self.analysis.parts.push(DartPart {
+                uri,
                 span: span.clone(),
             });
         }
-        if let Some(constant) = string_constant_from_line(trimmed, indent, span.clone()) {
+
+        if let Some(constant) = string_constant_from_line(source_trimmed, indent, span.clone()) {
             self.analysis.string_constants.push(constant);
         }
-        self.analysis.declarations.push(declaration);
     }
 
     fn push_route(&mut self, route: PendingRouteHint) {
@@ -238,6 +218,24 @@ impl FileAnalysisState {
 
     fn finish(mut self) -> DartFileAnalysis {
         self.finish_pending_route();
+        let (declarations, diagnostics) =
+            collect_declaration_inventory(&self.analysis.path, &self.source, &self.masked_source);
+        self.analysis.declarations = declarations;
+        self.analysis.diagnostics.extend(diagnostics);
+        for declaration in &self.analysis.declarations {
+            if let Some(base_class) = declaration
+                .extends
+                .clone()
+                .filter(|base| is_flutter_base(base))
+            {
+                self.analysis.flutter.widgets.push(FlutterWidgetHint {
+                    class_name: declaration.name.clone(),
+                    base_class,
+                    confidence: Confidence::High,
+                    span: declaration.span.clone(),
+                });
+            }
+        }
         attach_diagnostic_paths(&mut self.analysis.diagnostics, &self.analysis.path);
         self.analysis
     }

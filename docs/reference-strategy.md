@@ -28,6 +28,10 @@ Dart language and libraries:
 - [Class modifiers](https://dart.dev/language/class-modifiers)
 - [Class modifier reference](https://dart.dev/language/modifier-reference)
 - [Mixins](https://dart.dev/language/mixins)
+- [Methods](https://dart.dev/language/methods)
+- [Constructors](https://dart.dev/language/constructors)
+- [Primary constructors](https://dart.dev/language/primary-constructors)
+- [Operators](https://dart.dev/language/operators)
 - [Extension methods](https://dart.dev/language/extension-methods)
 - [Extension types](https://dart.dev/language/extension-types)
 
@@ -107,7 +111,7 @@ heuristic fixture needs both a positive case and a nearby negative case.
 | Surface | Source class | Current status | Important limit |
 | --- | --- | --- | --- |
 | import, export, part, part-of | normative | implemented heuristic backend | not a full lexer/AST |
-| class, mixin, enum, extension, extension type, typedef | normative | top-level slice | members not indexed |
+| declarations and type members | normative | top-level declarations, traditional constructors, methods, fields, accessors, operators, and local ownership implemented | Dart 3.13 primary and concise constructors are diagnostic-only pending language-version-aware parsing |
 | class modifiers and mixin class | normative | implemented | validity combinations not diagnosed |
 | pubspec dependency sections | normative YAML/pub behavior | typed model and hardened subset | `yaml-rust2` adapter selected but not integrated |
 | Flutter pubspec asset declarations | normative Flutter docs | paths, opaque flavors, validated platforms, ordered transformers implemented | selector item spans await marked-event adapter |

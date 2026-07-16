@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use dartscope_core::{
-    DartDeclaration, DartDeclarationKind, DartPartOfKind, DartStringConstant, SourceSpan,
-};
+use dartscope_core::{DartPartOfKind, DartStringConstant, SourceSpan};
 
 use crate::source_lines::source_lines;
 
@@ -40,55 +38,7 @@ pub(crate) fn quoted_value(input: &str) -> Option<String> {
     Some(rest[..end].to_string())
 }
 
-pub(crate) fn declaration_from_line(
-    trimmed: &str,
-    indent: usize,
-    span: SourceSpan,
-) -> Option<DartDeclaration> {
-    if let Some(name) = class_declaration_name(trimmed) {
-        return Some(DartDeclaration {
-            name,
-            kind: DartDeclarationKind::Class,
-            span,
-            extends: value_after_keyword(trimmed, "extends"),
-            mixes_in: values_after_keyword(trimmed, "with"),
-        });
-    }
-    if let Some(name) = mixin_declaration_name(trimmed) {
-        return Some(simple_declaration(name, DartDeclarationKind::Mixin, span));
-    }
-    if let Some(name) = name_after_keyword(trimmed, "enum") {
-        return Some(simple_declaration(name, DartDeclarationKind::Enum, span));
-    }
-    if let Some(name) = extension_type_declaration_name(trimmed) {
-        return Some(simple_declaration(
-            name,
-            DartDeclarationKind::ExtensionType,
-            span,
-        ));
-    }
-    if let Some(name) = extension_declaration_name(trimmed) {
-        return Some(simple_declaration(
-            name,
-            DartDeclarationKind::Extension,
-            span,
-        ));
-    }
-    if let Some(name) = name_after_keyword(trimmed, "typedef") {
-        return Some(simple_declaration(name, DartDeclarationKind::Typedef, span));
-    }
-    if let Some(name) = top_level_variable(trimmed, indent) {
-        return Some(simple_declaration(
-            name,
-            DartDeclarationKind::Variable,
-            span,
-        ));
-    }
-    top_level_function(trimmed, indent)
-        .map(|name| simple_declaration(name, DartDeclarationKind::Function, span))
-}
-
-fn class_declaration_name(trimmed: &str) -> Option<String> {
+pub(crate) fn class_declaration_name(trimmed: &str) -> Option<String> {
     let tokens: Vec<_> = trimmed.split_whitespace().collect();
     let class_index = tokens.iter().position(|token| *token == "class")?;
     if !tokens[..class_index].iter().all(|token| {
@@ -104,7 +54,7 @@ fn class_declaration_name(trimmed: &str) -> Option<String> {
         .and_then(|token| next_identifier(token))
 }
 
-fn mixin_declaration_name(trimmed: &str) -> Option<String> {
+pub(crate) fn mixin_declaration_name(trimmed: &str) -> Option<String> {
     let tokens: Vec<_> = trimmed.split_whitespace().collect();
     let mixin_index = tokens.iter().position(|token| *token == "mixin")?;
     if !tokens[..mixin_index].iter().all(|token| *token == "base")
@@ -117,13 +67,13 @@ fn mixin_declaration_name(trimmed: &str) -> Option<String> {
         .and_then(|token| next_identifier(token))
 }
 
-fn extension_type_declaration_name(trimmed: &str) -> Option<String> {
+pub(crate) fn extension_type_declaration_name(trimmed: &str) -> Option<String> {
     let rest = trimmed.strip_prefix("extension type ")?.trim_start();
     let rest = rest.strip_prefix("const ").unwrap_or(rest);
     next_identifier(rest)
 }
 
-fn extension_declaration_name(trimmed: &str) -> Option<String> {
+pub(crate) fn extension_declaration_name(trimmed: &str) -> Option<String> {
     let rest = trimmed.strip_prefix("extension ")?.trim_start();
     if rest.starts_with("on ") || rest.starts_with("type ") {
         return None;
@@ -131,32 +81,18 @@ fn extension_declaration_name(trimmed: &str) -> Option<String> {
     next_identifier(rest)
 }
 
-fn simple_declaration(
-    name: String,
-    kind: DartDeclarationKind,
-    span: SourceSpan,
-) -> DartDeclaration {
-    DartDeclaration {
-        name,
-        kind,
-        span,
-        extends: None,
-        mixes_in: Vec::new(),
-    }
-}
-
-fn name_after_keyword(trimmed: &str, keyword: &str) -> Option<String> {
+pub(crate) fn name_after_keyword(trimmed: &str, keyword: &str) -> Option<String> {
     let rest = trimmed.strip_prefix(keyword)?.trim_start();
     next_identifier(rest)
 }
 
-fn value_after_keyword(trimmed: &str, keyword: &str) -> Option<String> {
+pub(crate) fn value_after_keyword(trimmed: &str, keyword: &str) -> Option<String> {
     let marker = format!(" {keyword} ");
     let index = trimmed.find(&marker)?;
     next_qualified_identifier(&trimmed[index + marker.len()..])
 }
 
-fn values_after_keyword(trimmed: &str, keyword: &str) -> Vec<String> {
+pub(crate) fn values_after_keyword(trimmed: &str, keyword: &str) -> Vec<String> {
     let marker = format!(" {keyword} ");
     let Some(index) = trimmed.find(&marker) else {
         return Vec::new();
@@ -187,7 +123,7 @@ fn next_qualified_identifier(input: &str) -> Option<String> {
         .then_some(value)
 }
 
-fn top_level_function(trimmed: &str, indent: usize) -> Option<String> {
+pub(crate) fn top_level_function(trimmed: &str, indent: usize) -> Option<String> {
     if indent != 0 {
         return None;
     }
@@ -208,7 +144,7 @@ fn top_level_function(trimmed: &str, indent: usize) -> Option<String> {
     is_identifier(name).then_some(name.to_string())
 }
 
-fn top_level_variable(trimmed: &str, indent: usize) -> Option<String> {
+pub(crate) fn top_level_variable(trimmed: &str, indent: usize) -> Option<String> {
     if indent != 0 {
         return None;
     }

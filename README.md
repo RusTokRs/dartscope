@@ -33,9 +33,10 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
 
 ## Current Limitations
 
-- The first parser backend is line-oriented and conservative. It does not yet provide
-  a complete Dart AST or type system; lexical masking prevents findings inside comments
-  and strings, but complex annotations and multi-line declarations remain limited.
+- The first parser backend is conservative and does not provide a complete Dart AST or
+  type system. Lexical masking prevents findings inside comments and strings, while a
+  structural declaration pass records complete spans for supported declarations. Complex
+  metadata layouts, patterns, records, and newer language-versioned syntax remain limited.
 - Pubspec parsing uses a private `yaml-rust2` marked-event backend for dependencies,
   environment constraints, assets, fonts, selectors, and transformers. YAML aliases and merge keys
   remain explicitly unsupported, and selector validation follows the serialized DartScope v1 policy
@@ -43,8 +44,11 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
 - Flutter hints are currently detected during file analysis and aggregated by the
   optional `dartscope-flutter` crate. Moving convention extraction fully behind the
   Flutter boundary requires a normalized, parser-independent call-expression model.
-- Declaration coverage is top-level only. Methods, constructors, fields, getters,
-  setters, operators, and local symbols are roadmap work.
+- Declaration inventory covers top-level declarations plus class, mixin, enum,
+  extension, and extension-type methods, traditional constructors, fields, getters,
+  setters, operators, and local variables. Declarations carry stable hierarchical symbol
+  IDs and optional complete declaration spans. Dart 3.13 primary and concise constructors
+  currently produce explicit diagnostics instead of heuristic symbols.
 - CLI JSON uses named v1 envelopes and deterministic golden fixtures. Payload fields remain
   pre-1.0 contracts, so breaking changes require a new schema major and a migration note.
 

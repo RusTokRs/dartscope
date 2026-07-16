@@ -47,6 +47,7 @@ Status vocabulary:
 | `ready` | Defined well enough for the next agent to implement |
 | `planned` | Ordered later; prerequisites are not complete |
 | `blocked` | Cannot proceed until the named blocker changes |
+| `research` | Investigation is recorded; implementation scope and acceptance are not yet committed |
 | `deferred` | Explicitly outside the current release target |
 
 ## Product Boundary
@@ -321,12 +322,29 @@ Alternative backends map their internal syntax trees to `dartscope-core` facts t
 
 ### DS-PARSE-006: Complete Declaration Inventory
 
-Status: ready. Priority: P1. Prerequisite: DS-PARSE-005.
+Status: verified. Priority: P1. Prerequisite: DS-PARSE-005.
 
-Add normalized methods, constructors, fields, getters, setters, operators, and local
-scope ownership. Add enclosing symbol IDs and declaration spans covering the complete
-declaration, not only its first line. Include modern primary and concise constructor
-syntax only after official language-version references are recorded.
+Implemented slices:
+
+1. Normalized methods, traditional constructors, fields, getters, setters, operators, and
+   local variables for class, mixin, enum, extension, and extension-type bodies.
+2. Deterministic hierarchical `symbol_id` and `parent_symbol_id` values for top-level,
+   member, and local declarations.
+3. Additive optional `declaration_span` values covering the complete supported declaration;
+   the existing `span` remains the compatibility anchor for the declaration's source line.
+4. Multiple fields in one declaration and both inferred and explicitly typed local variables.
+5. Body-depth filtering that excludes constructor calls and other expressions from the
+   declaration inventory.
+6. Explicit `unsupported_primary_constructor` and `unsupported_concise_constructor`
+   diagnostics for Dart 3.13 syntax until language-version-aware parsing is implemented.
+
+Verification:
+
+- focused fixtures cover every required owner and member category, full spans, stable parents,
+  local ownership, multiple fields, typed locals, and nearby constructor-call negatives;
+- exact Rust 1.95 workspace tests, all-feature tests, formatting, and Clippy with warnings denied
+  pass before finalization;
+- the finalization workflow repeats the repository checks before committing to `main`.
 
 Acceptance:
 
@@ -481,7 +499,7 @@ Acceptance:
 
 ### DS-FLUTTER-002: Move Convention Extraction Behind Optional Boundary
 
-Status: planned. Priority: P1. Prerequisites: DS-PARSE-005, DS-JSON-001.
+Status: ready. Priority: P1. Prerequisites: DS-PARSE-005, DS-JSON-001.
 
 Migration sequence:
 
@@ -541,6 +559,30 @@ Status: planned. Priority: P3. Prerequisites: DS-JSON-001, DS-CLI-002.
 Add complete package metadata, rustdoc coverage, changelog, security policy, crate
 publish order, `cargo package` checks, release CI, and an explicit support matrix for
 Rust, Dart, Flutter, and ecosystem conventions.
+
+### DS-COMPAT-001: Upstream Compatibility Radar
+
+Status: research. Priority: P3. Not on the current 0.1 critical path.
+
+Research scope:
+
+1. Evaluate a CI-only official Dart analyzer oracle that compares DartScope's declared
+   capabilities rather than requiring internal AST equality.
+2. Define a version matrix where current stable can block changes, beta reports early drift,
+   and dev/main channels are non-blocking compatibility radar.
+3. Design a reduced conformance corpus, differential reports, scheduled release detection,
+   and GitHub issue or draft-PR creation.
+4. Define automation safety boundaries: CI may detect, minimize, report, and propose changes,
+   but must not rewrite semantic parser rules, accept goldens, weaken assertions, or merge fixes.
+5. Evaluate runtime cost, cache strategy, network and token permissions, upstream API stability,
+   and the security boundary of any `tools/dart-oracle` prototype.
+
+Research exit:
+
+- official source and behavioral reference map is recorded;
+- a bounded `tools/dart-oracle` exchange contract is prototyped or rejected with evidence;
+- stable, beta, and development-channel failure policies are documented;
+- implementation is split into reviewable follow-up tasks with explicit acceptance criteria.
 
 ## Completed Tasks
 
@@ -613,6 +655,15 @@ Status: verified.
 All seven command families have stable help, version, exit-code, stdout/stderr, malformed
 input, environment option, filesystem discovery, paths-with-spaces, generated-directory,
 and symlink behavior covered by process-level tests on Linux and Windows.
+
+### DS-PARSE-006: Complete Declaration Inventory
+
+Status: verified.
+
+Supported declarations now include type members and callable-local variables with stable
+hierarchical IDs, parent relationships, and complete optional declaration spans. Traditional
+constructors are distinguished from calls; unsupported Dart 3.13 constructor forms emit
+explicit diagnostics rather than fabricated symbols.
 
 ### DS-FLUTTER-001: Inventory Aggregation
 
@@ -704,7 +755,8 @@ Do not resolve these conditions by silently expanding scope.
 
 ## Current Recommended Next Step
 
-Implement `DS-PARSE-006` complete declaration inventory next. The stable tool boundary is
-verified through `DS-JSON-001` and `DS-CLI-002`; methods, constructors, fields, accessors,
-operators, local ownership, complete declaration spans, and stable parent relationships are
-now the first ready semantic-model task.
+Implement `DS-FLUTTER-002` next. The parser now exposes stable generic declaration ownership;
+the next architectural step is a parser-independent invocation model so Flutter convention
+extraction can move behind the optional `dartscope-flutter` boundary without changing pure Dart
+semantics. `DS-COMPAT-001` remains recorded as research and is intentionally deferred until the
+current implementation queue is complete.

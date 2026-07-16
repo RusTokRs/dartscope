@@ -2,6 +2,7 @@
 
 mod analysis;
 mod backend;
+mod declaration_inventory;
 mod declarations;
 mod flutter_hints;
 mod graphql;

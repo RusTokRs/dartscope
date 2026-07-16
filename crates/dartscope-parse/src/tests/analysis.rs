@@ -649,3 +649,176 @@ class App extends StatelessWidget {
             && route.resolved_path.as_deref() == Some("/settings")
     }));
 }
+
+#[test]
+fn inventories_normative_type_members_with_stable_parents_and_full_spans() {
+    // Normative references: dart.dev/language/methods, constructors, extension-methods,
+    // and extension-types.
+    let source = r#"
+class Point {
+  final int x, y;
+  Point(this.x);
+  Point.origin() : x = 0;
+  int get doubled => x * 2;
+  set doubled(int value) {
+    final normalized = value ~/ 2;
+  }
+  Point operator +(Point other) => Point(x + other.x);
+  int distance(Point other) {
+    var delta = other.x - x;
+    int typedDelta = delta.abs();
+    return typedDelta;
+  }
+}
+
+mixin Logging {
+  void log(String message) {}
+}
+
+enum Mode {
+  compact,
+  expanded;
+  bool get isCompact => this == compact;
+}
+
+extension PointParsing on String {
+  Point parsePoint() => Point(int.parse(this));
+}
+
+extension type UserId(int value) {
+  UserId.zero() : value = 0;
+  bool get isValid => value >= 0;
+}
+"#;
+
+    let analysis = analyze_file(DartFileInput::new("lib/model.dart", source));
+    let point = analysis
+        .declarations
+        .iter()
+        .find(|item| item.name == "Point" && item.kind == DartDeclarationKind::Class)
+        .expect("class declaration");
+    let point_id = point.symbol_id.as_deref().expect("class symbol id");
+    let point_full = point.declaration_span.as_ref().expect("class full span");
+    assert!(point_full.end_line > point_full.start_line);
+    assert_eq!(
+        &source[point_full.byte_start..point_full.byte_end],
+        source[point_full.byte_start..point_full.byte_end].trim_end()
+    );
+
+    for (name, kind) in [
+        ("x", DartDeclarationKind::Field),
+        ("y", DartDeclarationKind::Field),
+        ("Point", DartDeclarationKind::Constructor),
+        ("Point.origin", DartDeclarationKind::Constructor),
+        ("doubled", DartDeclarationKind::Getter),
+        ("doubled", DartDeclarationKind::Setter),
+        ("+", DartDeclarationKind::Operator),
+        ("distance", DartDeclarationKind::Method),
+    ] {
+        let member = analysis
+            .declarations
+            .iter()
+            .find(|item| item.name == name && item.kind == kind)
+            .unwrap_or_else(|| panic!("missing {kind:?} {name}"));
+        assert_eq!(member.parent_symbol_id.as_deref(), Some(point_id));
+        assert!(
+            member
+                .symbol_id
+                .as_deref()
+                .is_some_and(|id| id.starts_with(point_id))
+        );
+        assert!(
+            member
+                .declaration_span
+                .as_ref()
+                .is_some_and(|span| span.byte_end > span.byte_start)
+        );
+    }
+
+    let distance = analysis
+        .declarations
+        .iter()
+        .find(|item| item.name == "distance" && item.kind == DartDeclarationKind::Method)
+        .expect("distance method");
+    let distance_id = distance.symbol_id.as_deref().expect("method symbol id");
+    let delta = analysis
+        .declarations
+        .iter()
+        .find(|item| item.name == "delta" && item.kind == DartDeclarationKind::LocalVariable)
+        .expect("local variable");
+    assert_eq!(delta.parent_symbol_id.as_deref(), Some(distance_id));
+    let typed_delta = analysis
+        .declarations
+        .iter()
+        .find(|item| item.name == "typedDelta" && item.kind == DartDeclarationKind::LocalVariable)
+        .expect("typed local variable");
+    assert_eq!(typed_delta.parent_symbol_id.as_deref(), Some(distance_id));
+
+    let setter = analysis
+        .declarations
+        .iter()
+        .find(|item| item.name == "doubled" && item.kind == DartDeclarationKind::Setter)
+        .expect("setter");
+    let normalized = analysis
+        .declarations
+        .iter()
+        .find(|item| item.name == "normalized" && item.kind == DartDeclarationKind::LocalVariable)
+        .expect("setter local");
+    assert_eq!(normalized.parent_symbol_id, setter.symbol_id);
+
+    for (owner, member, kind) in [
+        ("Logging", "log", DartDeclarationKind::Method),
+        ("Mode", "isCompact", DartDeclarationKind::Getter),
+        ("PointParsing", "parsePoint", DartDeclarationKind::Method),
+        ("UserId", "UserId.zero", DartDeclarationKind::Constructor),
+        ("UserId", "isValid", DartDeclarationKind::Getter),
+    ] {
+        let owner = analysis
+            .declarations
+            .iter()
+            .find(|item| item.name == owner)
+            .expect("owner declaration");
+        let child = analysis
+            .declarations
+            .iter()
+            .find(|item| item.name == member && item.kind == kind)
+            .unwrap_or_else(|| panic!("missing {member}"));
+        assert_eq!(child.parent_symbol_id, owner.symbol_id);
+    }
+
+    assert!(!analysis.declarations.iter().any(|item| {
+        item.kind == DartDeclarationKind::Constructor && item.name == "Point(int.parse"
+    }));
+}
+
+#[test]
+fn reports_dart_3_13_constructor_syntax_without_fabricating_members() {
+    // Dart 3.13 references: dart.dev/language/constructors and primary-constructors.
+    let source = r#"
+class Primary(var int value);
+
+class Concise {
+  new();
+  factory named() => Concise();
+}
+"#;
+
+    let analysis = analyze_file(DartFileInput::new("lib/recent.dart", source));
+
+    assert!(analysis.diagnostics.iter().any(|item| {
+        item.code == "unsupported_primary_constructor"
+            && item.path.as_deref() == Some("lib/recent.dart")
+    }));
+    assert_eq!(
+        analysis
+            .diagnostics
+            .iter()
+            .filter(|item| item.code == "unsupported_concise_constructor")
+            .count(),
+        2
+    );
+    assert!(!analysis.declarations.iter().any(|item| {
+        item.kind == DartDeclarationKind::Constructor
+            && (item.name == "new" || item.name == "named")
+    }));
+}

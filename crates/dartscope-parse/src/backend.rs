@@ -86,7 +86,7 @@ impl DartParser for HeuristicDartParser {
                 },
                 DartParserCapabilityStatus {
                     capability: DartParserCapability::Members,
-                    support: DartParserCapabilitySupport::Unsupported,
+                    support: DartParserCapabilitySupport::Supported,
                 },
                 DartParserCapabilityStatus {
                     capability: DartParserCapability::Recovery,
@@ -134,7 +134,7 @@ mod tests {
     }
 
     #[test]
-    fn heuristic_metadata_makes_unsupported_members_explicit() {
+    fn heuristic_metadata_reports_member_inventory_support() {
         let metadata = HeuristicDartParser.metadata();
 
         assert_eq!(metadata.name, "heuristic");
@@ -144,7 +144,7 @@ mod tests {
         );
         assert_eq!(
             metadata.support_for(DartParserCapability::Members),
-            DartParserCapabilitySupport::Unsupported
+            DartParserCapabilitySupport::Supported
         );
         assert!(matches!(
             metadata.language_version,
