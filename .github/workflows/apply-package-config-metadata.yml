@@ -1,5 +1,6 @@
 name: Apply package config metadata slice
 
+# Triggered through the Contents API so the staged Git Data commit receives a push event.
 on:
   push:
     branches: [main]
