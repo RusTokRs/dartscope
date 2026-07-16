@@ -92,7 +92,7 @@ The private adapter must:
 
 ## Current Migration Status
 
-Completed prerequisites and configuration slices:
+Completed prerequisites and private backend slices:
 
 - [x] Both public APIs pass through one private `PreparedPubspecSource` boundary.
 - [x] Document-count, duplicate-key, malformed-flow, alias-policy, and byte-evidence
@@ -108,17 +108,19 @@ Completed prerequisites and configuration slices:
   preserves UTF-8 byte offsets and one-based columns across LF, CRLF, and non-ASCII input.
 - [x] A private marked-tree converter maps environment constraints, Flutter booleans,
   assets, selectors, ordered transformers, and fonts into the existing core-owned types.
-- [x] A dual-backend configuration parity gate compares conservative and marked-event
-  output for structured configuration, duplicate keys, additional documents, invalid
-  selectors, CRLF, and non-ASCII evidence.
+- [x] A private dependency converter maps package names, `dependencies`,
+  `dev_dependencies`, and `dependency_overrides`, including scalar, SDK, path, git,
+  hosted, workspace, version, fallback, block-mapping, and flow-mapping source shapes.
+- [x] Bare wildcard constraints are sanitized with a one-byte replacement before marked
+  parsing and restored from syntax evidence without changing any source byte offsets.
+- [x] Dual-backend parity compares package names, dependency order and sections, typed and
+  compatibility source representations, environment and Flutter configuration, shared
+  diagnostics, CRLF, duplicate keys, and non-ASCII byte evidence.
 
 Remaining before backend cutover:
 
-- [ ] Convert package name and dependency sections/sources from the marked tree into the
-  existing core-owned dependency model.
-- [ ] Extend dual-backend parity to dependency output and the complete dependency fixture
-  suite before changing the public default.
 - [ ] Pass the complete Rust 1.95.0 Linux and Windows verification matrix.
+- [ ] Switch the public pubspec APIs to the marked backend after that matrix is green.
 - [ ] Remove the conservative parser only after the marked backend is the verified default.
 
 The public APIs still use the conservative backend. The marked implementation remains a
@@ -132,12 +134,14 @@ private migration target and cannot leak `yaml-rust2` types into the public cont
 3. Convert environment and Flutter configuration into existing domain models and require
    dual-backend parity. Completed.
 4. Convert package name and dependency sections/sources into the existing dependency model.
-5. Run the complete dependency/configuration fixtures through both implementations and
-   require identical normalized output.
-6. Switch `parse_pubspec` to the marked-event adapter while retaining the public model,
-   diagnostic paths, and compatibility fields.
-7. Remove the line-oriented dependency, configuration, and syntax parsers only after the
-   complete fixture suite passes on Linux and Windows.
+   Completed.
+5. Run representative dependency/configuration contracts through both implementations and
+   require identical normalized output. Completed.
+6. Pass the complete repository-pinned Rust 1.95.0 Linux and Windows matrix.
+7. Switch `parse_pubspec` and the focused configuration API to the marked-event adapter
+   while retaining the public model, diagnostic paths, and compatibility fields.
+8. Remove the line-oriented dependency, configuration, and syntax parsers only after the
+   complete fixture suite passes on Linux and Windows with the marked backend as default.
 
 ## Verification Gate
 
@@ -155,10 +159,12 @@ $env:RUSTDOCFLAGS = "-D warnings"
 cargo doc --workspace --no-deps --locked
 ```
 
-The marked bridge and configuration converter have additionally passed isolated
-compilation, nine unit tests, formatting, and Clippy on Rust 1.85.0. That local
-compatibility check is useful evidence but does not replace the required Rust 1.95.0
-Linux/Windows matrix or a complete workspace test run.
+The marked bridge and configuration converter previously passed isolated compilation,
+unit tests, formatting, and Clippy on Rust 1.85.0. The dependency converter and complete
+private parity composition additionally pass an isolated build with the real
+`yaml-rust2` 0.11.0 dependency on Rust 1.88.0: four focused tests, `rustfmt --check`, and
+Clippy with `-D warnings`. These compatibility checks are useful evidence but do not
+replace the required Rust 1.95.0 Linux/Windows matrix or a complete workspace test run.
 
 ## Primary Sources
 
