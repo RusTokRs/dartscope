@@ -620,7 +620,11 @@ pub struct PackageConfigAnalysis {
     pub path: String,
     pub config_version: Option<u64>,
     pub packages: Vec<DartPackageConfigEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generated: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generator: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generator_version: Option<String>,
     pub diagnostics: Vec<DartDiagnostic>,
 }
