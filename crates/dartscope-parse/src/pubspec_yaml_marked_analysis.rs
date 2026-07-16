@@ -2,7 +2,7 @@ use dartscope_core::pubspec::{PubspecConfiguration, PubspecConfigurationAnalysis
 use dartscope_core::{DartDiagnostic, PubspecAnalysis, PubspecInput};
 
 use crate::pubspec_syntax::{
-    append_common_syntax_diagnostics, prepare_pubspec_source, PubspecSyntaxCheck,
+    PubspecSyntaxCheck, append_common_syntax_diagnostics, prepare_pubspec_source,
 };
 use crate::source_lines::source_lines;
 
@@ -24,11 +24,7 @@ pub(crate) fn parse_pubspec(input: PubspecInput) -> PubspecAnalysis {
             "pubspec_duplicate_key" | "pubspec_multiple_documents_unsupported"
         )
     });
-    append_common_syntax_diagnostics(
-        &mut analysis.diagnostics,
-        &analysis.path,
-        &prepared.syntax,
-    );
+    append_common_syntax_diagnostics(&mut analysis.diagnostics, &analysis.path, &prepared.syntax);
     apply_dependency_syntax_check(&mut analysis, &prepared.syntax);
     analysis
 }
@@ -143,9 +139,11 @@ mod tests {
             analysis.dependencies[0].version_or_source.as_deref(),
             Some("*")
         );
-        assert!(!analysis
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "pubspec_unsupported_yaml_alias"));
+        assert!(
+            !analysis
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "pubspec_unsupported_yaml_alias")
+        );
     }
 }
