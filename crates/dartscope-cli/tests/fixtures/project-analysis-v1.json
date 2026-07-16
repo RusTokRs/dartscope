@@ -1,0 +1,29 @@
+{
+  "schema": "dartscope.project-analysis",
+  "version": 1,
+  "data": {
+    "root": ".",
+    "files": [],
+    "pubspecs": [],
+    "package_configs": [],
+    "summary": {
+      "dart_files": 0,
+      "pubspecs": 0,
+      "package_configs": 0,
+      "imports": 0,
+      "exports": 0,
+      "parts": 0,
+      "declarations": 0,
+      "string_constants": 0,
+      "graphql_operations": 0,
+      "graphql_operation_uses": 0,
+      "flutter_widgets": 0,
+      "flutter_routes": 0,
+      "flutter_assets": 0,
+      "flutter_localizations": 0,
+      "package_dependencies": 0,
+      "diagnostics": 0
+    },
+    "diagnostics": []
+  }
+}
