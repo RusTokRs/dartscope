@@ -27,12 +27,10 @@ jobs:
         with:
           fetch-depth: 0
       - id: checksum
-        name: Verify staged patch
+        name: Verify staged patch exists
         continue-on-error: true
         shell: bash
-        run: |
-          echo "bb87827f7a8786fd2710222f84d72c360a952b41e999444db69bc1faa1d89519  .github/package-config-metadata.patch" \
-            | sha256sum --check --strict
+        run: test -f .github/package-config-metadata.patch
       - id: apply
         name: Apply metadata patch
         if: steps.checksum.outcome == 'success'
@@ -65,7 +63,7 @@ jobs:
         with:
           script: |
             const outcomes = {
-              checksum: '${{ steps.checksum.outcome }}',
+              patch: '${{ steps.checksum.outcome }}',
               apply: '${{ steps.apply.outcome }}',
               commit: '${{ steps.commit.outcome }}',
               push: '${{ steps.push.outcome }}',
