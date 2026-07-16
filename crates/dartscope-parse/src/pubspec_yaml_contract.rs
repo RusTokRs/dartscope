@@ -34,7 +34,7 @@ fn preserves_structured_configuration_contract() {
     assert_eq!(asset.path, "assets/logo.svg");
     assert_eq!(asset.flavors, ["development", "customer-a"]);
     assert_eq!(asset.platforms, ["android", "ios", "web"]);
-    assert_eq!(asset.transformerq.len(), 1);
+    assert_eq!(asset.transformers.len(), 1);
     assert_eq!(asset.transformers[0].package, "vector_graphics_compiler");
     assert_eq!(asset.transformers[0].args, ["--tessellate"]);
     assert!(analysis.diagnostics.is_empty());
