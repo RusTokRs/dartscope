@@ -105,7 +105,9 @@ fn parse_dependency_section(
         return;
     };
     for entry in entries {
-        let Some(version_or_source) = dependency_source(entry, syntax, path, analysis) else {
+        let DependencySourceParse::Valid(version_or_source) =
+            dependency_source(entry, syntax, path, analysis)
+        else {
             continue;
         };
         let source = version_or_source
@@ -121,29 +123,34 @@ fn parse_dependency_section(
     }
 }
 
+enum DependencySourceParse {
+    Valid(Option<String>),
+    Invalid,
+}
+
 fn dependency_source(
     entry: &Entry,
     syntax: &PubspecSyntaxCheck,
     path: &str,
     analysis: &mut PubspecAnalysis,
-) -> Option<Option<String>> {
+) -> DependencySourceParse {
     match &entry.value.kind {
         NodeKind::Scalar(value) => {
             if syntax.is_bare_wildcard_line(entry.key_span.start_line) {
-                Some(Some("*".to_string()))
+                DependencySourceParse::Valid(Some("*".to_string()))
             } else {
-                Some(Some(value.clone()))
+                DependencySourceParse::Valid(Some(value.clone()))
             }
         }
         NodeKind::Mapping(entries) => {
             let mut fields = BTreeMap::new();
             if flatten_fields(entries, "", &mut fields, path, analysis) {
-                Some(normalize_dependency_source(&fields))
+                DependencySourceParse::Valid(normalize_dependency_source(&fields))
             } else {
-                None
+                DependencySourceParse::Invalid
             }
         }
-        NodeKind::Unsupported => None,
+        NodeKind::Unsupported => DependencySourceParse::Invalid,
         NodeKind::Sequence(_) => {
             analysis.diagnostics.push(
                 DartDiagnostic::error(
@@ -153,7 +160,7 @@ fn dependency_source(
                 )
                 .with_path(path.to_string()),
             );
-            None
+            DependencySourceParse::Invalid
         }
     }
 }
