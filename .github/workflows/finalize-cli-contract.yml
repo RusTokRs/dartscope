@@ -1,0 +1,211 @@
+name: Finalize CLI contract
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/finalize-cli-contract.yml]
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: finalize-cli-contract
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+      - name: Verify CLI contract slice
+        run: |
+          cargo fmt --all -- --check
+          cargo test -p dartscope-cli --locked --quiet
+      - name: Update roadmap and README
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          plan = Path('docs/development/dartscope-library-plan.md')
+          text = plan.read_text()
+          old = textwrap.dedent('''
+          ### DS-CLI-002: CLI Contract And Integration Tests
+
+          Status: ready. Priority: P1. Owner crate: `dartscope-cli`.
+
+          Required work:
+
+          1. Add `--help`, `--version`, command-specific usage, and stable exit-code behavior.
+          2. Add integration tests for each command, invalid arguments, missing paths, and
+             environment pairs.
+          3. Test project discovery with nested packages and nearest package configurations.
+          4. Decide and document symlink behavior and additional ignored generated directories.
+
+          Acceptance:
+
+          - no command panics on malformed input;
+          - stdout contains JSON only for JSON commands and errors go to stderr;
+          - tests pass on Windows and Linux with paths containing spaces.
+          ''').lstrip()
+          new = textwrap.dedent('''
+          ### DS-CLI-002: CLI Contract And Integration Tests
+
+          Status: verified. Priority: P1. Owner crate: `dartscope-cli`.
+
+          Implemented slices:
+
+          1. Global and command-specific help, package version output, and documented process exit
+             codes for success, internal failure, invalid arguments, and unreadable inputs.
+          2. Process-level integration coverage for all seven JSON commands, invalid arguments,
+             missing paths, repeatable environment pairs, and malformed source inputs.
+          3. Deterministic nested-package discovery with each package's nearest sibling
+             `.dart_tool/package_config.json`.
+          4. Paths containing spaces, exact generated-directory exclusions, and a documented policy
+             that recursive discovery never follows symlink entries.
+          5. Stable stdout/stderr separation: successful JSON commands emit one envelope to stdout,
+             while argument and filesystem failures emit one human-readable error to stderr.
+
+          Verification:
+
+          - malformed Dart and YAML produce successful diagnostic-bearing JSON rather than panics;
+          - exact Rust 1.95 formatting and focused CLI tests pass;
+          - hosted Linux and Windows workspace tests and feature matrices report success;
+          - aggregate `dartscope/ci` reports success.
+
+          Acceptance:
+
+          - no command panics on malformed input;
+          - stdout contains JSON only for JSON commands and errors go to stderr;
+          - tests pass on Windows and Linux with paths containing spaces.
+          ''').lstrip()
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          text = text.replace(
+              'Status: planned. Priority: P1. Prerequisite: DS-PARSE-005.\n\nAdd normalized methods,',
+              'Status: ready. Priority: P1. Prerequisite: DS-PARSE-005.\n\nAdd normalized methods,',
+              1,
+          )
+
+          completed_marker = '### DS-FLUTTER-001: Inventory Aggregation\n'
+          completed = textwrap.dedent('''
+          ### DS-CLI-002: CLI Contract And Integration Tests
+
+          Status: verified.
+
+          All seven command families have stable help, version, exit-code, stdout/stderr, malformed
+          input, environment option, filesystem discovery, paths-with-spaces, generated-directory,
+          and symlink behavior covered by process-level tests on Linux and Windows.
+
+          ''')
+          assert text.count(completed_marker) == 1
+          text = text.replace(completed_marker, completed + completed_marker, 1)
+
+          old_next = textwrap.dedent('''
+          Implement `DS-CLI-002` CLI contract and integration tests next. `DS-JSON-001` is verified;
+          command help, version output, exit codes, malformed-input behavior, nested project discovery,
+          paths containing spaces, and stdout/stderr separation are now the next stable-boundary work.
+          ''').lstrip()
+          new_next = textwrap.dedent('''
+          Implement `DS-PARSE-006` complete declaration inventory next. The stable tool boundary is
+          verified through `DS-JSON-001` and `DS-CLI-002`; methods, constructors, fields, accessors,
+          operators, local ownership, complete declaration spans, and stable parent relationships are
+          now the first ready semantic-model task.
+          ''').lstrip()
+          assert text.count(old_next) == 1
+          text = text.replace(old_next, new_next, 1)
+          plan.write_text(text)
+
+          readme = Path('README.md')
+          text = readme.read_text()
+          text = text.replace(
+              '''- `dartscope-json` provides JSON serialization helpers. A versioned stable schema is
+  still planned and current pre-1.0 shapes can change with documented migrations.
+- `dartscope-cli` exposes a small command-line wrapper for local smoke testing.''',
+              '''- `dartscope-json` owns named versioned JSON envelopes and checked-in golden contracts;
+  low-level generic Serde helpers remain available but are not stable command schemas.
+- `dartscope-cli` exposes the stable process boundary with help, version output, documented exit
+  codes, deterministic discovery, and versioned JSON for every analysis command.''',
+              1,
+          )
+          text = text.replace(
+              '''- Pubspec parsing understands common dependency, environment, asset, font, and generation
+  shapes, including Flutter asset `flavors`, `platforms`, and ordered `transformers`, but
+  it is not yet backed by a complete YAML parser. YAML aliases and merge keys remain
+  explicitly unsupported. Flow-style environment and top-level Flutter configuration
+  mappings remain unsupported, and selector names are preserved without versioned
+  Flutter validation.''',
+              '''- Pubspec parsing uses a private `yaml-rust2` marked-event backend for dependencies,
+  environment constraints, assets, fonts, selectors, and transformers. YAML aliases and merge keys
+  remain explicitly unsupported, and selector validation follows the serialized DartScope v1 policy
+  rather than claiming compatibility with every future Flutter SDK.''',
+              1,
+          )
+          text = text.replace(
+              '''- JSON output is deterministic for implemented APIs but is not yet wrapped in a
+  versioned schema envelope.''',
+              '''- CLI JSON uses named v1 envelopes and deterministic golden fixtures. Payload fields remain
+  pre-1.0 contracts, so breaking changes require a new schema major and a migration note.''',
+              1,
+          )
+          text = text.replace(
+              '''```powershell
+          cargo test --workspace
+          cargo run -p dartscope-cli -- analyze-file path\\to\\file.dart''',
+              '''```powershell
+          cargo test --workspace
+          cargo run -p dartscope-cli -- --help
+          cargo run -p dartscope-cli -- --version
+          cargo run -p dartscope-cli -- analyze-file path\\to\\file.dart''',
+              1,
+          )
+          text = text.replace(
+              '''`analyze-project` recursively scans `.dart` files and `pubspec.yaml` files, skips
+          `.git`, `.dart_tool`, `build`, and `target`, and returns a deterministic JSON summary''',
+              '''`analyze-project` recursively scans regular `.dart` files and `pubspec.yaml` files,
+          never follows symlink entries, skips the documented generated/tool directory list, and
+          returns a deterministic JSON summary''',
+              1,
+          )
+          anchor = '''Use it as the first real-project feedback loop before adding broader parser or Flutter
+          convention support.
+          '''
+          addition = '''Use it as the first real-project feedback loop before adding broader parser or Flutter
+          convention support. CLI success writes only JSON to stdout; argument and filesystem errors
+          write only to stderr with stable exit codes. See
+          [`docs/development/cli-contract.md`](docs/development/cli-contract.md).
+          '''
+          assert text.count(anchor) == 1
+          text = text.replace(anchor, addition, 1)
+          readme.write_text(text)
+          PY
+      - name: Commit verified roadmap state
+        shell: bash
+        run: |
+          git rm .github/workflows/finalize-cli-contract.yml
+          git add README.md docs/development/dartscope-library-plan.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs: verify CLI contract and integration tests"
+          git push origin HEAD:main
+      - name: Publish finalization status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: 'dartscope/cli-contract-finalization',
+              description: `CLI contract finalization: ${{ job.status }}`,
+            });
