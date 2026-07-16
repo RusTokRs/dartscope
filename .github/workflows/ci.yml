@@ -17,7 +17,7 @@ concurrency:
 jobs:
   apply_pubspec_docs:
     name: Apply verified pubspec documentation sync
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
