@@ -8,8 +8,7 @@ use crate::pubspec_yaml_marked_configuration::parse_pubspec_configuration as par
 #[test]
 fn marked_backend_matches_conservative_configuration_contract() {
     for (case, source) in parity_cases() {
-        let conservative =
-            parse_conservative(PubspecInput::new("config\\pubspec.yaml", source));
+        let conservative = parse_conservative(PubspecInput::new("config\\pubspec.yaml", source));
         let marked = parse_marked(PubspecInput::new("config\\pubspec.yaml", source));
 
         assert_eq!(
@@ -33,8 +32,7 @@ fn marked_backend_matches_conservative_complete_pubspec_contract() {
     for (case, source) in dependency_parity_cases() {
         let conservative =
             parse_conservative_complete(PubspecInput::new("config\\pubspec.yaml", source));
-        let marked =
-            parse_marked_complete(PubspecInput::new("config\\pubspec.yaml", source));
+        let marked = parse_marked_complete(PubspecInput::new("config\\pubspec.yaml", source));
 
         assert_eq!(
             marked.package_name, conservative.package_name,
