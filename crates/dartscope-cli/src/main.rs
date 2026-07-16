@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use dartscope::{
-    DartCompilationEnvironment, DartFileInput, DartIndexOptions, DartProjectInput,
+    DartCompilationEnvironment, DartFileInput, DartIndexOptions, DartProjectInput, JsonContract,
     PackageConfigInput, PubspecInput, analyze_file, analyze_graphql_contracts_with_options,
     analyze_project, build_uri_graph_with_options, extract_flutter_inventory, parse_pubspec,
-    parse_pubspec_configuration, to_json_pretty,
+    parse_pubspec_configuration, to_json_contract_pretty,
 };
 
 fn main() -> ExitCode {
@@ -33,7 +33,8 @@ fn run() -> Result<(), String> {
             let analysis = analyze_file(DartFileInput::new(path, source));
             println!(
                 "{}",
-                to_json_pretty(&analysis).map_err(|error| error.to_string())?
+                to_json_contract_pretty(JsonContract::FileAnalysis, &analysis)
+                    .map_err(|error| error.to_string())?
             );
         }
         "pubspec" => {
@@ -42,7 +43,8 @@ fn run() -> Result<(), String> {
             let analysis = parse_pubspec(PubspecInput::new(path, source));
             println!(
                 "{}",
-                to_json_pretty(&analysis).map_err(|error| error.to_string())?
+                to_json_contract_pretty(JsonContract::PubspecAnalysis, &analysis)
+                    .map_err(|error| error.to_string())?
             );
         }
         "pubspec-config" => {
@@ -51,7 +53,8 @@ fn run() -> Result<(), String> {
             let analysis = parse_pubspec_configuration(PubspecInput::new(path, source));
             println!(
                 "{}",
-                to_json_pretty(&analysis).map_err(|error| error.to_string())?
+                to_json_contract_pretty(JsonContract::PubspecConfiguration, &analysis)
+                    .map_err(|error| error.to_string())?
             );
         }
         "analyze-project" => {
@@ -60,7 +63,8 @@ fn run() -> Result<(), String> {
             let analysis = analyze_project(input);
             println!(
                 "{}",
-                to_json_pretty(&analysis).map_err(|error| error.to_string())?
+                to_json_contract_pretty(JsonContract::ProjectAnalysis, &analysis)
+                    .map_err(|error| error.to_string())?
             );
         }
         "graphql-contracts" => {
@@ -70,7 +74,8 @@ fn run() -> Result<(), String> {
             let analysis = analyze_graphql_contracts_with_options(&project, &options);
             println!(
                 "{}",
-                to_json_pretty(&analysis).map_err(|error| error.to_string())?
+                to_json_contract_pretty(JsonContract::GraphqlContracts, &analysis)
+                    .map_err(|error| error.to_string())?
             );
         }
         "uri-graph" => {
@@ -80,7 +85,8 @@ fn run() -> Result<(), String> {
             let graph = build_uri_graph_with_options(&project, &options);
             println!(
                 "{}",
-                to_json_pretty(&graph).map_err(|error| error.to_string())?
+                to_json_contract_pretty(JsonContract::UriGraph, &graph)
+                    .map_err(|error| error.to_string())?
             );
         }
         "flutter-inventory" => {
@@ -90,7 +96,8 @@ fn run() -> Result<(), String> {
             let inventory = extract_flutter_inventory(&project);
             println!(
                 "{}",
-                to_json_pretty(&inventory).map_err(|error| error.to_string())?
+                to_json_contract_pretty(JsonContract::FlutterInventory, &inventory)
+                    .map_err(|error| error.to_string())?
             );
         }
         _ => return Err(usage()),
