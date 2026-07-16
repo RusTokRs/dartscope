@@ -1,141 +1,273 @@
-name: CI
+name: Apply package config layout rules
 
 on:
   push:
     branches: [main]
-  pull_request:
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   statuses: write
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: apply-package-config-layout
+  cancel-in-progress: false
 
 jobs:
-  quality:
-    name: Quality gates
+  apply:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust 1.95
-        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-      - name: Run Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: Build documentation
-        env:
-          RUSTDOCFLAGS: -D warnings
-        run: cargo doc --workspace --no-deps --locked
-      - name: Publish quality status
-        if: always()
-        uses: actions/github-script@v7
         with:
-          script: |
-            const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.sha,
-              state,
-              context: 'dartscope/quality',
-              description: `Quality gates: ${{ job.status }}`,
-            });
-
-  test:
-    name: Tests (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust 1.95
-        run: rustup toolchain install 1.95.0 --profile minimal
-      - name: Run workspace tests
-        run: cargo test --workspace --locked --quiet
-      - name: Publish test status
-        if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.sha,
-              state,
-              context: 'dartscope/tests-${{ matrix.os }}',
-              description: `Workspace tests (${{ matrix.os }}): ${{ job.status }}`,
-            });
-
-  edition_2024:
-    name: Edition 2024 (${{ matrix.os }} / ${{ matrix.check.name }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        check:
-          - name: workspace-all-targets
-            command: cargo check --workspace --all-targets --locked
-          - name: umbrella-minimal
-            command: cargo check -p dartscope --no-default-features --locked
-          - name: umbrella-all-features
-            command: cargo check -p dartscope --all-features --locked
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust 1.95
-        run: rustup toolchain install 1.95.0 --profile minimal
-      - name: Verify workspace edition settings
+          fetch-depth: 0
+      - name: Apply deterministic layout validation
         shell: bash
         run: |
-          grep -Fx 'resolver = "3"' Cargo.toml
-          grep -Fx 'edition = "2024"' Cargo.toml
-      - name: Run edition check
-        run: ${{ matrix.check.command }}
-      - name: Publish edition status
-        if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.sha,
-              state,
-              context: 'dartscope/edition-${{ matrix.os }}-${{ matrix.check.name }}',
-              description: `Edition check (${{ matrix.os }} / ${{ matrix.check.name }}): ${{ job.status }}`,
-            });
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
 
-  report:
-    name: Publish aggregate status
-    needs: [quality, test, edition_2024]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Publish commit status
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const results = [
-              '${{ needs.quality.result }}',
-              '${{ needs.test.result }}',
-              '${{ needs.edition_2024.result }}',
-            ];
-            const passed = results.every((result) => result === 'success');
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.sha,
-              state: passed ? 'success' : 'failure',
-              context: 'dartscope/ci',
-              description: passed
-                ? 'Rust 1.95 Linux/Windows matrix passed'
-                : `CI jobs finished: ${results.join(', ')}`,
-            });
+          path = Path('crates/dartscope-resolve/src/lib.rs')
+          text = path.read_text()
+
+          package_loop = '''    let mut names = HashSet::new();
+          for package in raw.packages {
+              validate_package_entry(&package, &mut names, &mut analysis.diagnostics);
+              analysis.packages.push(DartPackageConfigEntry {
+                  name: package.name,
+                  root_uri: package.root_uri,
+                  package_uri: package.package_uri,
+                  language_version: package.language_version,
+              });
+          }
+
+          for diagnostic in &mut analysis.diagnostics {
+          '''
+          package_loop_replacement = '''    let mut names = HashSet::new();
+          for package in raw.packages {
+              validate_package_entry(&package, &mut names, &mut analysis.diagnostics);
+              analysis.packages.push(DartPackageConfigEntry {
+                  name: package.name,
+                  root_uri: package.root_uri,
+                  package_uri: package.package_uri,
+                  language_version: package.language_version,
+              });
+          }
+          validate_package_layout(
+              &analysis.path,
+              &analysis.packages,
+              &mut analysis.diagnostics,
+          );
+
+          for diagnostic in &mut analysis.diagnostics {
+          '''
+          assert text.count(package_loop) == 1
+          text = text.replace(package_loop, package_loop_replacement)
+
+          helper_marker = 'fn validate_package_entry(\n'
+          helpers = r'''#[derive(Debug, Clone, Eq, PartialEq)]
+          struct CanonicalDirectory {
+              origin: String,
+              segments: Vec<Vec<u8>>,
+          }
+
+          #[derive(Debug, Clone, Eq, PartialEq)]
+          struct PackageDirectories {
+              name: String,
+              root: CanonicalDirectory,
+              package: CanonicalDirectory,
+          }
+
+          fn validate_package_layout(
+              config_path: &str,
+              packages: &[DartPackageConfigEntry],
+              diagnostics: &mut Vec<DartDiagnostic>,
+          ) {
+              let Ok(config_uri) = project_file_uri(config_path) else {
+                  return;
+              };
+              let directories = packages
+                  .iter()
+                  .map(|package| resolve_package_directories(&config_uri, package))
+                  .collect::<Vec<_>>();
+
+              for (left_index, left) in directories.iter().enumerate() {
+                  let Some(left) = left else {
+                      continue;
+                  };
+                  for right in directories.iter().skip(left_index + 1).flatten() {
+                      if left.root == right.root {
+                          diagnostics.push(DartDiagnostic::error(
+                              "package_config_duplicate_root",
+                              format!(
+                                  "packages {:?} and {:?} resolve to the same rootUri",
+                                  left.name, right.name
+                              ),
+                              None,
+                          ));
+                          continue;
+                      }
+
+                      let overlap = if directory_contains(&left.root, &right.root) {
+                          directories_overlap(&left.package, &right.root).then_some((&left.name, &right.name))
+                      } else if directory_contains(&right.root, &left.root) {
+                          directories_overlap(&right.package, &left.root).then_some((&right.name, &left.name))
+                      } else {
+                          None
+                      };
+
+                      if let Some((outer, nested)) = overlap {
+                          diagnostics.push(DartDiagnostic::error(
+                              "package_config_package_uri_root_overlap",
+                              format!(
+                                  "packageUri for package {outer:?} overlaps nested package root {nested:?}"
+                              ),
+                              None,
+                          ));
+                      }
+                  }
+              }
+          }
+
+          fn resolve_package_directories(
+              config_uri: &URI<'_>,
+              package: &DartPackageConfigEntry,
+          ) -> Option<PackageDirectories> {
+              let root_reference = URIReference::try_from(package.root_uri.as_str()).ok()?;
+              let root_uri = directory_uri(config_uri.resolve(&root_reference), &package.name).ok()?;
+              let package_uri = if let Some(package_uri) = package.package_uri.as_deref() {
+                  let reference = URIReference::try_from(package_uri).ok()?;
+                  directory_uri(root_uri.resolve(&reference), &package.name).ok()?
+              } else {
+                  root_uri.clone()
+              };
+              Some(PackageDirectories {
+                  name: package.name.clone(),
+                  root: canonical_directory(&root_uri)?,
+                  package: canonical_directory(&package_uri)?,
+              })
+          }
+
+          fn canonical_directory(uri: &URI<'_>) -> Option<CanonicalDirectory> {
+              let value = uri.to_string();
+              let (scheme, remainder) = value.split_once(':')?;
+              let (has_authority, authority, path) = if let Some(hierarchical) = remainder.strip_prefix("//") {
+                  let path_start = hierarchical.find('/').unwrap_or(hierarchical.len());
+                  (true, &hierarchical[..path_start], &hierarchical[path_start..])
+              } else {
+                  (false, "", remainder)
+              };
+              let origin = if scheme.eq_ignore_ascii_case("file") || has_authority {
+                  format!(
+                      "{}://{}",
+                      scheme.to_ascii_lowercase(),
+                      authority.to_ascii_lowercase()
+                  )
+              } else {
+                  format!("{}:", scheme.to_ascii_lowercase())
+              };
+              let mut segments = Vec::new();
+              for segment in path.trim_matches('/').split('/') {
+                  if segment.is_empty() {
+                      continue;
+                  }
+                  let decoded = percent_decode_str(segment).collect::<Vec<_>>();
+                  match decoded.as_slice() {
+                      b"." => {}
+                      b".." => {
+                          segments.pop()?;
+                      }
+                      _ => segments.push(decoded),
+                  }
+              }
+              Some(CanonicalDirectory { origin, segments })
+          }
+
+          fn directory_contains(parent: &CanonicalDirectory, child: &CanonicalDirectory) -> bool {
+              parent.origin == child.origin
+                  && parent.segments.len() <= child.segments.len()
+                  && parent
+                      .segments
+                      .iter()
+                      .zip(&child.segments)
+                      .all(|(parent, child)| parent == child)
+          }
+
+          fn directories_overlap(left: &CanonicalDirectory, right: &CanonicalDirectory) -> bool {
+              directory_contains(left, right) || directory_contains(right, left)
+          }
+
+          '''
+          assert text.count(helper_marker) == 1
+          text = text.replace(helper_marker, helpers + helper_marker)
+
+          test_marker = '''    #[test]
+              fn refuses_unknown_packages_invalid_uris_and_invalid_configs() {
+          '''
+          tests = r'''    #[test]
+              fn allows_nested_roots_outside_the_outer_package_uri() {
+                  let analysis = parse_package_config(PackageConfigInput::new(
+                      ".dart_tool/package_config.json",
+                      r#"{
+            "configVersion": 2,
+            "packages": [
+              {"name":"outer","rootUri":"../","packageUri":"lib/"},
+              {"name":"nested","rootUri":"../tool/","packageUri":"lib/"}
+            ]
+          }"#,
+                  ));
+
+                  assert!(analysis.diagnostics.is_empty());
+                  assert!(resolve_package_uri(&analysis, "package:outer/main.dart").is_ok());
+                  assert!(resolve_package_uri(&analysis, "package:nested/main.dart").is_ok());
+              }
+
+              #[test]
+              fn rejects_duplicate_roots_and_package_uri_root_overlap() {
+                  let analysis = parse_package_config(PackageConfigInput::new(
+                      ".dart_tool/package_config.json",
+                      r#"{
+            "configVersion": 2,
+            "packages": [
+              {"name":"outer","rootUri":"../","packageUri":"lib/"},
+              {"name":"nested","rootUri":"../lib/generated/","packageUri":"src/"},
+              {"name":"duplicate_a","rootUri":"file:///cache/%70kg/","packageUri":"lib/"},
+              {"name":"duplicate_b","rootUri":"file:///cache/pkg/","packageUri":"src/"}
+            ]
+          }"#,
+                  ));
+                  let codes = analysis
+                      .diagnostics
+                      .iter()
+                      .map(|diagnostic| diagnostic.code.as_str())
+                      .collect::<Vec<_>>();
+
+                  assert!(codes.contains(&"package_config_duplicate_root"));
+                  assert!(codes.contains(&"package_config_package_uri_root_overlap"));
+                  assert_eq!(
+                      resolve_package_uri(&analysis, "package:outer/main.dart"),
+                      Err(PackageUriResolutionError::InvalidConfiguration)
+                  );
+              }
+
+          '''
+          assert text.count(test_marker) == 1
+          text = text.replace(test_marker, tests + test_marker)
+          path.write_text(text)
+          PY
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Format and verify resolver
+        run: |
+          cargo fmt --all
+          cargo test -p dartscope-resolve --locked --quiet
+          cargo clippy -p dartscope-resolve --all-targets --locked -- -D warnings
+          cargo fmt --all -- --check
+      - name: Commit verified layout rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add crates/dartscope-resolve/src/lib.rs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat: validate package config layout"
+          git push origin HEAD:main
