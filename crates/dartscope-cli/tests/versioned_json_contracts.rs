@@ -1,9 +1,15 @@
-use serde::Serialize;
-
 use dartscope::{
     DartFileAnalysis, DartGraphqlContractAnalysis, DartProjectAnalysis, DartProjectSummary,
     DartUriGraph, FlutterInventory, JsonContract, to_json_contract_pretty,
 };
+
+macro_rules! assert_golden {
+    ($contract:expr, $value:expr, $expected:expr) => {{
+        let actual =
+            to_json_contract_pretty($contract, $value).expect("contract must serialize");
+        assert_eq!(actual, $expected.trim_end());
+    }};
+}
 
 #[test]
 fn checked_in_v1_golden_contracts_match_public_models() {
@@ -20,30 +26,30 @@ fn checked_in_v1_golden_contracts_match_public_models() {
     let graphql = DartGraphqlContractAnalysis::default();
     let flutter = FlutterInventory::default();
 
-    assert_golden(
+    assert_golden!(
         JsonContract::FileAnalysis,
         &file,
-        include_str!("fixtures/file-analysis-v1.json"),
+        include_str!("fixtures/file-analysis-v1.json")
     );
-    assert_golden(
+    assert_golden!(
         JsonContract::ProjectAnalysis,
         &project,
-        include_str!("fixtures/project-analysis-v1.json"),
+        include_str!("fixtures/project-analysis-v1.json")
     );
-    assert_golden(
+    assert_golden!(
         JsonContract::UriGraph,
         &uri_graph,
-        include_str!("fixtures/uri-graph-v1.json"),
+        include_str!("fixtures/uri-graph-v1.json")
     );
-    assert_golden(
+    assert_golden!(
         JsonContract::GraphqlContracts,
         &graphql,
-        include_str!("fixtures/graphql-contracts-v1.json"),
+        include_str!("fixtures/graphql-contracts-v1.json")
     );
-    assert_golden(
+    assert_golden!(
         JsonContract::FlutterInventory,
         &flutter,
-        include_str!("fixtures/flutter-inventory-v1.json"),
+        include_str!("fixtures/flutter-inventory-v1.json")
     );
 }
 
@@ -58,9 +64,4 @@ fn every_registered_contract_is_listed_in_the_compatibility_policy() {
             "missing compatibility or migration entry for {marker}"
         );
     }
-}
-
-fn assert_golden<T: Serialize + ?Sized>(contract: JsonContract, value: &T, expected: &str) {
-    let actual = to_json_contract_pretty(contract, value).expect("contract must serialize");
-    assert_eq!(actual, expected.trim_end());
 }
