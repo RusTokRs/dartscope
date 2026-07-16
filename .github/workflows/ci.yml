@@ -149,9 +149,10 @@ jobs:
         shell: bash
         run: |
           rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
-          cargo +1.95.0 fmt --all -- --check
+          cargo +1.95.0 fmt --all
           cargo +1.95.0 test -p dartscope-resolve --locked --quiet
           cargo +1.95.0 clippy -p dartscope-resolve --all-targets --locked -- -D warnings
+          git diff --check
       - id: commit
         name: Create feature commit
         if: steps.verify.outcome == 'success'
