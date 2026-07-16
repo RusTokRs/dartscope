@@ -13,6 +13,9 @@ def replace_once(path: str, old: str, new: str) -> None:
     file.write_text(text.replace(old, new, 1))
 
 
+subprocess.run(['git', 'config', 'core.autocrlf', 'false'], check=True)
+subprocess.run(['git', 'reset', '--hard', 'HEAD'], check=True)
+
 payload = Path('.github/payloads')
 destination = Path('crates/dartscope-parse/src/declaration_inventory')
 destination.mkdir(parents=True, exist_ok=True)
