@@ -26,14 +26,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - id: checksum
+      - id: patch
         name: Verify staged patch exists
         continue-on-error: true
         shell: bash
         run: test -f .github/package-config-metadata.patch
       - id: apply
         name: Apply metadata patch
-        if: steps.checksum.outcome == 'success'
+        if: steps.patch.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
@@ -46,7 +46,6 @@ jobs:
         shell: bash
         run: |
           git rm .github/package-config-metadata.patch
-          git show 89f7854569a7634a7173a02b4fa3d160bc218225:.github/workflows/ci.yml > .github/workflows/ci.yml
           git add -A
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -63,7 +62,7 @@ jobs:
         with:
           script: |
             const outcomes = {
-              patch: '${{ steps.checksum.outcome }}',
+              patch: '${{ steps.patch.outcome }}',
               apply: '${{ steps.apply.outcome }}',
               commit: '${{ steps.commit.outcome }}',
               push: '${{ steps.push.outcome }}',
