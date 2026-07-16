@@ -146,4 +146,59 @@ mod tests {
                 .any(|diagnostic| diagnostic.code == "pubspec_unsupported_yaml_alias")
         );
     }
+
+    #[test]
+    fn omits_alias_and_merge_dependency_values() {
+        let analysis = parse_pubspec(PubspecInput::new(
+            "pubspec.yaml",
+            concat!(
+                "name: demo\n",
+                "dependencies:\n",
+                "  defaults: &defaults\n",
+                "    path: ../defaults\n",
+                "  aliased: *defaults\n",
+                "  merged:\n",
+                "    <<: *defaults\n",
+            ),
+        ));
+
+        assert!(
+            analysis
+                .dependencies
+                .iter()
+                .any(|dependency| dependency.name == "defaults")
+        );
+        assert!(
+            !analysis
+                .dependencies
+                .iter()
+                .any(|dependency| dependency.name == "aliased")
+        );
+        assert!(
+            !analysis
+                .dependencies
+                .iter()
+                .any(|dependency| dependency.name == "merged")
+        );
+    }
+
+    #[test]
+    fn omits_malformed_inline_dependency_mapping() {
+        let analysis = parse_pubspec(PubspecInput::new(
+            "pubspec.yaml",
+            concat!(
+                "name: demo\n",
+                "dependencies:\n",
+                "  broken: { git: { url: https://example.com/repo.git }\n",
+            ),
+        ));
+
+        assert!(analysis.dependencies.is_empty());
+        assert!(
+            analysis
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "pubspec_invalid_yaml")
+        );
+    }
 }
