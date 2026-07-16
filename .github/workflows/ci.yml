@@ -70,15 +70,16 @@ jobs:
               commit: '${{ steps.commit.outcome }}',
               push: '${{ steps.push.outcome }}',
             };
-            const passed = Object.values(outcomes).every((value) => value === 'success');
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.sha,
-              state: passed ? 'success' : 'failure',
-              context: 'dartscope/package-config-metadata-apply',
-              description: Object.entries(outcomes).map(([key, value]) => `${key}=${value}`).join(', '),
-            });
+            for (const [key, outcome] of Object.entries(outcomes)) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: outcome === 'success' ? 'success' : 'failure',
+                context: `dartscope/package-config-metadata-${key}`,
+                description: `${key}: ${outcome}`,
+              });
+            }
 
   quality:
     name: Quality gates
