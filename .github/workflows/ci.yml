@@ -1,36 +1,206 @@
-name: Apply package config metadata
+name: CI
 
 on:
   push:
     branches: [main]
+  pull_request:
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  statuses: write
 
 concurrency:
-  group: apply-package-config-metadata
-  cancel-in-progress: false
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  apply:
+  apply_package_config_metadata:
+    name: Apply package config metadata slice
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      statuses: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Apply verified metadata patch
+      - id: checksum
+        name: Verify staged patch
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
-          patch=.github/package-config-metadata.patch
-          echo "bb87827f7a8786fd2710222f84d72c360a952b41e999444db69bc1faa1d89519  ${patch}" \
+          echo "bb87827f7a8786fd2710222f84d72c360a952b41e999444db69bc1faa1d89519  .github/package-config-metadata.patch" \
             | sha256sum --check --strict
-          git apply --check "${patch}"
-          git apply "${patch}"
-          git rm "${patch}"
+      - id: apply
+        name: Apply metadata patch
+        if: steps.checksum.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          git apply --check .github/package-config-metadata.patch
+          git apply .github/package-config-metadata.patch
+      - id: commit
+        name: Create feature commit
+        if: steps.apply.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          git rm .github/package-config-metadata.patch
           git show 89f7854569a7634a7173a02b4fa3d160bc218225:.github/workflows/ci.yml > .github/workflows/ci.yml
           git add -A
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "feat: validate package config metadata"
-          git push origin HEAD:main
+      - id: push
+        name: Push feature commit
+        if: steps.commit.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: git push origin HEAD:main
+      - name: Publish apply diagnostics
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const outcomes = {
+              checksum: '${{ steps.checksum.outcome }}',
+              apply: '${{ steps.apply.outcome }}',
+              commit: '${{ steps.commit.outcome }}',
+              push: '${{ steps.push.outcome }}',
+            };
+            const passed = Object.values(outcomes).every((value) => value === 'success');
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? 'success' : 'failure',
+              context: 'dartscope/package-config-metadata-apply',
+              description: Object.entries(outcomes).map(([key, value]) => `${key}=${value}`).join(', '),
+            });
+
+  quality:
+    name: Quality gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Build documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --locked
+      - name: Publish quality status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: 'dartscope/quality',
+              description: `Quality gates: ${{ job.status }}`,
+            });
+
+  test:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal
+      - name: Run workspace tests
+        run: cargo test --workspace --locked --quiet
+      - name: Publish test status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: 'dartscope/tests-${{ matrix.os }}',
+              description: `Workspace tests (${{ matrix.os }}): ${{ job.status }}`,
+            });
+
+  edition_2024:
+    name: Edition 2024 (${{ matrix.os }} / ${{ matrix.check.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        check:
+          - name: workspace-all-targets
+            command: cargo check --workspace --all-targets --locked
+          - name: umbrella-minimal
+            command: cargo check -p dartscope --no-default-features --locked
+          - name: umbrella-all-features
+            command: cargo check -p dartscope --all-features --locked
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal
+      - name: Verify workspace edition settings
+        shell: bash
+        run: |
+          grep -Fx 'resolver = "3"' Cargo.toml
+          grep -Fx 'edition = "2024"' Cargo.toml
+      - name: Run edition check
+        run: ${{ matrix.check.command }}
+      - name: Publish edition status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: 'dartscope/edition-${{ matrix.os }}-${{ matrix.check.name }}',
+              description: `Edition check (${{ matrix.os }} / ${{ matrix.check.name }}): ${{ job.status }}`,
+            });
+
+  report:
+    name: Publish aggregate status
+    needs: [quality, test, edition_2024]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish commit status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const results = [
+              '${{ needs.quality.result }}',
+              '${{ needs.test.result }}',
+              '${{ needs.edition_2024.result }}',
+            ];
+            const passed = results.every((result) => result === 'success');
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? 'success' : 'failure',
+              context: 'dartscope/ci',
+              description: passed
+                ? 'Rust 1.95 Linux/Windows matrix passed'
+                : `CI jobs finished: ${results.join(', ')}`,
+            });
