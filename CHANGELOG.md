@@ -20,6 +20,8 @@ pre-1.0.
 - Versioned opt-in ecosystem conventions for `go_router`, Provider, Riverpod, and BLoC.
 - Release metadata, package-order validation, package archives, support documentation, and a
   manually gated crates.io publishing workflow.
+- The audited `0.2` development queue, beginning with immutable SHA-pinned Node 24 Actions,
+  `actionlint`, enforceable workflow permissions, and read-only pull-request execution.
 
 ### Compatibility
 

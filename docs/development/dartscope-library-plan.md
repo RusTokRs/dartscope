@@ -752,28 +752,60 @@ Acceptance:
 - stale baseline claims fail the permanent consistency check;
 - the final standard Ubuntu/Windows matrix and release package checker pass.
 
+## 0.2 Development Cycle
+
+The audited `0.2` work queue starts from the verified `0.1` implementation baseline. Workspace
+manifests intentionally remain at the unreleased `0.1.0` package version and changelog entries remain
+under `Unreleased` until the release process creates the exact `v0.1.0` tag. Advancing this queue does
+not claim that either `0.1.0` or `0.2.0` has been published.
+
 ### DS-CI-003: Immutable Actions And CI Supply Chain
 
-Status: ready. Priority: P0. Prerequisite: DS-AUDIT-001.
+Status: verified. Priority: P0. Prerequisite: DS-AUDIT-001.
 
-Required work:
+Implemented (2026-07-17):
 
-1. Inventory every permanent `uses:` reference, including list-form `- uses:` entries.
-2. Pin third-party Actions to reviewed immutable commit SHAs and retain the human-readable release
-   tag in an adjacent comment.
-3. Replace Action majors that still depend on a deprecated Node runtime with supported releases.
-4. Add `actionlint` plus a repository policy check that rejects mutable refs, unknown workflow
-   permissions, and unreviewed `pull_request_target` or write-token changes.
-5. Preserve minimal permissions and protected-environment boundaries for crates.io publication.
-6. Record and classify hosted-runner flakes; one clean retry may clear infrastructure failures, but
-   recurring platform failures must become blocking fixtures or issues.
+1. Inventoried every permanent `uses:` reference, including list-form entries, and replaced mutable
+   tags or branches with reviewed immutable commit SHAs plus adjacent human-readable release tags.
+2. Upgraded the permanent Action set to reviewed Node 24 releases: `actions/checkout v6.0.2`,
+   `actions/github-script v9.0.0`, and `actions/upload-artifact v7.0.1`; removed the mutable
+   `dtolnay/rust-toolchain@master` dependency in favor of direct `rustup` installation.
+3. Added pinned `actionlint v1.7.12`, a standard-library workflow policy checker, and six focused
+   policy tests before expensive Rust compilation and package jobs.
+4. Changed ordinary pull-request jobs to explicit read-only permissions. The sole write permission is
+   `statuses: write` on the push/workflow-dispatch aggregate reporter, which is skipped for pull
+   requests; checkout credentials are not persisted.
+5. Preserved the manual exact-tag guard, protected `crates-io` environment, and step-scoped registry
+   token for publication.
+6. Added permanent checks for workflow inventory, immutable refs, reviewed comments, permission names,
+   write allowlists, `pull_request_target`, release boundaries, and repository-roadmap consistency.
+7. Recorded `github.run_attempt` in the aggregate status so a successful infrastructure retry remains
+   distinguishable from a first-attempt product pass.
+
+Findings and maintenance limits:
+
+- **P0 fixed:** the former top-level `statuses: write` permission applied to every CI job, including
+  `pull_request` jobs. Pull-request execution is now read-only by construction.
+- Node 24 Actions require Actions Runner `2.327.1` or newer. Blocking workflows use GitHub-hosted
+  runners; self-hosted runners are unsupported until their version and update policy are reviewed.
+- `actionlint` is installed from an exact Go module version with module checksum verification, but Go
+  toolchain and proxy availability remain hosted-runner dependencies. Repeated bootstrap failures move
+  to DS-QUALITY-001 for a checksum-pinned binary or reviewed immutable Action.
+- Action release and SHA updates are manual, reviewed changes. Automated mutable-major upgrades remain
+  forbidden until a verified update workflow is designed.
+- One non-reproducing Windows audit failure remains classified as infrastructure. One clean retry is
+  allowed; repetition on the same platform becomes a blocking fixture or tracked issue.
 
 Acceptance:
 
 - every permanent third-party Action is SHA-pinned;
 - workflow syntax and policy checks run on Linux before other expensive jobs;
 - ordinary pull requests cannot obtain release credentials or write permissions;
-- the aggregate status distinguishes product failures from a documented runner retry.
+- the aggregate status distinguishes product failures from a documented runner retry;
+- exact Rust 1.95 formatting, Clippy, rustdoc, workspace tests, umbrella all-features tests, release
+  package validation, and the standard hosted Linux/Windows matrix pass.
+
+See `docs/development/ci-supply-chain.md`.
 
 ### DS-CLI-003: Lint Command, Configuration, And SARIF
 

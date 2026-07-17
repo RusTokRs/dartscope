@@ -19,11 +19,15 @@ claim.
 | Pinned release toolchain | Rust 1.95.0 with rustfmt and Clippy |
 | Edition | Rust 2024, Cargo resolver 3 |
 | Hosted CI | `ubuntu-latest` and `windows-latest` for the normal workspace matrix |
+| CI Action runtime | Reviewed immutable Node 24 Action SHAs on GitHub-hosted runners compatible with Actions Runner 2.327.1 or newer |
 | Release packaging | `ubuntu-latest` on exact Rust 1.95.0 |
 | macOS | Expected to be portable Rust, but not a blocking hosted matrix for `0.1` |
 
 Rust versions older than 1.95 are unsupported. Newer stable compilers are expected to work, but the
-MSRV and exact release gate are the compatibility anchors.
+MSRV and exact release gate are the compatibility anchors. The audited `0.2` development queue may
+advance while package manifests remain on unreleased `0.1.0`; neither version is claimed as published
+without its exact release tag. Self-hosted GitHub Actions runners are not supported until their runner
+version and update policy are reviewed against `docs/development/ci-supply-chain.md`.
 
 ## Dart Language And Package Inputs
 

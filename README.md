@@ -107,9 +107,12 @@ with all features. See
 ## Release And Support
 
 All nine crates carry crates.io-ready metadata and versioned internal dependencies. The release gate
-builds every `.crate` archive in dependency order without publishing it. See the
-[0.1 support matrix](docs/support-matrix.md), [release process](docs/release-process.md),
-[changelog](CHANGELOG.md), and [security policy](SECURITY.md).
+builds every `.crate` archive in dependency order without publishing it. Development now follows the
+audited `0.2` roadmap, while workspace manifests remain on unreleased `0.1.0` until the exact release
+tag is created. See the [0.1 support matrix](docs/support-matrix.md),
+[CI supply-chain policy](docs/development/ci-supply-chain.md),
+[release process](docs/release-process.md), [changelog](CHANGELOG.md), and
+[security policy](SECURITY.md).
 
 ```powershell
 python tools/check-release-packages.py
