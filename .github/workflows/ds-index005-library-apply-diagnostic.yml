@@ -1,0 +1,64 @@
+name: Diagnose DS-INDEX-005 Library Cache Apply
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  diagnose:
+    if: github.event.issue.title == '[internal] DS-INDEX-005 library cache apply diagnostic'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Capture patcher output
+        shell: bash
+        run: |
+          set +e
+          LOG="$RUNNER_TEMP/library-cache-apply.log"
+          git show b3729bb6ac0c18d5e632046bb32cef7d8445961d:tools/ds_index005_library_cache_apply.py > "$RUNNER_TEMP/apply.py"
+          python3 "$RUNNER_TEMP/apply.py" > "$LOG" 2>&1
+          STATUS=$?
+          bash tools/reset-verification-worktree.sh origin main
+          rm -f .github/workflows/ds-index005-library-apply-diagnostic.yml
+          rm -f docs/development/ds-index005-library-cache-failure.md
+          mkdir -p docs/development
+          {
+            echo "---"
+            echo "id: doc://docs/development/ds-index005-library-apply-diagnostic.md"
+            echo "kind: verification_report"
+            echo "language: en"
+            echo "source_language: en"
+            echo "status: active"
+            echo "---"
+            echo
+            echo "# DS-INDEX-005 Library Cache Apply Diagnostic"
+            echo
+            echo "Apply exit: \`$STATUS\`."
+            echo
+            echo '```text'
+            cat "$LOG"
+            echo '```'
+          } > docs/development/ds-index005-library-apply-diagnostic.md
+          git config user.name "dartscope-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "ci: capture DS-INDEX-005 library apply diagnostic"
+          git push origin HEAD:main
+      - name: Close diagnostic issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed',
+            });
