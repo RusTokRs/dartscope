@@ -33,3 +33,45 @@ pub use dartscope_flutter::{
     FlutterAssetEntry, FlutterInventory, FlutterInventorySummary, FlutterLocalizationEntry,
     FlutterRouteEntry, FlutterWidgetEntry, extract_flutter_inventory,
 };
+
+/// Parses one Dart file and explicitly applies optional Flutter convention extraction.
+#[cfg(all(feature = "parse", feature = "flutter"))]
+pub fn analyze_file_with_flutter(input: DartFileInput) -> DartFileAnalysis {
+    let mut analysis = dartscope_parse::analyze_file(input);
+    dartscope_flutter::populate_flutter_file_hints(&mut analysis);
+    analysis
+}
+
+/// Parses a project and explicitly applies optional Flutter convention extraction.
+#[cfg(all(feature = "parse", feature = "flutter"))]
+pub fn analyze_project_with_flutter(input: DartProjectInput) -> DartProjectAnalysis {
+    let mut analysis = dartscope_parse::analyze_project(input);
+    dartscope_flutter::populate_flutter_project_analysis(&mut analysis);
+    analysis
+}
+
+#[cfg(all(test, feature = "parse", feature = "flutter"))]
+mod tests {
+    use super::{
+        DartFileInput, DartProjectInput, analyze_file, analyze_file_with_flutter,
+        analyze_project_with_flutter,
+    };
+
+    #[test]
+    fn explicit_flutter_composition_keeps_pure_parser_independent() {
+        let source =
+            "import 'package:flutter/widgets.dart';\nclass App extends StatelessWidget {}\n";
+        let pure = analyze_file(DartFileInput::new("lib/app.dart", source));
+        let composed = analyze_file_with_flutter(DartFileInput::new("lib/app.dart", source));
+
+        assert!(pure.flutter.widgets.is_empty());
+        assert_eq!(composed.flutter.widgets.len(), 1);
+
+        let project = analyze_project_with_flutter(DartProjectInput::new(
+            "demo",
+            vec![DartFileInput::new("lib/app.dart", source)],
+            Vec::new(),
+        ));
+        assert_eq!(project.summary.flutter_widgets, 1);
+    }
+}

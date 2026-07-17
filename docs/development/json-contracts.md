@@ -64,3 +64,17 @@ Golden tests run on the standard Linux and Windows matrix.
 - Initial release: `dartscope.graphql-contracts` v1.
 - Initial release: `dartscope.uri-graph` v1.
 - Initial release: `dartscope.flutter-inventory` v1.
+
+
+## Additive v1 migration: generic invocations and optional Flutter composition
+
+`dartscope.file-analysis` v1 and `dartscope.project-analysis` v1 now include an optional
+`invocations` list on each Dart file. Older payloads omit the list and deserialize it as empty.
+Each invocation records a generic target, arguments, optional result members, optional enclosing
+symbol ID, and source evidence; Flutter-specific meaning is not stored in these records.
+
+The existing `flutter` field remains in `DartFileAnalysis` for v1 compatibility. Pure
+`dartscope-parse` APIs leave that projection empty. The Flutter-aware umbrella composition APIs and
+the CLI populate it from generic facts, so existing CLI consumers retain widget, route, asset, and
+localization output without a schema-major change. `dartscope-flutter` also accepts older payloads
+that contain legacy Flutter hints but no invocation facts.

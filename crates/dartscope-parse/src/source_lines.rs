@@ -63,6 +63,18 @@ pub(crate) fn span_for_byte_range(
     }
 }
 
+pub(crate) fn line_span_for_byte(source: &str, at: usize) -> dartscope_core::SourceSpan {
+    let line = source_lines(source)
+        .into_iter()
+        .find(|line| line.byte_start <= at && at <= line.byte_end())
+        .unwrap_or(SourceLine {
+            number: 1,
+            text: "",
+            byte_start: 0,
+        });
+    dartscope_core::SourceSpan::line(line.number, line.byte_start, line.text)
+}
+
 pub(crate) fn attach_diagnostic_paths(diagnostics: &mut [DartDiagnostic], path: &str) {
     for diagnostic in diagnostics {
         if diagnostic.path.is_none() {

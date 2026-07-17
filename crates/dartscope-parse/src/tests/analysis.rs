@@ -2,7 +2,7 @@ use crate::{analyze_file, analyze_project, parse_pubspec};
 use dartscope_core::*;
 
 #[test]
-fn analyzes_dart_imports_parts_declarations_and_flutter_widgets() {
+fn analyzes_dart_imports_parts_and_declarations_without_flutter_conventions() {
     let source = r#"
 import 'package:flutter/material.dart';
 import 'src/model.dart';
@@ -21,15 +21,14 @@ typedef Mapper = String Function(int value);
     assert_eq!(analysis.imports.len(), 2);
     assert_eq!(analysis.exports[0].uri, "src/api.dart");
     assert_eq!(analysis.parts[0].uri, "home.g.dart");
-    assert!(analysis.flutter.imports_flutter);
-    assert_eq!(analysis.flutter.widgets[0].class_name, "HomeScreen");
-    assert!(
-        analysis
-            .declarations
-            .iter()
-            .any(|declaration| declaration.name == "Mapper"
-                && declaration.kind == DartDeclarationKind::Typedef)
-    );
+    assert_eq!(analysis.flutter, FlutterFileHints::default());
+    assert!(analysis.declarations.iter().any(|declaration| {
+        declaration.name == "HomeScreen"
+            && declaration.extends.as_deref() == Some("StatelessWidget")
+    }));
+    assert!(analysis.declarations.iter().any(|declaration| {
+        declaration.name == "Mapper" && declaration.kind == DartDeclarationKind::Typedef
+    }));
 }
 
 #[test]
@@ -57,13 +56,13 @@ fn keeps_byte_spans_exact_for_crlf_sources_and_attributes_diagnostics() {
 }
 
 #[test]
-fn ignores_parser_markers_inside_comments_and_strings_for_lf_and_crlf_sources() {
-    let source = "// import 'fake.dart'; class Commented {} Image.asset('fake.png')\r\n\
-const sample = \"class StringValue {} GoRoute(path: '/fake')\";\r\n\
-/* AppLocalizations.of(context)!.fakeKey\n   import 'also_fake.dart'; */\r\n\
-import 'package:flutter/widgets.dart';\r\n\
-class RealScreen extends StatelessWidget {}\r\n\
-final icon = Image.asset('assets/real.png');\r\n\
+fn ignores_invocation_markers_inside_comments_and_strings_for_lf_and_crlf_sources() {
+    let source = "// import 'fake.dart'; class Commented {} Image.asset('fake.png')\r\n\\
+const sample = \"class StringValue {} GoRoute(path: '/fake')\";\r\n\\
+/* AppLocalizations.of(context)!.fakeKey\n   import 'also_fake.dart'; */\r\n\\
+import 'package:flutter/widgets.dart';\r\n\\
+class RealScreen extends StatelessWidget {}\r\n\\
+final icon = Image.asset('assets/real.png');\r\n\\
 final title = AppLocalizations.of(context)!.realTitle;\n";
 
     let analysis = analyze_file(DartFileInput::new("lib/real.dart", source));
@@ -82,10 +81,20 @@ final title = AppLocalizations.of(context)!.realTitle;\n";
             .iter()
             .any(|item| item.name == "Commented" || item.name == "StringValue")
     );
-    assert_eq!(analysis.flutter.assets.len(), 1);
-    assert_eq!(analysis.flutter.assets[0].path, "assets/real.png");
-    assert_eq!(analysis.flutter.localizations.len(), 1);
-    assert_eq!(analysis.flutter.localizations[0].key, "realTitle");
+    assert_eq!(analysis.flutter, FlutterFileHints::default());
+    assert!(analysis.invocations.iter().any(|invocation| {
+        invocation.target == "Image.asset"
+            && invocation.arguments[0].string_value.as_deref() == Some("assets/real.png")
+    }));
+    assert!(analysis.invocations.iter().any(|invocation| {
+        invocation.target == "AppLocalizations.of" && invocation.result_members == ["realTitle"]
+    }));
+    assert!(!analysis.invocations.iter().any(|invocation| {
+        invocation.arguments.iter().any(|argument| {
+            argument.string_value.as_deref() == Some("fake.png")
+                || argument.string_value.as_deref() == Some("/fake")
+        }) || invocation.result_members == ["fakeKey"]
+    }));
 }
 
 #[test]
@@ -164,15 +173,15 @@ class HomeScreen extends widgets.StatelessWidget {}
             .iter()
             .any(|declaration| declaration.name == "on" || declaration.name == "type")
     );
-    assert_eq!(analysis.flutter.widgets[0].class_name, "HomeScreen");
-    assert_eq!(
-        analysis.flutter.widgets[0].base_class,
-        "widgets.StatelessWidget"
-    );
+    assert!(analysis.declarations.iter().any(|declaration| {
+        declaration.name == "HomeScreen"
+            && declaration.extends.as_deref() == Some("widgets.StatelessWidget")
+    }));
+    assert_eq!(analysis.flutter, FlutterFileHints::default());
 }
 
 #[test]
-fn extracts_multiple_single_line_routes_and_resolves_forward_constants() {
+fn captures_multiple_single_line_route_invocations_and_named_arguments() {
     let source = r#"
 final routes = [
   GoRoute(path: homePath),
@@ -183,15 +192,25 @@ const homePath = '/home';
 "#;
 
     let analysis = analyze_file(DartFileInput::new("lib/router.dart", source));
+    let routes: Vec<_> = analysis
+        .invocations
+        .iter()
+        .filter(|invocation| invocation.target == "GoRoute")
+        .collect();
 
-    assert_eq!(analysis.flutter.routes.len(), 2);
-    assert_eq!(analysis.flutter.routes[0].path, "homePath");
+    assert_eq!(routes.len(), 2);
+    assert_eq!(routes[0].arguments[0].name.as_deref(), Some("path"));
+    assert_eq!(routes[0].arguments[0].expression, "homePath");
     assert_eq!(
-        analysis.flutter.routes[0].resolved_path.as_deref(),
-        Some("/home")
+        routes[1].arguments[0].string_value.as_deref(),
+        Some("/settings")
     );
-    assert_eq!(analysis.flutter.routes[1].path, "/settings");
-    assert_eq!(analysis.flutter.routes[1].name.as_deref(), Some("settings"));
+    assert_eq!(routes[1].arguments[1].name.as_deref(), Some("name"));
+    assert_eq!(
+        routes[1].arguments[1].string_value.as_deref(),
+        Some("settings")
+    );
+    assert_eq!(analysis.flutter, FlutterFileHints::default());
 }
 
 #[test]
@@ -395,7 +414,7 @@ fn project_analysis_is_sorted_and_project_diagnostics_keep_source_paths() {
 }
 
 #[test]
-fn analyzes_project_summary_from_files_and_pubspecs() {
+fn analyzes_pure_project_summary_from_files_and_pubspecs() {
     let dart = r#"
 import 'package:flutter/widgets.dart';
 
@@ -427,8 +446,9 @@ dependencies:
     assert_eq!(analysis.summary.package_configs, 1);
     assert_eq!(analysis.package_configs[0].config_version, Some(2));
     assert_eq!(analysis.summary.imports, 1);
-    assert_eq!(analysis.summary.flutter_widgets, 1);
+    assert_eq!(analysis.summary.flutter_widgets, 0);
     assert_eq!(analysis.summary.package_dependencies, 1);
+    assert_eq!(analysis.files[0].flutter, FlutterFileHints::default());
     assert!(analysis.diagnostics.is_empty());
 }
 
@@ -493,7 +513,7 @@ class StorefrontSurfaceRegistry {
 }
 
 #[test]
-fn treats_riverpod_consumer_widget_as_flutter_widget_hint() {
+fn retains_riverpod_widget_declaration_as_generic_dart_fact() {
     let source = r#"
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -503,14 +523,15 @@ class StorefrontHomePage extends ConsumerWidget {
 
     let analysis = analyze_file(DartFileInput::new("lib/routes/home.dart", source));
 
-    assert!(analysis.flutter.widgets.iter().any(|widget| {
-        widget.class_name == "StorefrontHomePage" && widget.base_class == "ConsumerWidget"
+    assert!(analysis.declarations.iter().any(|declaration| {
+        declaration.name == "StorefrontHomePage"
+            && declaration.extends.as_deref() == Some("ConsumerWidget")
     }));
-    assert!(analysis.flutter.imports_flutter);
+    assert_eq!(analysis.flutter, FlutterFileHints::default());
 }
 
 #[test]
-fn extracts_direct_flutter_asset_and_localization_hints() {
+fn captures_generic_asset_and_localization_invocations() {
     let source = r#"
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
@@ -531,25 +552,23 @@ Future<String> loadCopy(BuildContext context) {
 
     let analysis = analyze_file(DartFileInput::new("lib/widgets/logo.dart", source));
 
-    assert!(analysis.flutter.assets.iter().any(|asset| {
-        asset.path == "assets/brand/logo.png"
-            && asset.source == dartscope_core::FlutterAssetSource::AssetImage
+    assert!(analysis.invocations.iter().any(|invocation| {
+        invocation.target == "AssetImage"
+            && invocation.arguments[0].string_value.as_deref() == Some("assets/brand/logo.png")
     }));
-    assert!(analysis.flutter.assets.iter().any(|asset| {
-        asset.path == "assets/copy/welcome.txt"
-            && asset.source == dartscope_core::FlutterAssetSource::DefaultAssetBundleLoadString
+    assert!(analysis.invocations.iter().any(|invocation| {
+        invocation.target == "DefaultAssetBundle.of.loadString"
+            && invocation.arguments[0].string_value.as_deref() == Some("assets/copy/welcome.txt")
     }));
-    assert!(
-        analysis
-            .flutter
-            .localizations
-            .iter()
-            .any(|localization| localization.key == "welcomeMessage")
-    );
+    assert!(analysis.invocations.iter().any(|invocation| {
+        invocation.target == "AppLocalizations.of"
+            && invocation.result_members == ["welcomeMessage"]
+    }));
+    assert_eq!(analysis.flutter, FlutterFileHints::default());
 }
 
 #[test]
-fn extracts_go_route_hints_without_building_a_full_route_graph() {
+fn captures_go_route_invocations_without_applying_ecosystem_semantics() {
     let source = r#"
 import 'package:go_router/go_router.dart';
 
@@ -579,36 +598,35 @@ GoRouter buildRouter() {
 "#;
 
     let analysis = analyze_file(DartFileInput::new("lib/routes/app_router.dart", source));
+    let routes: Vec<_> = analysis
+        .invocations
+        .iter()
+        .filter(|invocation| invocation.target == "GoRoute")
+        .collect();
 
-    assert_eq!(analysis.flutter.routes.len(), 3);
+    assert_eq!(routes.len(), 3);
     assert!(
         analysis
             .string_constants
             .iter()
             .any(|constant| { constant.name == "modulesRootPath" && constant.value == "/modules" })
     );
-    assert!(analysis.flutter.routes.iter().any(|route| {
-        route.path == "homePath"
-            && route.path_kind == FlutterRoutePathKind::Expression
-            && route.resolved_path.as_deref() == Some("/")
-            && route.confidence == Confidence::High
+    assert!(routes.iter().any(|route| {
+        route.arguments.iter().any(|argument| {
+            argument.name.as_deref() == Some("path") && argument.expression == "homePath"
+        })
     }));
-    assert!(analysis.flutter.routes.iter().any(|route| {
-        route.path == "$modulesRootPath/:routeSegment"
-            && route.name.as_deref() == Some("modules:surface")
-            && route.path_kind == FlutterRoutePathKind::Expression
-            && route.resolved_path.as_deref() == Some("/modules/:routeSegment")
-            && route.confidence == Confidence::High
+    assert!(routes.iter().any(|route| {
+        route.arguments.iter().any(|argument| {
+            argument.name.as_deref() == Some("path")
+                && argument.string_value.as_deref() == Some("$modulesRootPath/:routeSegment")
+        })
     }));
-    assert!(analysis.flutter.routes.iter().any(|route| {
-        route.path == "profilePath"
-            && route.resolved_path.as_deref() == Some("/profile")
-            && route.confidence == Confidence::High
-    }));
+    assert_eq!(analysis.flutter, FlutterFileHints::default());
 }
 
 #[test]
-fn extracts_material_app_routes_map_hints() {
+fn captures_material_app_routes_as_generic_named_argument_map_entries() {
     let source = r#"
 import 'package:flutter/material.dart';
 
@@ -627,27 +645,24 @@ class App extends StatelessWidget {
 "#;
 
     let analysis = analyze_file(DartFileInput::new("lib/main.dart", source));
+    let material_app = analysis
+        .invocations
+        .iter()
+        .find(|invocation| invocation.target == "MaterialApp")
+        .unwrap();
+    let routes = material_app
+        .arguments
+        .iter()
+        .find(|argument| argument.name.as_deref() == Some("routes"))
+        .unwrap();
+    let keys: Vec<_> = routes
+        .map_entries
+        .iter()
+        .filter_map(|entry| entry.string_key.as_deref())
+        .collect();
 
-    assert_eq!(analysis.flutter.routes.len(), 2);
-    assert!(
-        !analysis
-            .flutter
-            .routes
-            .iter()
-            .any(|route| route.path == "/commented")
-    );
-    assert!(analysis.flutter.routes.iter().any(|route| {
-        route.constructor == "MaterialApp.routes"
-            && route.path == "/"
-            && route.path_kind == FlutterRoutePathKind::Literal
-            && route.resolved_path.as_deref() == Some("/")
-            && route.confidence == Confidence::High
-    }));
-    assert!(analysis.flutter.routes.iter().any(|route| {
-        route.constructor == "MaterialApp.routes"
-            && route.path == "/settings"
-            && route.resolved_path.as_deref() == Some("/settings")
-    }));
+    assert_eq!(keys, ["/", "/settings"]);
+    assert_eq!(analysis.flutter, FlutterFileHints::default());
 }
 
 #[test]

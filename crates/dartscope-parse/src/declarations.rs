@@ -1,8 +1,4 @@
-use std::collections::HashMap;
-
 use dartscope_core::{DartPartOfKind, DartStringConstant, SourceSpan};
-
-use crate::source_lines::source_lines;
 
 pub(crate) fn library_directive_name(trimmed: &str) -> Option<Option<String>> {
     let rest = trimmed.strip_prefix("library")?;
@@ -178,66 +174,6 @@ pub(crate) fn string_constant_from_line(
     Some(DartStringConstant { name, value, span })
 }
 
-pub(crate) fn collect_string_constant_values(
-    source: &str,
-    masked_source: &str,
-) -> HashMap<String, String> {
-    source_lines(source)
-        .into_iter()
-        .zip(source_lines(masked_source))
-        .filter_map(|(source_line, masked_line)| {
-            let indent = masked_line
-                .text
-                .chars()
-                .take_while(|ch| ch.is_whitespace())
-                .count();
-            let masked_trimmed = masked_line.text.trim();
-            top_level_variable(masked_trimmed, indent)?;
-            string_constant_from_line(
-                source_line.text.trim(),
-                indent,
-                SourceSpan::line(source_line.number, source_line.byte_start, source_line.text),
-            )
-        })
-        .map(|constant| (constant.name, constant.value))
-        .collect()
-}
-
-pub(crate) fn resolve_interpolated_string(
-    value: &str,
-    string_constants: &HashMap<String, String>,
-) -> Option<String> {
-    if !value.contains('$') {
-        return Some(value.to_string());
-    }
-
-    let mut resolved = String::with_capacity(value.len());
-    let mut chars = value.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch != '$' {
-            resolved.push(ch);
-            continue;
-        }
-
-        let mut name = String::new();
-        while let Some(next) = chars.peek().copied() {
-            if next.is_ascii_alphanumeric() || next == '_' {
-                name.push(next);
-                chars.next();
-            } else {
-                break;
-            }
-        }
-
-        if name.is_empty() {
-            return None;
-        }
-        resolved.push_str(string_constants.get(&name)?);
-    }
-
-    Some(resolved)
-}
-
 pub(crate) fn is_identifier(value: &str) -> bool {
     let mut chars = value.chars();
     matches!(chars.next(), Some(ch) if ch.is_ascii_alphabetic() || ch == '_')
@@ -246,23 +182,6 @@ pub(crate) fn is_identifier(value: &str) -> bool {
 
 fn is_library_name(value: &str) -> bool {
     value.split('.').all(is_identifier)
-}
-
-pub(crate) fn is_flutter_base(base: &str) -> bool {
-    let base = base.rsplit('.').next().unwrap_or(base);
-    matches!(
-        base,
-        "Widget"
-            | "StatelessWidget"
-            | "StatefulWidget"
-            | "InheritedWidget"
-            | "State"
-            | "ConsumerWidget"
-    )
-}
-
-pub(crate) fn is_flutter_import(uri: &str) -> bool {
-    uri.starts_with("package:flutter/") || uri.starts_with("package:flutter_riverpod/")
 }
 
 pub(crate) fn directive_like_without_semicolon(trimmed: &str) -> bool {

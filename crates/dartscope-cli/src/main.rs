@@ -6,8 +6,9 @@ use std::process::ExitCode;
 
 use dartscope::{
     DartCompilationEnvironment, DartFileInput, DartIndexOptions, DartProjectInput, JsonContract,
-    PackageConfigInput, PubspecInput, analyze_file, analyze_graphql_contracts_with_options,
-    analyze_project, build_uri_graph_with_options, extract_flutter_inventory, parse_pubspec,
+    PackageConfigInput, PubspecInput, analyze_file_with_flutter,
+    analyze_graphql_contracts_with_options, analyze_project, analyze_project_with_flutter,
+    build_uri_graph_with_options, extract_flutter_inventory, parse_pubspec,
     parse_pubspec_configuration, to_json_contract_pretty,
 };
 
@@ -95,7 +96,7 @@ fn execute(command: CliCommand, path: &str, extra_args: &[String]) -> Result<Str
         CliCommand::AnalyzeFile => {
             reject_extra_args(extra_args, command)?;
             let source = read_source(path)?;
-            let analysis = analyze_file(DartFileInput::new(path, source));
+            let analysis = analyze_file_with_flutter(DartFileInput::new(path, source));
             serialize_contract!(JsonContract::FileAnalysis, &analysis)
         }
         CliCommand::Pubspec => {
@@ -113,7 +114,7 @@ fn execute(command: CliCommand, path: &str, extra_args: &[String]) -> Result<Str
         CliCommand::AnalyzeProject => {
             reject_extra_args(extra_args, command)?;
             let input = collect_project_input(path)?;
-            let analysis = analyze_project(input);
+            let analysis = analyze_project_with_flutter(input);
             serialize_contract!(JsonContract::ProjectAnalysis, &analysis)
         }
         CliCommand::GraphqlContracts => {

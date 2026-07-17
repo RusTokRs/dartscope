@@ -10,3 +10,6 @@ description = "Flutter convention analysis for DartScope"
 [dependencies]
 dartscope-core.workspace = true
 serde.workspace = true
+
+[dev-dependencies]
+dartscope-parse.workspace = true

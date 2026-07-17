@@ -10,14 +10,20 @@ This repository is in early pre-1.0 development. The workspace bootstrap and fir
 file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices exist:
 
 - `dartscope-core` owns normalized analysis types, spans, diagnostics, and pubspec models.
-- `dartscope-parse` provides a conservative file-level MVP for imports, exports, parts, declarations, simple Flutter widget, route, asset, and localization hints, Dart-embedded GraphQL operations and uses, and structured `pubspec.yaml` discovery. The primary pubspec analysis preserves exact dependency-key and environment-key spans, normalizes scalar, SDK, path, git, hosted, and workspace sources, and embeds Flutter assets, flavors, platforms, ordered asset transformers, fonts, and localization-generation settings.
+- `dartscope-parse` provides conservative source-only analysis for imports, exports, parts,
+  declarations, generic invocation and named-argument facts, Dart-embedded GraphQL operations and
+  uses, and structured `pubspec.yaml` discovery. It does not execute Flutter convention rules. The
+  primary pubspec analysis preserves exact dependency-key and environment-key spans, normalizes
+  scalar, SDK, path, git, hosted, and workspace sources, and embeds Flutter assets, flavors,
+  platforms, ordered asset transformers, fonts, and localization-generation settings.
 - `dartscope-index` performs project-level linking over normalized analysis results. Its
   first API resolves GraphQL operation uses conservatively and compares operation,
   client-call, and variable contracts without depending on parser internals.
 - `dartscope-resolve` parses official package configuration v2 inputs and owns package
   and URI resolution primitives without performing filesystem I/O.
-- `dartscope-flutter` aggregates project-level Flutter inventory (widgets, routes, assets,
-  localizations) from the normalized analysis model. It is optional for pure Dart consumers.
+- `dartscope-flutter` derives widget, route, asset, and localization conventions from generic
+  imports, declarations, and invocations, and aggregates project-level inventory. It is optional
+  for pure Dart consumers and does not parse source directly.
 - `dartscope-json` owns named versioned JSON envelopes and checked-in golden contracts;
   low-level generic Serde helpers remain available but are not stable command schemas.
 - `dartscope-cli` exposes the stable process boundary with help, version output, documented exit
@@ -41,9 +47,10 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
   environment constraints, assets, fonts, selectors, and transformers. YAML aliases and merge keys
   remain explicitly unsupported, and selector validation follows the serialized DartScope v1 policy
   rather than claiming compatibility with every future Flutter SDK.
-- Flutter hints are currently detected during file analysis and aggregated by the
-  optional `dartscope-flutter` crate. Moving convention extraction fully behind the
-  Flutter boundary requires a normalized, parser-independent call-expression model.
+- Generic invocation discovery is conservative rather than a complete expression AST. It
+  records dotted call targets, positional and named arguments, simple string values, map entries,
+  result-member chains, enclosing callable IDs, and source evidence for supported forms. Complex
+  cascades, records, patterns, and language-version-specific expressions can still be incomplete.
 - Declaration inventory covers top-level declarations plus class, mixin, enum,
   extension, and extension-type methods, traditional constructors, fields, getters,
   setters, operators, and local variables. Declarations carry stable hierarchical symbol
@@ -56,6 +63,14 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
 need a different source-only parser backend. The built-in `HeuristicDartParser` remains
 the default; capability metadata makes unavailable facts explicit. See
 [`docs/development/parser-backends.md`](docs/development/parser-backends.md).
+
+Pure `dartscope_parse::analyze_file` and `analyze_project` return generic Dart facts and leave the
+legacy `DartFileAnalysis.flutter` compatibility projection empty. Applications that enable the
+optional Flutter feature can call `dartscope::analyze_file_with_flutter` or
+`dartscope::analyze_project_with_flutter`; the CLI uses those explicit composition APIs for its
+file/project commands. `dartscope_flutter::extract_flutter_inventory` can also derive inventory
+straight from a pure project analysis. See
+[`docs/development/flutter-boundary.md`](docs/development/flutter-boundary.md).
 
 ## Rust Toolchain
 
@@ -87,8 +102,9 @@ cargo run -p dartscope-cli -- flutter-inventory path\to\flutter_project
 
 `analyze-project` recursively scans regular `.dart` files and `pubspec.yaml` files,
 never follows symlink entries, skips the documented generated/tool directory list, and
-returns a deterministic JSON summary
-plus per-file analysis output. Current output includes top-level string constants,
+returns a deterministic JSON summary plus per-file analysis output. The CLI explicitly enables
+optional Flutter convention composition, while the underlying pure parser remains Flutter-free.
+Current output includes generic invocation and named-argument facts, top-level string constants,
 GraphQL operation documents from Dart raw string constants, declared operation
 variables, client uses such as `gql(operationConstant)` inside
 `query`/`mutate`/`subscribe` calls, supplied client variable names, conservative Flutter

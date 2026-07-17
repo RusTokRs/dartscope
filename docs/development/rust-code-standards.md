@@ -206,7 +206,9 @@ confidence, paths, ordering, or fixtures.
 | `dartscope-parse` | `declarations` | top-level declarations and identifier helpers |
 | `dartscope-parse` | `graphql` | GraphQL document/use extraction |
 | `dartscope-parse` | `pubspec` | pubspec analysis and YAML subset helpers |
-| `dartscope-parse` | `flutter_hints` | transitional Flutter route/asset/localization hints |
+| `dartscope-parse` | `declaration_inventory` | structural declaration, member, and local-symbol inventory |
+| `dartscope-parse` | `invocations` | parser-independent call targets, arguments, map entries, and source evidence |
+| `dartscope-flutter` | `conventions` | optional Flutter and ecosystem interpretation of generic facts |
 | `dartscope-index` | `uri_graph` | URI graph construction and package URI resolution |
 | `dartscope-index` | `parts` | part ownership validation |
 | `dartscope-index` | `graphql` | cross-file GraphQL visibility and contract linking |

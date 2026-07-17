@@ -96,13 +96,13 @@ Baseline reviewed on 2026-07-16.
 | Area | Status | Evidence in repository |
 | --- | --- | --- |
 | Rust workspace and eight crates | verified | root `Cargo.toml`; exact Rust 1.95.0 Linux/Windows quality, test, edition, and feature matrix passed |
-| Core normalized model | implemented | `dartscope-core`; pre-1.0 compatibility work remains |
-| File and pubspec analysis | in_progress | heuristic Dart backend plus marked `yaml-rust2` pubspec backend; unit and project fixtures |
+| Core normalized model | implemented | declarations, generic invocations, spans, diagnostics, and compatibility projections; pre-1.0 migration work remains |
+| File and pubspec analysis | in_progress | heuristic declarations and generic invocations plus marked `yaml-rust2` pubspec backend; unit and project fixtures |
 | Package config v2 and package URI resolution | in_progress | `dartscope-resolve`, six resolver tests |
 | URI graph, parts, and GraphQL linking | in_progress | `dartscope-index`, deterministic JSON contract tests |
-| Flutter project inventory | in_progress | `dartscope-flutter`, optional umbrella feature |
-| JSON helpers | implemented | `dartscope-json`; versioned schema is not implemented |
-| CLI smoke workflows | implemented | `dartscope-cli`; CLI integration tests are missing |
+| Flutter project inventory | verified | optional convention derivation and deterministic inventory behind the `flutter` feature |
+| Versioned JSON contracts | verified | seven named v1 command envelopes, golden fixtures, and migration policy |
+| CLI process contract | verified | help, version, exit codes, deterministic discovery, and Linux/Windows process tests |
 | Hosted CI | verified | Rust 1.95.0 quality, Linux/Windows tests, edition-2024, and umbrella feature matrix publish granular and aggregate statuses |
 | Contributor and agent workflow | verified | `AGENTS.md`, `CONTRIBUTING.md`, Rust code standard |
 | Lint/rule engine | planned | crate not created |
@@ -112,8 +112,9 @@ Current verified behaviors include:
 
 - normalized LF/CRLF byte spans and source paths on diagnostics;
 - imports, exports, namespace combinators, conditional URIs, parts, and part ownership;
-- top-level class, modified class, mixin, mixin-class, enum, extension, extension-type,
-  typedef, function, and variable findings;
+- top-level and supported member/local declaration inventory with stable ownership and full spans;
+- generic invocation targets, named and positional arguments, map entries, result-member chains,
+  enclosing callable IDs, and source evidence;
 - pubspec dependency sections with flexible direct-child indentation;
 - typed pubspec dependency sources, environment constraints, fonts, and Flutter asset
   configurations with paths, flavors, platforms, and ordered transformers;
@@ -122,26 +123,24 @@ Current verified behaviors include:
 - direct and re-export GraphQL visibility, part-library membership, client-call and
   variable compatibility;
 - high-confidence widget, route, asset, and localization hints;
-- deterministic Flutter inventory that preserves route path kind and confidence.
+- optional Flutter convention derivation and deterministic inventory that preserve route path
+  kind, confidence, paths, spans, and ordering.
 
 ## Known Architectural Debt
 
 The following are known facts, not hidden assumptions:
 
-1. `dartscope-parse` currently extracts Flutter hints and stores them in
-   `DartFileAnalysis.flutter`. `dartscope-flutter` aggregates those hints but does not
-   yet own convention extraction. This is transitional and does not fully satisfy the
-   target optional-boundary design.
-2. `dartscope-core` contains Flutter hint types because they are embedded in the file
-   model. A compatibility-safe separation needs a generic normalized invocation model
-   before moving extraction.
-3. The heuristic parser scans lines and is not a complete lexer or AST. Complex block
-   comments, strings, annotations, multi-line declarations, records, patterns, and
-   recent language syntax can create misses or false positives.
-4. `dartscope-json` serializes public structs directly. There is no schema name,
-   schema version, capability list, or migration test for whole CLI payloads.
-5. Project diagnostics now carry paths, but diagnostic codes do not yet have a public
-   registry documenting severity, source class, and stability.
+1. `dartscope-core` still contains the legacy `DartFileAnalysis.flutter` projection for
+   v1 payload compatibility. Pure parsing leaves it empty and optional composition populates it;
+   removing it requires a future Rust and JSON migration.
+2. Generic invocation discovery is conservative rather than a complete expression AST. Complex
+   cascades, annotations, records, patterns, and recent language-version-specific expressions can
+   create misses and must remain explicit capability limits.
+3. Command envelopes are versioned, but their payloads still serialize public domain structs
+   directly. Pre-1.0 field evolution therefore requires additive Serde defaults, golden updates,
+   and migration notes.
+4. Project diagnostics carry paths, but diagnostic codes do not yet have a public registry
+   documenting severity, source class, and stability.
 
 Do not conceal these limits by changing README wording. Close them through the tasks
 below.
@@ -218,9 +217,9 @@ resolution directly to these roots would make ownership less clear.
 
 Result:
 
-- `dartscope-parse/src/lib.rs` is now a 15-line crate boundary with private modules
-  for analysis, declarations, Flutter hints, GraphQL, namespace directives, pubspec,
-  and source lines;
+- `dartscope-parse/src/lib.rs` is a thin crate boundary with private modules for analysis,
+  declaration inventory, generic invocations, GraphQL, namespace directives, pubspec, and source
+  lines;
 - `dartscope-index/src/lib.rs` is now a 13-line crate boundary with private URI graph,
   part, GraphQL, and path modules;
 - tests are split by behavior under each crate's `src/tests/` directory;
@@ -231,9 +230,9 @@ Result:
 Required work:
 
 1. Add or retain characterization tests before moving implementation.
-2. Split `dartscope-parse` by stable responsibility, initially targeting modules such
-   as `source_lines`, `namespace`, `declarations`, `graphql`, `pubspec`, and the
-   transitional `flutter_hints` boundary.
+2. Split `dartscope-parse` by stable responsibility, targeting modules such as
+   `source_lines`, `namespace`, `declarations`, `declaration_inventory`, `invocations`, `graphql`,
+   and `pubspec`; optional Flutter interpretation belongs in `dartscope-flutter`.
 3. Split `dartscope-index` into URI graph, part membership, GraphQL visibility/contracts,
    and shared namespace resolution modules.
 4. Keep crate-root public functions and public paths compatible through thin wrappers
@@ -499,16 +498,34 @@ Acceptance:
 
 ### DS-FLUTTER-002: Move Convention Extraction Behind Optional Boundary
 
-Status: ready. Priority: P1. Prerequisites: DS-PARSE-005, DS-JSON-001.
+Status: verified. Priority: P1. Prerequisites: DS-PARSE-005, DS-JSON-001.
 
-Migration sequence:
+Implemented slices:
 
-1. Add parser-independent normalized invocation and named-argument facts.
-2. Make the parser backend emit those generic facts.
-3. Make `dartscope-flutter` derive widget, route, asset, and localization findings from
-   generic facts plus imports and declarations.
-4. Add a high-level composition API in the umbrella crate.
-5. Deprecate direct parser-populated Flutter fields with a documented JSON migration.
+1. Added parser-independent `DartInvocation`, argument, and map-entry facts with dotted targets,
+   named and positional arguments, simple string values, result-member chains, enclosing callable
+   IDs, exact invocation spans, and compatibility source-line spans.
+2. The heuristic backend emits generic invocations after declaration inventory and reports the
+   capability explicitly; declaration headers and masked non-code are excluded.
+3. Removed Flutter route, asset, localization, and widget interpretation from `dartscope-parse`.
+   Pure file/project analysis leaves the legacy Flutter projection empty and summary counts zero.
+4. `dartscope-flutter` derives widget, `GoRoute`, `MaterialApp.routes`, asset, and localization
+   findings from imports, declarations, invocations, and same-file constants. Older payloads that
+   contain only legacy hints remain readable through a compatibility fallback.
+5. Added explicit file/project composition APIs in the optional Flutter crate and
+   `analyze_file_with_flutter` / `analyze_project_with_flutter` in the umbrella crate. The CLI uses
+   those APIs for its v1 file/project payloads.
+6. Documented the feature boundary and additive v1 migration without removing or renaming the
+   legacy serialized field.
+
+Verification:
+
+- pure parser fixtures assert generic facts and an empty Flutter compatibility projection;
+- optional-crate fixtures restore the existing 5 widgets, 3 routes, 2 assets, and 1 localization
+  finding with deterministic paths, spans, confidence, resolution, and ordering;
+- CLI smoke tests preserve file/project/inventory behavior while exposing generic invocations;
+- exact Rust 1.95 workspace checks, tests, formatting, Clippy, rustdoc, minimal features, and all
+  features pass locally before hosted finalization.
 
 Acceptance:
 
@@ -519,7 +536,7 @@ Acceptance:
 
 ### DS-FLUTTER-003: Declared Assets And Localization Catalogs
 
-Status: planned. Priority: P2. Prerequisite: DS-PUB-002.
+Status: ready. Priority: P2. Prerequisites: DS-PUB-002, DS-FLUTTER-002.
 
 Link direct asset uses to `flutter.assets` declarations. Parse `l10n.yaml` and ARB keys
 through explicit input types. Report used-but-undeclared assets, declared-but-unused
@@ -602,10 +619,9 @@ plus aggregate commit statuses.
 
 Status: implemented.
 
-Imports, exports, conditional URIs, parts, part-of, library directives, top-level
-declarations, string constants, GraphQL documents/uses, direct Flutter hints, spans,
-and diagnostics exist. Full completion depends on DS-MAINT-001 and DS-PARSE-004 through
-DS-PARSE-006.
+Imports, exports, conditional URIs, parts, part-of, library directives, declarations,
+generic invocations, string constants, GraphQL documents/uses, spans, and diagnostics exist.
+The pure parser does not execute Flutter convention rules.
 
 ### DS-PARSE-002: Cross-Platform Span And Diagnostic Attribution
 
@@ -672,6 +688,15 @@ Status: verified for current input model.
 The optional crate aggregates and deterministically sorts widgets, routes, assets,
 localizations, and Flutter-related files. Route output preserves literal/expression
 kind, resolved path, confidence, and source span.
+
+
+### DS-FLUTTER-002: Optional Convention Boundary
+
+Status: verified.
+
+Pure parsing now emits generic invocation facts and no Flutter findings. The optional Flutter crate
+owns convention interpretation, supports older legacy-hint payloads, and provides explicit file and
+project composition APIs. CLI v1 behavior remains compatible through explicit composition.
 
 ## Calibration Protocol
 
@@ -755,8 +780,7 @@ Do not resolve these conditions by silently expanding scope.
 
 ## Current Recommended Next Step
 
-Implement `DS-FLUTTER-002` next. The parser now exposes stable generic declaration ownership;
-the next architectural step is a parser-independent invocation model so Flutter convention
-extraction can move behind the optional `dartscope-flutter` boundary without changing pure Dart
-semantics. `DS-COMPAT-001` remains recorded as research and is intentionally deferred until the
-current implementation queue is complete.
+Implement `DS-FLUTTER-003` next. Convention extraction now lives behind the optional Flutter
+boundary; the next ready slice links generic asset/localization uses to pubspec declarations,
+`l10n.yaml`, and ARB catalogs with explicit inputs and diagnostics. `DS-COMPAT-001` remains recorded
+as research and is intentionally deferred until the current implementation queue is complete.

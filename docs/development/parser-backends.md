@@ -25,8 +25,15 @@ impl DartParser for ExternalParser {
 ```
 
 The built-in `HeuristicDartParser` remains the default behind `analyze_file` and
-`analyze_project`. It reports `Members` as unsupported and makes only partial Dart
-language-version coverage claims.
+`analyze_project`. It reports directives, declarations, members, generic invocations, and recovery
+as supported capability slices while making only partial Dart language-version coverage claims.
+Invocation facts contain parser-independent call targets, positional and named arguments, simple
+string values, map entries, result-member chains, enclosing callable IDs, and source spans. They do
+not encode Flutter meaning.
+
+Parser backends must leave the legacy `DartFileAnalysis.flutter` projection empty. Optional
+convention crates may derive compatibility projections from generic facts after parsing. This keeps
+pure Dart parsing independent from Flutter APIs and ecosystem conventions.
 
 A future tree-sitter backend should retain its tree internally and map only supported facts to
 `dartscope-core`. An official analyzer bridge should run outside `dartscope-core`, accept the

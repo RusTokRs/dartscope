@@ -1,24 +1,17 @@
-use std::collections::HashMap;
-
 use dartscope_core::{
-    Confidence, DartDiagnostic, DartFileAnalysis, DartFileInput, DartLibraryDirective, DartPart,
-    DartPartOf, DartProjectAnalysis, DartProjectInput, DartProjectSummary, FlutterWidgetHint,
-    SourceSpan, normalize_path,
+    DartDiagnostic, DartFileAnalysis, DartFileInput, DartLibraryDirective, DartPart, DartPartOf,
+    DartProjectAnalysis, DartProjectInput, DartProjectSummary, SourceSpan, normalize_path,
 };
 use dartscope_resolve::parse_package_config;
 
 use crate::backend::{DartParser, HeuristicDartParser};
 use crate::declaration_inventory::collect_declaration_inventory;
 use crate::declarations::{
-    collect_string_constant_values, directive_like_without_semicolon, is_flutter_base,
-    is_flutter_import, library_directive_name, part_of_value, string_constant_from_line,
-};
-use crate::flutter_hints::{
-    PendingRouteHint, count_char, flutter_asset_from_line, flutter_localization_from_line,
-    material_route_from_line, pending_route_from_line, route_constructor_is_complete,
-    should_finish_route_hint, starts_material_routes_map,
+    directive_like_without_semicolon, library_directive_name, part_of_value,
+    string_constant_from_line,
 };
 use crate::graphql::{extract_graphql_operation_uses, extract_graphql_operations};
+use crate::invocations::collect_invocations;
 use crate::lexical::mask_non_code;
 use crate::namespace::{directive_uri, extract_namespace_directives};
 use crate::pubspec::parse_pubspec;
@@ -38,9 +31,6 @@ pub(crate) fn analyze_file_heuristic(input: DartFileInput) -> DartFileAnalysis {
 
 struct FileAnalysisState {
     analysis: DartFileAnalysis,
-    pending_route: Option<PendingRouteHint>,
-    material_routes_depth: Option<usize>,
-    string_constants: HashMap<String, String>,
     source: String,
     masked_source: String,
 }
@@ -58,16 +48,12 @@ impl FileAnalysisState {
         let (imports, exports, mut diagnostics) =
             extract_namespace_directives(&input.source, masked_source);
         diagnostics.extend(lexical_diagnostics);
-        analysis.flutter.imports_flutter = imports.iter().any(|item| is_flutter_import(&item.uri));
         analysis.imports = imports;
         analysis.exports = exports;
         analysis.diagnostics = diagnostics;
 
         Self {
             analysis,
-            pending_route: None,
-            material_routes_depth: None,
-            string_constants: collect_string_constant_values(&input.source, masked_source),
             source: input.source.clone(),
             masked_source: masked_source.to_string(),
         }
@@ -85,9 +71,6 @@ impl FileAnalysisState {
             .count();
 
         self.observe_merge_conflict(code_trimmed, &span);
-        self.observe_flutter_references(code_trimmed, source_trimmed, &span);
-        self.observe_material_routes(code_trimmed, source_trimmed, &span);
-        self.observe_go_route(code_trimmed, source_trimmed, &span);
         self.observe_dart_item(code_trimmed, source_trimmed, indent, &span);
 
         if directive_like_without_semicolon(code_trimmed) {
@@ -106,67 +89,6 @@ impl FileAnalysisState {
                 "source contains a merge conflict marker",
                 Some(span.clone()),
             ));
-        }
-    }
-
-    fn observe_flutter_references(
-        &mut self,
-        code_trimmed: &str,
-        source_trimmed: &str,
-        span: &SourceSpan,
-    ) {
-        if let Some(asset) = flutter_asset_from_line(code_trimmed, source_trimmed, span.clone()) {
-            self.analysis.flutter.assets.push(asset);
-        }
-        if let Some(localization) = flutter_localization_from_line(code_trimmed, span.clone()) {
-            self.analysis.flutter.localizations.push(localization);
-        }
-    }
-
-    fn observe_material_routes(
-        &mut self,
-        code_trimmed: &str,
-        source_trimmed: &str,
-        span: &SourceSpan,
-    ) {
-        if let Some(depth) = self.material_routes_depth.as_mut() {
-            if let Some(route) =
-                material_route_from_line(code_trimmed, source_trimmed, span.clone())
-            {
-                self.analysis.flutter.routes.push(route);
-            }
-            *depth = depth.saturating_add(count_char(code_trimmed, '{'));
-            *depth = depth.saturating_sub(count_char(code_trimmed, '}'));
-            if *depth == 0 {
-                self.material_routes_depth = None;
-            }
-        } else if starts_material_routes_map(code_trimmed) {
-            self.material_routes_depth =
-                Some(count_char(code_trimmed, '{').saturating_sub(count_char(code_trimmed, '}')));
-        }
-    }
-
-    fn observe_go_route(&mut self, code_trimmed: &str, source_trimmed: &str, span: &SourceSpan) {
-        if let Some(route) = pending_route_from_line(
-            code_trimmed,
-            source_trimmed,
-            span.clone(),
-            &self.string_constants,
-        ) {
-            self.finish_pending_route();
-            if route_constructor_is_complete(code_trimmed) {
-                self.push_route(route);
-            } else {
-                self.pending_route = Some(route);
-            }
-            return;
-        }
-
-        if let Some(route) = self.pending_route.as_mut() {
-            route.observe_line(code_trimmed, source_trimmed, &self.string_constants);
-            if should_finish_route_hint(code_trimmed) {
-                self.finish_pending_route();
-            }
         }
     }
 
@@ -204,38 +126,16 @@ impl FileAnalysisState {
         }
     }
 
-    fn push_route(&mut self, route: PendingRouteHint) {
-        if let Some(route) = route.finish() {
-            self.analysis.flutter.routes.push(route);
-        }
-    }
-
-    fn finish_pending_route(&mut self) {
-        if let Some(route) = self.pending_route.take() {
-            self.push_route(route);
-        }
-    }
-
     fn finish(mut self) -> DartFileAnalysis {
-        self.finish_pending_route();
         let (declarations, diagnostics) =
             collect_declaration_inventory(&self.analysis.path, &self.source, &self.masked_source);
         self.analysis.declarations = declarations;
+        self.analysis.invocations = collect_invocations(
+            &self.source,
+            &self.masked_source,
+            &self.analysis.declarations,
+        );
         self.analysis.diagnostics.extend(diagnostics);
-        for declaration in &self.analysis.declarations {
-            if let Some(base_class) = declaration
-                .extends
-                .clone()
-                .filter(|base| is_flutter_base(base))
-            {
-                self.analysis.flutter.widgets.push(FlutterWidgetHint {
-                    class_name: declaration.name.clone(),
-                    base_class,
-                    confidence: Confidence::High,
-                    span: declaration.span.clone(),
-                });
-            }
-        }
         attach_diagnostic_paths(&mut self.analysis.diagnostics, &self.analysis.path);
         self.analysis
     }

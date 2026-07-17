@@ -12,6 +12,11 @@ This document defines the stable process-level behavior for the 0.1 command fami
   stderr.
 - Argument and input errors write nothing to stdout and one human-readable error to stderr.
 
+The CLI is built with the optional Flutter feature. `analyze-file` and `analyze-project`
+explicitly compose pure parser results with `dartscope-flutter` conventions before serialization;
+`flutter-inventory` derives the same conventions directly from normalized project facts. This is a
+CLI composition choice, not behavior owned by `dartscope-parse`.
+
 The supported commands are:
 
 | Command | Input | Optional arguments | JSON schema |

@@ -1,8 +1,9 @@
 //! Flutter convention analysis for DartScope.
 //!
-//! This crate provides project-level Flutter inventory aggregation on top of the
+//! This crate derives Flutter conventions and project-level inventory on top of the
 //! normalized [`dartscope_core::DartProjectAnalysis`] model. It does not parse Dart
-//! source directly; all heuristics operate on already-analyzed file results.
+//! source directly; all heuristics operate on generic imports, declarations, invocations,
+//! constants, and compatibility projections from already-analyzed file results.
 //!
 //! # Design
 //!
@@ -18,10 +19,18 @@
 //! println!("{} widgets found", inventory.widgets.len());
 //! ```
 
+mod conventions;
+
+pub use conventions::{
+    derive_flutter_file_hints, populate_flutter_file_hints, populate_flutter_project_analysis,
+};
+
 use dartscope_core::{
     Confidence, DartProjectAnalysis, FlutterAssetHint, FlutterLocalizationHint, FlutterRouteHint,
     FlutterRoutePathKind, FlutterWidgetHint, SourceSpan,
 };
+
+use crate::conventions::effective_flutter_file_hints;
 use serde::{Deserialize, Serialize};
 
 /// Project-level Flutter inventory aggregated from [`DartProjectAnalysis`].
@@ -129,8 +138,9 @@ pub struct FlutterInventorySummary {
 
 /// Extract a project-level [`FlutterInventory`] from a [`DartProjectAnalysis`].
 ///
-/// This function aggregates all per-file Flutter hints from the normalized analysis
-/// model. It does not perform additional I/O or parsing.
+/// This function derives effective per-file Flutter hints from generic normalized facts
+/// and aggregates them. It does not perform additional I/O or source parsing. Older payloads
+/// without invocation facts fall back to their stored compatibility projection.
 ///
 /// # Arguments
 ///
@@ -148,23 +158,24 @@ pub fn extract_flutter_inventory(project: &DartProjectAnalysis) -> FlutterInvent
     let mut flutter_file_paths: Vec<String> = Vec::new();
 
     for file in &project.files {
-        if file.flutter.imports_flutter {
+        let hints = effective_flutter_file_hints(file);
+        if hints.imports_flutter {
             flutter_file_paths.push(file.path.clone());
         }
 
-        for widget in &file.flutter.widgets {
+        for widget in &hints.widgets {
             widgets.push(flutter_widget_entry(&file.path, widget));
         }
 
-        for route in &file.flutter.routes {
+        for route in &hints.routes {
             routes.push(flutter_route_entry(&file.path, route));
         }
 
-        for asset in &file.flutter.assets {
+        for asset in &hints.assets {
             assets.push(flutter_asset_entry(&file.path, asset));
         }
 
-        for localization in &file.flutter.localizations {
+        for localization in &hints.localizations {
             localizations.push(flutter_localization_entry(&file.path, localization));
         }
     }

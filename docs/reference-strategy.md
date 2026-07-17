@@ -119,7 +119,7 @@ heuristic fixture needs both a positive case and a nearby negative case.
 | conditional URI selection | normative | implemented | caller must provide environment |
 | GraphQL documents in Dart strings | ecosystem heuristic | implemented | not Dart or Flutter language semantics |
 | `GoRoute` and Riverpod widget bases | ecosystem convention | implemented heuristic | package/version matrix not yet explicit |
-| Flutter assets and localization calls | official API plus generated convention | implemented direct syntax | declarations, `l10n.yaml`, and ARB files not linked |
+| Flutter widget, route, asset, and localization conventions | official API plus ecosystem convention | derived in optional `dartscope-flutter` from generic facts | declarations, `l10n.yaml`, and ARB files not linked |
 
 ## Real-Project Feedback Loop
 

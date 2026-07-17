@@ -38,6 +38,7 @@ pub enum DartParserCapability {
     Directives,
     Declarations,
     Members,
+    Invocations,
     Recovery,
 }
 
@@ -86,6 +87,10 @@ impl DartParser for HeuristicDartParser {
                 },
                 DartParserCapabilityStatus {
                     capability: DartParserCapability::Members,
+                    support: DartParserCapabilitySupport::Supported,
+                },
+                DartParserCapabilityStatus {
+                    capability: DartParserCapability::Invocations,
                     support: DartParserCapabilitySupport::Supported,
                 },
                 DartParserCapabilityStatus {
@@ -144,6 +149,10 @@ mod tests {
         );
         assert_eq!(
             metadata.support_for(DartParserCapability::Members),
+            DartParserCapabilitySupport::Supported
+        );
+        assert_eq!(
+            metadata.support_for(DartParserCapability::Invocations),
             DartParserCapabilitySupport::Supported
         );
         assert!(matches!(

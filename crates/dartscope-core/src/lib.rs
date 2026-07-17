@@ -90,6 +90,13 @@ pub struct DartFileAnalysis {
     pub string_constants: Vec<DartStringConstant>,
     pub graphql_operations: Vec<DartGraphqlOperation>,
     pub graphql_operation_uses: Vec<DartGraphqlOperationUse>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub invocations: Vec<DartInvocation>,
+    /// Compatibility projection populated only by Flutter-aware composition.
+    ///
+    /// Pure Dart parser backends leave this field empty. It remains serialized in the
+    /// v1 model so older consumers can migrate to `dartscope-flutter` without a breaking
+    /// schema change.
     pub flutter: FlutterFileHints,
     pub diagnostics: Vec<DartDiagnostic>,
 }
@@ -108,6 +115,7 @@ impl DartFileAnalysis {
             string_constants: Vec::new(),
             graphql_operations: Vec::new(),
             graphql_operation_uses: Vec::new(),
+            invocations: Vec::new(),
             flutter: FlutterFileHints::default(),
             diagnostics: Vec::new(),
         }
@@ -499,6 +507,44 @@ pub enum DartDeclarationKind {
     Setter,
     Operator,
     LocalVariable,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartInvocation {
+    /// Normalized dotted target such as `Image.asset` or `DefaultAssetBundle.of.loadString`.
+    pub target: String,
+    pub arguments: Vec<DartInvocationArgument>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub result_members: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enclosing_symbol_id: Option<String>,
+    /// Exact invocation expression span.
+    pub span: SourceSpan,
+    /// Complete source-line evidence retained for compatibility projections.
+    pub source_line_span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartInvocationArgument {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Original source expression with surrounding whitespace removed.
+    pub expression: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub string_value: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub map_entries: Vec<DartMapEntry>,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartMapEntry {
+    pub key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub string_key: Option<String>,
+    pub value: String,
+    pub span: SourceSpan,
+    pub source_line_span: SourceSpan,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
