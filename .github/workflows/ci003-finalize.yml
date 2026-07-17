@@ -24,46 +24,104 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Apply audited supply-chain changes
-        run: python3 tools/ci003_apply.py
-      - name: Remove staging infrastructure
-        run: rm .github/workflows/ci003-finalize.yml tools/ci003_apply.py
-      - name: Install actionlint 1.7.12
+      - name: Run observable finalization
         env:
           GOBIN: ${{ runner.temp }}/actionlint-bin
+        shell: bash
         run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          echo "$GOBIN" >> "$GITHUB_PATH"
-      - name: Lint permanent workflows
-        run: actionlint -color
-      - name: Test workflow policy
-        run: python3 -m unittest discover -s tools/tests -p 'test_*.py' -v
-      - name: Enforce workflow policy
-        run: python3 tools/check-workflow-policy.py
-      - name: Install Rust 1.95
-        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-      - name: Run Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: Build documentation
-        env:
-          RUSTDOCFLAGS: -D warnings
-        run: cargo doc --workspace --no-deps --locked
-      - name: Run workspace tests
-        run: cargo test --workspace --locked --quiet
-      - name: Test umbrella all features
-        run: cargo test -p dartscope --all-features --locked --quiet
-      - name: Validate repository consistency
-        run: python3 tools/check-repository-consistency.py
-      - name: Validate release packages
-        run: python3 tools/check-release-packages.py
-      - name: Validate publishing script
-        run: bash -n tools/publish-crates.sh
-      - name: Commit verified DS-CI-003 implementation
-        run: |
+          set +e
+          LOG="$RUNNER_TEMP/ci003-finalization.log"
+          : > "$LOG"
+          FAILED_STAGE=""
+
+          run_stage() {
+            local name="$1"
+            shift
+            echo "===== $name =====" | tee -a "$LOG"
+            "$@" > >(tee -a "$LOG") 2> >(tee -a "$LOG" >&2)
+            local status=$?
+            if [ "$status" -ne 0 ]; then
+              FAILED_STAGE="$name (exit $status)"
+              return "$status"
+            fi
+          }
+
+          run_stage "apply changes" python3 tools/ci003_apply.py || true
+          if [ -z "$FAILED_STAGE" ]; then
+            rm -f .github/workflows/ci003-finalize.yml tools/ci003_apply.py
+            rm -f docs/development/ci003-finalization-failure.md
+            run_stage "install actionlint" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "actionlint" "$GOBIN/actionlint" -color || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "workflow policy tests" python3 -m unittest discover -s tools/tests -p 'test_*.py' -v || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "workflow policy" python3 tools/check-workflow-policy.py || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "install Rust 1.95" rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "rustfmt" cargo fmt --all -- --check || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "Clippy" cargo clippy --workspace --all-targets --locked -- -D warnings || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            RUSTDOCFLAGS="-D warnings" run_stage "rustdoc" cargo doc --workspace --no-deps --locked || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "workspace tests" cargo test --workspace --locked --quiet || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "umbrella all-features" cargo test -p dartscope --all-features --locked --quiet || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "repository consistency" python3 tools/check-repository-consistency.py || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "release packages" python3 tools/check-release-packages.py || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "publish script syntax" bash -n tools/publish-crates.sh || true
+          fi
+
           git config user.name "dartscope-ci"
           git config user.email "actions@users.noreply.github.com"
+
+          if [ -n "$FAILED_STAGE" ]; then
+            git fetch origin main
+            git reset --hard origin/main
+            rm -f .github/workflows/ci003-finalize.yml tools/ci003_apply.py
+            mkdir -p docs/development
+            {
+              echo "---"
+              echo "id: doc://docs/development/ci003-finalization-failure.md"
+              echo "kind: verification_report"
+              echo "language: en"
+              echo "source_language: en"
+              echo "status: active"
+              echo "---"
+              echo
+              echo "# DS-CI-003 Finalization Failure"
+              echo
+              echo "Failed stage: \`$FAILED_STAGE\`."
+              echo
+              echo "The audited implementation was not committed. The staging workflow and applier were removed."
+              echo
+              echo '```text'
+              tail -n 300 "$LOG"
+              echo '```'
+            } > docs/development/ci003-finalization-failure.md
+            git add -A
+            git commit -m "ci: record DS-CI-003 finalization failure"
+            git push origin HEAD:main
+            exit 1
+          fi
+
           git add -A
           git diff --cached --check
           git commit -m "ci: harden immutable workflow supply chain"
