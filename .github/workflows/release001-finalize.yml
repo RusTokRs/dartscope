@@ -45,7 +45,7 @@ jobs:
       - name: Verify and apply release hardening
         run: |
           echo "857b7d2ec71e1a3c4b55ae766c3fd08282e20766aee9263f638e2bfee7271a0c  .dartscope-release001/apply.py" | sha256sum -c -
-          echo "2fe063db52ed7fdb4f54b7b4961d0f09d082a2ee7f6c0fccc83cbfa56cd65739  .dartscope-release001/manifest.tsv" | sha256sum -c -
+          echo "889c00ef5dd07e9fe776877d87c713b6c215a2909146ba121c2bcc93c44f7a8b  .dartscope-release001/manifest.tsv" | sha256sum -c -
           python3 .dartscope-release001/apply.py
 
       - name: Install Rust 1.95
