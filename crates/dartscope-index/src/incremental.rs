@@ -9,7 +9,8 @@ use dartscope_core::{
     DartUriReference, PackageConfigAnalysis, PubspecAnalysis, normalize_path,
 };
 
-use crate::graphql::analyze_graphql_contracts_with_options;
+use crate::graphql::{GraphqlContractAnalyzer, sort_contract_analysis};
+use crate::namespace::LibraryMembership;
 use crate::parts::analyze_part_links_with_graph;
 use crate::references::resolve_identifier_references_with_options;
 use crate::uri_graph::{DartIndexOptions, UriGraphBuilder, sort_uri_references};
@@ -67,7 +68,9 @@ pub struct DartWorkspaceIndexCounters {
     pub uri_graph_rebuilds: u64,
     pub uri_files_rebuilt: u64,
     pub part_link_rebuilds: u64,
+    pub namespace_libraries_rebuilt: u64,
     pub graphql_rebuilds: u64,
+    pub graphql_libraries_rebuilt: u64,
     pub reference_rebuilds: u64,
     pub reference_files_rebuilt: u64,
 }
@@ -121,6 +124,8 @@ pub struct DartWorkspaceIndex {
     project_diagnostics: Vec<DartDiagnostic>,
     references_by_path: BTreeMap<String, Vec<DartIdentifierReference>>,
     uri_references_by_path: BTreeMap<String, Arc<Vec<DartUriReference>>>,
+    library_paths_by_owner: BTreeMap<String, Arc<Vec<String>>>,
+    graphql_contracts_by_library: BTreeMap<String, Arc<DartGraphqlContractAnalysis>>,
     reference_resolutions_by_path: BTreeMap<String, Arc<Vec<DartIdentifierReferenceResolution>>>,
     options: DartIndexOptions,
     snapshot: Arc<DartWorkspaceSnapshot>,
@@ -190,12 +195,21 @@ impl DartWorkspaceIndex {
         let (uri_references_by_path, uri_graph) = build_uri_reference_cache(&project, &options);
         let uri_graph = Arc::new(uri_graph);
         let part_links = Arc::new(analyze_part_links_with_graph(&project, &uri_graph));
-        let graphql_contracts =
-            Arc::new(analyze_graphql_contracts_with_options(&project, &options));
+        let library_paths_by_owner = build_library_path_cache(&project, &part_links);
+        let (graphql_contracts_by_library, graphql_contracts) = build_graphql_contract_cache(
+            &project,
+            &options,
+            Arc::clone(&uri_graph),
+            &part_links,
+            &library_paths_by_owner,
+        );
+        let graphql_contracts = Arc::new(graphql_contracts);
         let (reference_resolutions_by_path, identifier_reference_resolutions) =
             build_reference_resolution_cache(&project, &references_by_path, &options);
         let identifier_reference_resolutions = Arc::new(identifier_reference_resolutions);
         let initial_uri_files = uri_references_by_path.len() as u64;
+        let initial_namespace_libraries = library_paths_by_owner.len() as u64;
+        let initial_graphql_libraries = graphql_contracts_by_library.len() as u64;
         let initial_reference_files = reference_resolutions_by_path.len() as u64;
         let snapshot = Arc::new(DartWorkspaceSnapshot {
             generation: 0,
@@ -214,6 +228,8 @@ impl DartWorkspaceIndex {
             project_diagnostics,
             references_by_path,
             uri_references_by_path,
+            library_paths_by_owner,
+            graphql_contracts_by_library,
             reference_resolutions_by_path,
             options,
             snapshot,
@@ -222,7 +238,9 @@ impl DartWorkspaceIndex {
                 uri_graph_rebuilds: 1,
                 uri_files_rebuilt: initial_uri_files,
                 part_link_rebuilds: 1,
+                namespace_libraries_rebuilt: initial_namespace_libraries,
                 graphql_rebuilds: 1,
+                graphql_libraries_rebuilt: initial_graphql_libraries,
                 reference_rebuilds: 1,
                 reference_files_rebuilt: initial_reference_files,
                 ..DartWorkspaceIndexCounters::default()
@@ -284,6 +302,8 @@ impl DartWorkspaceIndex {
         };
         let changed_declaration_names =
             changed_top_level_declaration_names(old_file.as_ref(), Some(&file));
+        let changed_graphql_operation_names =
+            changed_graphql_operation_names(old_file.as_ref(), Some(&file));
         self.files.insert(path.clone(), file);
         if new_references.is_empty() {
             self.references_by_path.remove(&path);
@@ -296,6 +316,7 @@ impl DartWorkspaceIndex {
             false,
             old_file.is_none(),
             changed_declaration_names,
+            changed_graphql_operation_names,
         )
     }
 
@@ -306,6 +327,7 @@ impl DartWorkspaceIndex {
             return self.no_op_update();
         };
         let changed_declaration_names = changed_top_level_declaration_names(Some(&removed), None);
+        let changed_graphql_operation_names = changed_graphql_operation_names(Some(&removed), None);
         self.references_by_path.remove(&path);
         self.rebuild(
             RebuildPlan::all(),
@@ -313,6 +335,7 @@ impl DartWorkspaceIndex {
             false,
             true,
             changed_declaration_names,
+            changed_graphql_operation_names,
         )
     }
 
@@ -335,6 +358,7 @@ impl DartWorkspaceIndex {
             resolution_changed,
             false,
             BTreeSet::new(),
+            BTreeSet::new(),
         )
     }
 
@@ -349,6 +373,7 @@ impl DartWorkspaceIndex {
             BTreeSet::from([path]),
             true,
             false,
+            BTreeSet::new(),
             BTreeSet::new(),
         )
     }
@@ -367,6 +392,7 @@ impl DartWorkspaceIndex {
             true,
             false,
             BTreeSet::new(),
+            BTreeSet::new(),
         )
     }
 
@@ -381,6 +407,7 @@ impl DartWorkspaceIndex {
             BTreeSet::from([path]),
             true,
             false,
+            BTreeSet::new(),
             BTreeSet::new(),
         )
     }
@@ -397,6 +424,7 @@ impl DartWorkspaceIndex {
             true,
             false,
             BTreeSet::new(),
+            BTreeSet::new(),
         )
     }
 
@@ -412,6 +440,7 @@ impl DartWorkspaceIndex {
             BTreeSet::new(),
             false,
             false,
+            BTreeSet::new(),
             BTreeSet::new(),
         )
     }
@@ -433,6 +462,7 @@ impl DartWorkspaceIndex {
         global_invalidation: bool,
         file_set_changed: bool,
         changed_declaration_names: BTreeSet<String>,
+        changed_graphql_operation_names: BTreeSet<String>,
     ) -> DartWorkspaceUpdate {
         debug_assert!(plan.public().any());
         let old = Arc::clone(&self.snapshot);
@@ -497,6 +527,10 @@ impl DartWorkspaceIndex {
         } else {
             Arc::clone(&old.part_links)
         };
+        if plan.part_links || file_set_changed {
+            self.counters.namespace_libraries_rebuilt +=
+                refresh_library_path_cache(&project, &part_links, &mut self.library_paths_by_owner);
+        }
         let mut affected_paths: BTreeSet<_> = affected_paths(
             &changed_paths,
             &old.uri_graph,
@@ -521,9 +555,58 @@ impl DartWorkspaceIndex {
         let affected_paths: Vec<_> = affected_paths.into_iter().collect();
         let graphql_contracts = if plan.graphql_contracts {
             self.counters.graphql_rebuilds += 1;
-            Arc::new(analyze_graphql_contracts_with_options(
+            let active_libraries = graphql_library_owners(&project, &self.library_paths_by_owner);
+            let rebuild_libraries = graphql_rebuild_libraries(
+                &changed_paths,
+                &affected_paths,
+                &changed_graphql_operation_names,
+                &old.project,
+                &old.part_links,
+                &project,
+                &part_links,
+                global_invalidation,
+            );
+            let mut rebuilt_libraries = 0_u64;
+            if global_invalidation {
+                self.graphql_contracts_by_library.clear();
+            } else {
+                let before = self.graphql_contracts_by_library.len();
+                self.graphql_contracts_by_library
+                    .retain(|owner, _| active_libraries.contains(owner));
+                rebuilt_libraries += (before - self.graphql_contracts_by_library.len()) as u64;
+            }
+            let analyzer = GraphqlContractAnalyzer::from_analyses(
                 &project,
                 &self.options,
+                Arc::clone(&uri_graph),
+                &part_links,
+            );
+            for owner in rebuild_libraries {
+                if !active_libraries.contains(&owner) {
+                    self.graphql_contracts_by_library.remove(&owner);
+                    continue;
+                }
+                let Some(paths) = self.library_paths_by_owner.get(&owner) else {
+                    continue;
+                };
+                self.graphql_contracts_by_library
+                    .insert(owner, Arc::new(analyzer.analyze_paths(paths)));
+                rebuilt_libraries += 1;
+            }
+            for owner in active_libraries {
+                if self.graphql_contracts_by_library.contains_key(&owner) {
+                    continue;
+                }
+                let Some(paths) = self.library_paths_by_owner.get(&owner) else {
+                    continue;
+                };
+                self.graphql_contracts_by_library
+                    .insert(owner, Arc::new(analyzer.analyze_paths(paths)));
+                rebuilt_libraries += 1;
+            }
+            self.counters.graphql_libraries_rebuilt += rebuilt_libraries;
+            Arc::new(aggregate_graphql_contracts(
+                &self.graphql_contracts_by_library,
             ))
         } else {
             Arc::clone(&old.graphql_contracts)
@@ -690,6 +773,26 @@ fn file_rebuild_plan(
     }
 }
 
+fn changed_graphql_operation_names(
+    old: Option<&DartFileAnalysis>,
+    new: Option<&DartFileAnalysis>,
+) -> BTreeSet<String> {
+    let old_operations = old
+        .map(|file| file.graphql_operations.as_slice())
+        .unwrap_or_default();
+    let new_operations = new
+        .map(|file| file.graphql_operations.as_slice())
+        .unwrap_or_default();
+    if old_operations == new_operations {
+        return BTreeSet::new();
+    }
+    old_operations
+        .iter()
+        .chain(new_operations)
+        .map(|operation| operation.constant_name.clone())
+        .collect()
+}
+
 fn top_level_declaration_facts(
     file: &DartFileAnalysis,
 ) -> Vec<(
@@ -798,6 +901,172 @@ fn library_related_paths(
         }
     }
     related
+}
+
+fn grouped_library_paths(
+    project: &DartProjectAnalysis,
+    part_links: &DartPartLinkAnalysis,
+) -> BTreeMap<String, Vec<String>> {
+    let membership = LibraryMembership::from_part_links(part_links);
+    let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for file in &project.files {
+        grouped
+            .entry(membership.owner_of(&file.path).to_string())
+            .or_default()
+            .push(file.path.clone());
+    }
+    for paths in grouped.values_mut() {
+        paths.sort();
+        paths.dedup();
+    }
+    grouped
+}
+
+fn build_library_path_cache(
+    project: &DartProjectAnalysis,
+    part_links: &DartPartLinkAnalysis,
+) -> BTreeMap<String, Arc<Vec<String>>> {
+    grouped_library_paths(project, part_links)
+        .into_iter()
+        .map(|(owner, paths)| (owner, Arc::new(paths)))
+        .collect()
+}
+
+fn refresh_library_path_cache(
+    project: &DartProjectAnalysis,
+    part_links: &DartPartLinkAnalysis,
+    cache: &mut BTreeMap<String, Arc<Vec<String>>>,
+) -> u64 {
+    let grouped = grouped_library_paths(project, part_links);
+    let before = cache.len();
+    cache.retain(|owner, _| grouped.contains_key(owner));
+    let mut rebuilt = (before - cache.len()) as u64;
+    for (owner, paths) in grouped {
+        if cache
+            .get(&owner)
+            .is_some_and(|existing| existing.as_ref() == &paths)
+        {
+            continue;
+        }
+        cache.insert(owner, Arc::new(paths));
+        rebuilt += 1;
+    }
+    rebuilt
+}
+
+fn graphql_library_owners(
+    project: &DartProjectAnalysis,
+    library_paths: &BTreeMap<String, Arc<Vec<String>>>,
+) -> BTreeSet<String> {
+    let use_paths: BTreeSet<_> = project
+        .files
+        .iter()
+        .filter(|file| !file.graphql_operation_uses.is_empty())
+        .map(|file| file.path.as_str())
+        .collect();
+    library_paths
+        .iter()
+        .filter(|(_, paths)| paths.iter().any(|path| use_paths.contains(path.as_str())))
+        .map(|(owner, _)| owner.clone())
+        .collect()
+}
+
+fn build_graphql_contract_cache(
+    project: &DartProjectAnalysis,
+    options: &DartIndexOptions,
+    uri_graph: Arc<DartUriGraph>,
+    part_links: &DartPartLinkAnalysis,
+    library_paths: &BTreeMap<String, Arc<Vec<String>>>,
+) -> (
+    BTreeMap<String, Arc<DartGraphqlContractAnalysis>>,
+    DartGraphqlContractAnalysis,
+) {
+    let analyzer = GraphqlContractAnalyzer::from_analyses(project, options, uri_graph, part_links);
+    let mut cache = BTreeMap::new();
+    for owner in graphql_library_owners(project, library_paths) {
+        let Some(paths) = library_paths.get(&owner) else {
+            continue;
+        };
+        cache.insert(owner, Arc::new(analyzer.analyze_paths(paths)));
+    }
+    let analysis = aggregate_graphql_contracts(&cache);
+    (cache, analysis)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn graphql_rebuild_libraries(
+    changed_paths: &BTreeSet<String>,
+    affected_paths: &[String],
+    changed_operation_names: &BTreeSet<String>,
+    old_project: &DartProjectAnalysis,
+    old_part_links: &DartPartLinkAnalysis,
+    new_project: &DartProjectAnalysis,
+    new_part_links: &DartPartLinkAnalysis,
+    global_invalidation: bool,
+) -> BTreeSet<String> {
+    let new_membership = LibraryMembership::from_part_links(new_part_links);
+    if global_invalidation {
+        return new_project
+            .files
+            .iter()
+            .filter(|file| !file.graphql_operation_uses.is_empty())
+            .map(|file| new_membership.owner_of(&file.path).to_string())
+            .collect();
+    }
+
+    let old_membership = LibraryMembership::from_part_links(old_part_links);
+    let mut libraries = BTreeSet::new();
+    for path in changed_paths.iter().chain(affected_paths) {
+        libraries.insert(old_membership.owner_of(path).to_string());
+        libraries.insert(new_membership.owner_of(path).to_string());
+    }
+    add_graphql_use_libraries(
+        old_project,
+        &old_membership,
+        changed_operation_names,
+        &mut libraries,
+    );
+    add_graphql_use_libraries(
+        new_project,
+        &new_membership,
+        changed_operation_names,
+        &mut libraries,
+    );
+    libraries
+}
+
+fn add_graphql_use_libraries(
+    project: &DartProjectAnalysis,
+    membership: &LibraryMembership,
+    names: &BTreeSet<String>,
+    libraries: &mut BTreeSet<String>,
+) {
+    if names.is_empty() {
+        return;
+    }
+    for file in &project.files {
+        if file
+            .graphql_operation_uses
+            .iter()
+            .any(|operation_use| names.contains(&operation_use.constant_name))
+        {
+            libraries.insert(membership.owner_of(&file.path).to_string());
+        }
+    }
+}
+
+fn aggregate_graphql_contracts(
+    cache: &BTreeMap<String, Arc<DartGraphqlContractAnalysis>>,
+) -> DartGraphqlContractAnalysis {
+    let mut analysis = DartGraphqlContractAnalysis::default();
+    for library in cache.values() {
+        analysis.bindings.extend(library.bindings.iter().cloned());
+        analysis
+            .unresolved_uses
+            .extend(library.unresolved_uses.iter().cloned());
+    }
+    sort_contract_analysis(&mut analysis);
+    analysis
 }
 
 fn build_uri_reference_cache(

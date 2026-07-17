@@ -83,10 +83,11 @@ identifier-resolution caches:
 | compilation environment | reuse | rebuild | reuse | rebuild | rebuild |
 | package-resolution metadata | rebuild | rebuild | rebuild | rebuild | rebuild |
 
-`DartWorkspaceIndexCounters` records generations, aggregate rebuilds, and the exact number of URI
-source files and identifier-reference source files recomputed. Unaffected per-file cache entries remain
-shared internally. These are semantic operation counters rather than elapsed-time assertions, so they
-are deterministic across Linux, Windows, and differently loaded runners.
+`DartWorkspaceIndexCounters` records generations, aggregate rebuilds, the exact number of URI and
+identifier-reference source files recomputed, and the number of namespace-membership and GraphQL-use
+libraries refreshed. Unaffected per-file and per-library `Arc` cache entries remain shared internally.
+These are semantic operation counters rather than elapsed-time assertions, so they are deterministic
+across Linux, Windows, and differently loaded runners.
 
 A local reference-fact replacement invalidates only its source path. File insertion/removal recomputes
 that path plus direct URI sources whose previous target resolution may change. Namespace changes report
@@ -112,7 +113,8 @@ and a deterministic 64-step mixed update sequence.
 
 ## Current Boundary
 
-URI references and identifier-reference resolutions now use per-source-file caches while public
-snapshots retain the same aggregate models. A later DS-INDEX-005 slice will add per-library namespace and
-GraphQL binding caches, then expose the same invalidation evidence to lint contexts. The public stateful
-API and existing stateless APIs remain stable while that internal granularity improves.
+URI references and identifier-reference resolutions use per-source-file caches. Library membership
+and GraphQL bindings use retained per-library caches, while public snapshots retain the same aggregate
+models. A later DS-INDEX-005 slice will persist import/export dependency fingerprints and expose the same
+affected-library evidence to lint contexts. The public stateful API and existing stateless APIs remain
+stable while that internal granularity improves.

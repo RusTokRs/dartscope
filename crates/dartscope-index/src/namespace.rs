@@ -1,13 +1,14 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use dartscope_core::{
-    DartDeclaration, DartFileAnalysis, DartNamespaceCombinatorKind, DartPartLinkStatus,
-    DartProjectAnalysis, DartSymbolCandidate, DartSymbolQuery, DartSymbolResolution,
-    DartSymbolResolutionBasis, DartSymbolResolutionStatus, DartUriGraph, DartUriReferenceKind,
-    DartUriResolution, SourceSpan,
+    DartDeclaration, DartFileAnalysis, DartNamespaceCombinatorKind, DartPartLinkAnalysis,
+    DartPartLinkStatus, DartProjectAnalysis, DartSymbolCandidate, DartSymbolQuery,
+    DartSymbolResolution, DartSymbolResolutionBasis, DartSymbolResolutionStatus, DartUriGraph,
+    DartUriReferenceKind, DartUriResolution, SourceSpan,
 };
 
-use crate::parts::analyze_part_links;
+use crate::parts::analyze_part_links_with_graph;
 use crate::uri_graph::{DartIndexOptions, build_uri_graph_with_options};
 
 struct DeclarationLocation<'a> {
@@ -38,33 +39,33 @@ struct ImportedCandidateResolution {
 }
 
 #[derive(Default)]
-struct LibraryMembership {
+pub(crate) struct LibraryMembership {
     owner_by_part: HashMap<String, String>,
 }
 
 pub(crate) struct NamespaceResolver<'source, 'options> {
-    uri_graph: DartUriGraph,
+    uri_graph: Arc<DartUriGraph>,
     library_membership: LibraryMembership,
     files_by_path: HashMap<&'source str, &'source DartFileAnalysis>,
     options: &'options DartIndexOptions,
 }
 
 impl LibraryMembership {
-    fn from_project(project: &DartProjectAnalysis) -> Self {
+    pub(crate) fn from_part_links(analysis: &DartPartLinkAnalysis) -> Self {
         let mut membership = Self::default();
         let mut owners_by_part: HashMap<String, Vec<String>> = HashMap::new();
-        for link in analyze_part_links(project)
+        for link in analysis
             .links
-            .into_iter()
+            .iter()
             .filter(|link| link.status == DartPartLinkStatus::Matched)
         {
-            let Some(part_path) = link.part_path else {
+            let Some(part_path) = link.part_path.as_ref() else {
                 continue;
             };
             owners_by_part
-                .entry(part_path)
+                .entry(part_path.clone())
                 .or_default()
-                .push(link.owner_path);
+                .push(link.owner_path.clone());
         }
         for (part_path, mut owners) in owners_by_part {
             owners.sort();
@@ -79,18 +80,18 @@ impl LibraryMembership {
         membership
     }
 
-    fn owner_of<'a>(&'a self, path: &'a str) -> &'a str {
+    pub(crate) fn owner_of<'a>(&'a self, path: &'a str) -> &'a str {
         self.owner_by_part
             .get(path)
             .map(String::as_str)
             .unwrap_or(path)
     }
 
-    fn is_part(&self, path: &str) -> bool {
+    pub(crate) fn is_part(&self, path: &str) -> bool {
         self.owner_by_part.contains_key(path)
     }
 
-    fn same_library(&self, left: &str, right: &str) -> bool {
+    pub(crate) fn same_library(&self, left: &str, right: &str) -> bool {
         self.owner_of(left) == self.owner_of(right)
     }
 }
@@ -100,9 +101,20 @@ impl<'source, 'options> NamespaceResolver<'source, 'options> {
         project: &'source DartProjectAnalysis,
         options: &'options DartIndexOptions,
     ) -> Self {
+        let uri_graph = Arc::new(build_uri_graph_with_options(project, options));
+        let part_links = analyze_part_links_with_graph(project, &uri_graph);
+        Self::from_analyses(project, options, uri_graph, &part_links)
+    }
+
+    pub(crate) fn from_analyses(
+        project: &'source DartProjectAnalysis,
+        options: &'options DartIndexOptions,
+        uri_graph: Arc<DartUriGraph>,
+        part_links: &DartPartLinkAnalysis,
+    ) -> Self {
         Self {
-            uri_graph: build_uri_graph_with_options(project, options),
-            library_membership: LibraryMembership::from_project(project),
+            uri_graph,
+            library_membership: LibraryMembership::from_part_links(part_links),
             files_by_path: project
                 .files
                 .iter()

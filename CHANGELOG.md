@@ -32,6 +32,8 @@ pre-1.0.
 
 - Incremental reference caches now invalidate same-name `NotVisible` evidence and sibling-part
   visibility changes without leaking non-Dart metadata paths into `affected_paths`.
+- Retained per-library namespace-membership and GraphQL-binding caches rebuild only affected GraphQL-use
+  libraries while preserving the existing aggregate snapshot contract.
 
 ### Compatibility
 

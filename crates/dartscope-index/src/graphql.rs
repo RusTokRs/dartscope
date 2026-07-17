@@ -1,12 +1,13 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use dartscope_core::{
     DartEnclosingSymbol, DartFileAnalysis, DartGraphqlBindingResolution,
     DartGraphqlCallCompatibility, DartGraphqlClientCall, DartGraphqlContractAnalysis,
     DartGraphqlOperation, DartGraphqlOperationBinding, DartGraphqlOperationType,
     DartGraphqlOperationUse, DartGraphqlUnresolvedOperationUse, DartGraphqlUnresolvedReason,
-    DartGraphqlVariableCompatibility, DartProjectAnalysis, DartSymbolResolutionBasis,
-    DartSymbolResolutionStatus, SourceSpan,
+    DartGraphqlVariableCompatibility, DartPartLinkAnalysis, DartProjectAnalysis,
+    DartSymbolResolutionBasis, DartSymbolResolutionStatus, DartUriGraph, SourceSpan,
 };
 
 use crate::namespace::{NamespaceCandidate, NamespaceResolution, NamespaceResolver};
@@ -17,6 +18,84 @@ struct OperationLocation<'a> {
     operation: &'a DartGraphqlOperation,
 }
 
+pub(crate) struct GraphqlContractAnalyzer<'source, 'options> {
+    project: &'source DartProjectAnalysis,
+    resolver: NamespaceResolver<'source, 'options>,
+    operations_by_constant: HashMap<&'source str, Vec<OperationLocation<'source>>>,
+    files_by_path: HashMap<&'source str, &'source DartFileAnalysis>,
+}
+
+impl<'source, 'options> GraphqlContractAnalyzer<'source, 'options> {
+    fn new(project: &'source DartProjectAnalysis, options: &'options DartIndexOptions) -> Self {
+        Self::with_resolver(project, NamespaceResolver::new(project, options))
+    }
+
+    pub(crate) fn from_analyses(
+        project: &'source DartProjectAnalysis,
+        options: &'options DartIndexOptions,
+        uri_graph: Arc<DartUriGraph>,
+        part_links: &DartPartLinkAnalysis,
+    ) -> Self {
+        Self::with_resolver(
+            project,
+            NamespaceResolver::from_analyses(project, options, uri_graph, part_links),
+        )
+    }
+
+    fn with_resolver(
+        project: &'source DartProjectAnalysis,
+        resolver: NamespaceResolver<'source, 'options>,
+    ) -> Self {
+        Self {
+            project,
+            resolver,
+            operations_by_constant: collect_operations(project),
+            files_by_path: project
+                .files
+                .iter()
+                .map(|file| (file.path.as_str(), file))
+                .collect(),
+        }
+    }
+
+    fn analyze_all(&self) -> DartGraphqlContractAnalysis {
+        self.analyze_files(self.project.files.iter())
+    }
+
+    pub(crate) fn analyze_paths(&self, paths: &[String]) -> DartGraphqlContractAnalysis {
+        self.analyze_files(
+            paths
+                .iter()
+                .filter_map(|path| self.files_by_path.get(path.as_str()).copied()),
+        )
+    }
+
+    fn analyze_files<I>(&self, files: I) -> DartGraphqlContractAnalysis
+    where
+        I: IntoIterator<Item = &'source DartFileAnalysis>,
+    {
+        let mut analysis = DartGraphqlContractAnalysis::default();
+        for file in files {
+            for operation_use in &file.graphql_operation_uses {
+                let candidates = self
+                    .operations_by_constant
+                    .get(operation_use.constant_name.as_str())
+                    .map(Vec::as_slice)
+                    .unwrap_or_default();
+                record_use(
+                    &self.resolver,
+                    &mut analysis,
+                    file,
+                    operation_use,
+                    candidates,
+                );
+            }
+        }
+        sort_contract_analysis(&mut analysis);
+        analysis
+    }
+}
+
 pub fn analyze_graphql_contracts(project: &DartProjectAnalysis) -> DartGraphqlContractAnalysis {
     analyze_graphql_contracts_with_options(project, &DartIndexOptions::default())
 }
@@ -25,22 +104,7 @@ pub fn analyze_graphql_contracts_with_options(
     project: &DartProjectAnalysis,
     options: &DartIndexOptions,
 ) -> DartGraphqlContractAnalysis {
-    let resolver = NamespaceResolver::new(project, options);
-    let operations_by_constant = collect_operations(project);
-    let mut analysis = DartGraphqlContractAnalysis::default();
-
-    for file in &project.files {
-        for operation_use in &file.graphql_operation_uses {
-            let candidates = operations_by_constant
-                .get(operation_use.constant_name.as_str())
-                .map(Vec::as_slice)
-                .unwrap_or_default();
-            record_use(&resolver, &mut analysis, file, operation_use, candidates);
-        }
-    }
-
-    sort_contract_analysis(&mut analysis);
-    analysis
+    GraphqlContractAnalyzer::new(project, options).analyze_all()
 }
 
 fn collect_operations<'source>(
@@ -182,7 +246,7 @@ fn graphql_binding_basis(basis: DartSymbolResolutionBasis) -> Option<DartGraphql
     }
 }
 
-fn sort_contract_analysis(analysis: &mut DartGraphqlContractAnalysis) {
+pub(crate) fn sort_contract_analysis(analysis: &mut DartGraphqlContractAnalysis) {
     analysis.bindings.sort_by(|left, right| {
         (
             &left.use_path,

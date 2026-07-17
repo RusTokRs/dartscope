@@ -94,7 +94,15 @@ fn diagnostic_only_updates_rebuild_only_the_project_projection() {
     assert_eq!(after.project_rebuilds, before.project_rebuilds + 1);
     assert_eq!(after.uri_graph_rebuilds, before.uri_graph_rebuilds);
     assert_eq!(after.part_link_rebuilds, before.part_link_rebuilds);
+    assert_eq!(
+        after.namespace_libraries_rebuilt,
+        before.namespace_libraries_rebuilt
+    );
     assert_eq!(after.graphql_rebuilds, before.graphql_rebuilds);
+    assert_eq!(
+        after.graphql_libraries_rebuilt,
+        before.graphql_libraries_rebuilt
+    );
     assert_eq!(after.reference_rebuilds, before.reference_rebuilds);
 
     let no_op = index.upsert_file(file);
@@ -484,6 +492,195 @@ void useShared() { Shared(); }
             .status,
         DartSymbolResolutionStatus::NotVisible
     );
+}
+
+#[test]
+fn per_library_graphql_cache_rebuilds_only_the_affected_use_library() {
+    let initial = reference_project(&[
+        (
+            "lib/a_api.dart",
+            "const viewerQuery = r'''query Viewer { viewer { id } }''';
+",
+        ),
+        (
+            "lib/a_client.dart",
+            "import 'a_api.dart';
+void loadA() { client.query(QueryOptions(document: gql(viewerQuery))); }
+",
+        ),
+        (
+            "lib/b_api.dart",
+            "const accountQuery = r'''query Account { account { id } }''';
+",
+        ),
+        (
+            "lib/b_client.dart",
+            "import 'b_api.dart';
+void loadB() { client.query(QueryOptions(document: gql(accountQuery))); }
+",
+        ),
+    ]);
+    let mut index = DartWorkspaceIndex::from_reference_project(initial);
+    let before = index.counters();
+    assert_eq!(before.graphql_libraries_rebuilt, 2);
+
+    let update =
+        index.upsert_file_with_references(analyze_file_with_references(DartFileInput::new(
+            "lib/a_api.dart",
+            "const viewerQuery = r'''query UpdatedViewer { viewer { id name } }''';
+",
+        )));
+
+    assert_eq!(
+        update.affected_paths,
+        vec!["lib/a_api.dart", "lib/a_client.dart"]
+    );
+    assert_eq!(
+        index.counters().graphql_libraries_rebuilt,
+        before.graphql_libraries_rebuilt + 1
+    );
+    let baseline = reference_project(&[
+        (
+            "lib/a_api.dart",
+            "const viewerQuery = r'''query UpdatedViewer { viewer { id name } }''';
+",
+        ),
+        (
+            "lib/a_client.dart",
+            "import 'a_api.dart';
+void loadA() { client.query(QueryOptions(document: gql(viewerQuery))); }
+",
+        ),
+        (
+            "lib/b_api.dart",
+            "const accountQuery = r'''query Account { account { id } }''';
+",
+        ),
+        (
+            "lib/b_client.dart",
+            "import 'b_api.dart';
+void loadB() { client.query(QueryOptions(document: gql(accountQuery))); }
+",
+        ),
+    ]);
+    assert_snapshot_matches(&index, &baseline, &DartIndexOptions::default());
+}
+
+#[test]
+fn graphql_not_visible_evidence_rebuilds_without_a_uri_edge() {
+    let initial = reference_project(&[
+        (
+            "lib/use.dart",
+            "void load() { client.query(QueryOptions(document: gql(hiddenQuery))); }
+",
+        ),
+        (
+            "lib/hidden.dart",
+            "const hiddenQuery = r'''query Hidden { hidden { id } }''';
+",
+        ),
+    ]);
+    let mut index = DartWorkspaceIndex::from_reference_project(initial);
+    let before = index.counters();
+    let initial_snapshot = index.snapshot();
+    let unresolved = &initial_snapshot.graphql_contracts().unresolved_uses[0];
+    assert_eq!(
+        unresolved.reason,
+        DartGraphqlUnresolvedReason::NotVisibleDeclaration
+    );
+    assert_eq!(unresolved.candidate_paths, vec!["lib/hidden.dart"]);
+
+    index.upsert_file_with_references(analyze_file_with_references(DartFileInput::new(
+        "lib/hidden.dart",
+        "const renamedQuery = r'''query Hidden { hidden { id } }''';
+",
+    )));
+
+    assert_eq!(
+        index.counters().graphql_libraries_rebuilt,
+        before.graphql_libraries_rebuilt + 1
+    );
+    let baseline = reference_project(&[
+        (
+            "lib/use.dart",
+            "void load() { client.query(QueryOptions(document: gql(hiddenQuery))); }
+",
+        ),
+        (
+            "lib/hidden.dart",
+            "const renamedQuery = r'''query Hidden { hidden { id } }''';
+",
+        ),
+    ]);
+    assert_snapshot_matches(&index, &baseline, &DartIndexOptions::default());
+    let updated_snapshot = index.snapshot();
+    let unresolved = &updated_snapshot.graphql_contracts().unresolved_uses[0];
+    assert_eq!(
+        unresolved.reason,
+        DartGraphqlUnresolvedReason::MissingDeclaration
+    );
+    assert!(unresolved.candidate_paths.is_empty());
+}
+
+#[test]
+fn graphql_cache_groups_operation_uses_by_part_library() {
+    let initial = reference_project(&[
+        (
+            "lib/owner.dart",
+            "part 'operation.dart';
+part 'use.dart';
+",
+        ),
+        (
+            "lib/operation.dart",
+            "part of 'owner.dart';
+const viewerQuery = r'''query Viewer { viewer { id } }''';
+",
+        ),
+        (
+            "lib/use.dart",
+            "part of 'owner.dart';
+void load() { client.query(QueryOptions(document: gql(viewerQuery))); }
+",
+        ),
+    ]);
+    let mut index = DartWorkspaceIndex::from_reference_project(initial);
+    let before = index.counters();
+    assert_eq!(before.graphql_libraries_rebuilt, 1);
+    assert_eq!(index.snapshot().graphql_contracts().bindings.len(), 1);
+
+    index.upsert_file_with_references(analyze_file_with_references(DartFileInput::new(
+        "lib/operation.dart",
+        "part of 'owner.dart';
+const viewerQuery = r'''query UpdatedViewer { viewer { id name } }''';
+",
+    )));
+
+    assert_eq!(
+        index.counters().graphql_libraries_rebuilt,
+        before.graphql_libraries_rebuilt + 1
+    );
+    let baseline = reference_project(&[
+        (
+            "lib/owner.dart",
+            "part 'operation.dart';
+part 'use.dart';
+",
+        ),
+        (
+            "lib/operation.dart",
+            "part of 'owner.dart';
+const viewerQuery = r'''query UpdatedViewer { viewer { id name } }''';
+",
+        ),
+        (
+            "lib/use.dart",
+            "part of 'owner.dart';
+void load() { client.query(QueryOptions(document: gql(viewerQuery))); }
+",
+        ),
+    ]);
+    assert_snapshot_matches(&index, &baseline, &DartIndexOptions::default());
 }
 
 #[test]

@@ -892,11 +892,14 @@ Foundation implemented (2026-07-17):
     reverse URI edge to that sibling. Old/new matched part components now extend reference invalidation.
 11. **P1 fixed:** the first part-component helper echoed a changed metadata path into public
     `affected_paths`; it now returns only newly reached Dart owner/part paths.
+12. Added retained per-library namespace-membership and GraphQL-binding caches. GraphQL operation
+    changes rebuild only libraries with affected uses, including unrelated `NotVisible` evidence and
+    sibling parts, while the public aggregate snapshot remains unchanged.
 
 Remaining work:
 
-1. Add per-library namespace and GraphQL binding caches while preserving the public aggregate snapshot
-   models and stateless output equivalence.
+1. Add persistent per-library import/export dependency fingerprints for lint-context reuse beyond the
+   completed membership and GraphQL binding caches.
 2. Feed the same affected-library evidence into lint contexts without introducing an index/lint
    dependency cycle.
 3. Add memory/update-time baselines for the per-library cache implementation.

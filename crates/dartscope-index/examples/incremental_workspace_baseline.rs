@@ -30,6 +30,8 @@ fn main() {
 
         let counters = workspace.counters();
         assert_eq!(counters.uri_files_rebuilt, file_count as u64);
+        assert_eq!(counters.namespace_libraries_rebuilt, file_count as u64);
+        assert_eq!(counters.graphql_libraries_rebuilt, 0);
         assert_eq!(counters.reference_files_rebuilt, 0);
         println!(
             "files={file_count} affected={} rebuilt={:?} counters={:?}",
