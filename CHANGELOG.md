@@ -7,8 +7,6 @@ pre-1.0.
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-07-17
-
 ### Added
 
 - Nine publishable Rust crates covering normalized Dart analysis, parsing, package and URI
@@ -31,5 +29,7 @@ pre-1.0.
   tools during normal analysis.
 - Existing command-facing JSON contracts remain at schema version v1.
 
-[Unreleased]: https://github.com/RusTokRs/dartscope/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/RusTokRs/dartscope/releases/tag/v0.1.0
+Release notes remain under `Unreleased` until the exact version tag exists. The release process moves
+this content to a dated version section and adds compare/release links in the same release operation.
+
+[Unreleased]: https://github.com/RusTokRs/dartscope/commits/main

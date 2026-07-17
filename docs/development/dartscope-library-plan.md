@@ -91,21 +91,23 @@ fixture. The living source map is `docs/reference-strategy.md`.
 
 ## Verified Baseline
 
-Baseline reviewed on 2026-07-16.
+Baseline reviewed on 2026-07-17 after a full repository, package, release, dependency, and
+cross-platform audit.
 
 | Area | Status | Evidence in repository |
 | --- | --- | --- |
-| Rust workspace and eight crates | verified | root `Cargo.toml`; exact Rust 1.95.0 Linux/Windows quality, test, edition, and feature matrix passed |
+| Rust workspace and nine crates | verified | root `Cargo.toml`; exact Rust 1.95.0 Linux/Windows quality, test, edition, and feature matrix passed |
 | Core normalized model | implemented | declarations, generic invocations, spans, diagnostics, and compatibility projections; pre-1.0 migration work remains |
 | File and pubspec analysis | in_progress | heuristic declarations and generic invocations plus marked `yaml-rust2` pubspec backend; unit and project fixtures |
-| Package config v2 and package URI resolution | in_progress | `dartscope-resolve`, six resolver tests |
-| URI graph, parts, and GraphQL linking | in_progress | `dartscope-index`, deterministic JSON contract tests |
+| Package config v2 and package URI resolution | in_progress | `dartscope-resolve`, resolver fixtures, and project URI integration tests |
+| URI graph, parts, GraphQL, and namespace linking | verified for current model | deterministic index, reference-resolution, part-link, and JSON contract tests |
 | Flutter project inventory | verified | optional convention derivation and deterministic inventory behind the `flutter` feature |
 | Versioned JSON contracts | verified | seven named v1 command envelopes, golden fixtures, and migration policy |
 | CLI process contract | verified | help, version, exit codes, deterministic discovery, and Linux/Windows process tests |
 | Hosted CI | verified | Rust 1.95.0 quality, Linux/Windows tests, edition-2024, and umbrella feature matrix publish granular and aggregate statuses |
 | Contributor and agent workflow | verified | `AGENTS.md`, `CONTRIBUTING.md`, Rust code standard |
-| Lint/rule engine | planned | crate not created |
+| Lint/rule engine | verified | optional `dartscope-lints`, five deterministic rules, stable IDs, severity overrides, and focused fixtures |
+| Release packaging | verified with audit corrections | nine `.crate` archives, publish topology, release policy, and protected manual publishing path |
 | Parser backend port | verified | `DartParser` capability contract, default heuristic backend, injection path, and backend documentation |
 
 Current verified behaviors include:
@@ -125,6 +127,45 @@ Current verified behaviors include:
 - high-confidence widget, route, asset, and localization hints;
 - optional Flutter convention derivation and deterministic inventory that preserve route path
   kind, confidence, paths, spans, and ordering.
+
+## Full Repository Audit (2026-07-17)
+
+The audit rechecked the repository from workspace metadata through release execution rather than
+assuming previously green slices were still mutually consistent.
+
+Audit scope:
+
+- exact Rust 1.95.0 formatting, workspace/all-feature checks, all-target tests, Clippy, and rustdoc;
+- isolated umbrella features plus the normal Ubuntu and Windows hosted matrices;
+- all nine release archives, normalized packaged manifests, README inclusion, and publish topology;
+- RustSec advisory and unused-dependency scans, duplicate dependency reporting, script syntax, and
+  repository metadata consistency;
+- release tag/changelog state, executable file modes, workflow invocation behavior, and third-party
+  Action references.
+
+Confirmed results:
+
+- source, tests, Clippy, rustdoc, isolated features, and package archives passed;
+- a transient Windows test failure on an intermediate audit commit did not reproduce on the clean
+  audit head, where the complete standard Ubuntu/Windows matrix passed;
+- no production Rust or command-contract regression was reproduced by the audit.
+
+Findings and disposition:
+
+1. **P0 fixed:** `tools/publish-crates.sh` was stored as mode `100644` while the release workflow
+   executed it directly. The audited release path now invokes it through `bash`, preserves executable
+   mode, and checks both conditions permanently.
+2. **P1 fixed:** `CHANGELOG.md` described `0.1.0` as released even though tag `v0.1.0` did not exist.
+   Release notes remain under `Unreleased` until the exact tag is created.
+3. **P1 fixed:** the verified-baseline table still reported eight crates, an absent lint engine, and
+   a review date predating completed `0.1` work.
+4. **P1 queued as DS-CI-003:** permanent workflows contain mutable third-party Action references.
+   Pinning, Node-runtime review, and automated policy enforcement require one repository-wide change.
+5. **P2 queued as DS-QUALITY-001:** advisory, unused-dependency, fuzzing, property, benchmark, and
+   portability checks should become durable CI rather than one-time audit probes.
+
+The temporary audit workflows and result files are not product infrastructure and are removed by the
+final audit commit.
 
 ## Known Architectural Debt
 
@@ -668,8 +709,8 @@ Implemented (2026-07-17):
 1. Added inherited homepage, readme, keywords, categories, per-crate docs.rs links, and crates.io
    version requirements for every internal normal and development dependency.
 2. Added a changelog and a private-reporting-first security policy for the `0.1` release line.
-3. Added an executable nine-crate publish order with metadata/topology validation and generated
-   `.crate` archive inspection.
+3. Added an ordered nine-crate publish topology with metadata validation and generated `.crate`
+   archive inspection; DS-AUDIT-001 corrected the shell-script execution boundary found later.
 4. Added release CI on exact Rust 1.95.0 with workspace, all-feature, rustdoc, package, and artifact
    gates.
 5. Added a manually dispatched, tag-checked, protected-environment crates.io publishing path that
@@ -688,9 +729,187 @@ Verification:
 See `CHANGELOG.md`, `SECURITY.md`, `docs/support-matrix.md`, and
 `docs/release-process.md`.
 
+### DS-AUDIT-001: Full Repository Audit Corrections
+
+Status: verified. Priority: P0. Prerequisite: DS-RELEASE-001.
+
+Implemented (2026-07-17):
+
+1. Re-ran exact Rust 1.95 checks, all-feature tests, Clippy, rustdoc, isolated umbrella features,
+   standard Ubuntu/Windows CI, and all nine package archives.
+2. Added a permanent repository-consistency checker for workspace/release topology, roadmap state,
+   changelog/tag truthfulness, and publish-script execution.
+3. Corrected the non-executable publish script boundary by using an explicit Bash invocation and
+   retaining executable Git mode.
+4. Returned unreleased `0.1.0` notes to `Unreleased` until tag `v0.1.0` actually exists.
+5. Corrected the baseline crate count, lint status, review date, and release evidence.
+6. Removed every temporary audit workflow, trigger, and result file after recording reusable findings.
+
+Acceptance:
+
+- a protected manual publish cannot fail merely because the script executable bit was lost;
+- the changelog never claims a release whose exact version tag is absent;
+- stale baseline claims fail the permanent consistency check;
+- the final standard Ubuntu/Windows matrix and release package checker pass.
+
+### DS-CI-003: Immutable Actions And CI Supply Chain
+
+Status: ready. Priority: P0. Prerequisite: DS-AUDIT-001.
+
+Required work:
+
+1. Inventory every permanent `uses:` reference, including list-form `- uses:` entries.
+2. Pin third-party Actions to reviewed immutable commit SHAs and retain the human-readable release
+   tag in an adjacent comment.
+3. Replace Action majors that still depend on a deprecated Node runtime with supported releases.
+4. Add `actionlint` plus a repository policy check that rejects mutable refs, unknown workflow
+   permissions, and unreviewed `pull_request_target` or write-token changes.
+5. Preserve minimal permissions and protected-environment boundaries for crates.io publication.
+6. Record and classify hosted-runner flakes; one clean retry may clear infrastructure failures, but
+   recurring platform failures must become blocking fixtures or issues.
+
+Acceptance:
+
+- every permanent third-party Action is SHA-pinned;
+- workflow syntax and policy checks run on Linux before other expensive jobs;
+- ordinary pull requests cannot obtain release credentials or write permissions;
+- the aggregate status distinguishes product failures from a documented runner retry.
+
+### DS-CLI-003: Lint Command, Configuration, And SARIF
+
+Status: ready. Priority: P1. Prerequisite: DS-LINT-001.
+
+Required work:
+
+1. Add `dartscope lint <project>` without moving rule semantics into the CLI crate.
+2. Define a documented TOML configuration for rule enablement, severity overrides, import patterns,
+   layer boundaries, naming options, and orphan entry points.
+3. Register a new command-facing JSON envelope with its own schema ID, compatibility tests, and
+   checked-in golden fixtures.
+4. Add SARIF 2.1 output with rule metadata, normalized paths, exact spans, severity, and related-path
+   evidence suitable for GitHub Code Scanning.
+5. Define stable exit codes for clean analysis, findings at the configured failure threshold,
+   invalid configuration, malformed project input, and filesystem errors.
+6. Cover Linux and Windows process behavior, paths with spaces, malformed configuration, deterministic
+   output, stdout/stderr separation, and `--deny-warnings` behavior.
+
+Acceptance:
+
+- every finding maps back to the existing source-free lint engine;
+- JSON and SARIF order is deterministic and versioned independently;
+- default configuration remains inert unless the caller enables rules;
+- a documented GitHub Actions example can upload SARIF without custom parsing.
+
+### DS-INDEX-005: Incremental Workspace Index
+
+Status: ready. Priority: P1. Prerequisites: DS-INDEX-004, DS-AUDIT-001.
+
+Required work:
+
+1. Add a stateful index with explicit `upsert_file`, `remove_file`, configuration update, and immutable
+   snapshot operations over normalized inputs.
+2. Maintain reverse import/export/part edges and invalidate only affected libraries, namespaces,
+   GraphQL bindings, references, and lint contexts.
+3. Preserve deterministic output equivalence with a clean full rebuild after every update sequence.
+4. Define thread-safety and snapshot ownership without exposing parser ASTs or performing hidden I/O.
+5. Add operation counters and benchmarks for 1k- and 10k-file synthetic workspaces.
+
+Acceptance:
+
+- incremental and full rebuild snapshots compare equal in property tests;
+- removing or changing a library invalidates every dependent result and no unrelated result;
+- memory and update-time baselines are checked without making wall-clock flakes blocking;
+- existing stateless APIs remain available.
+
+### DS-INDEX-006: Broader Reference And Scope Resolution
+
+Status: planned. Priority: P1. Prerequisites: DS-INDEX-005, DS-PARSE-006.
+
+Required work:
+
+1. Add conservative references for type positions, constructors, variable reads/writes, assignments,
+   annotations, and supported patterns with exact spans and confidence.
+2. Model lexical scopes and shadowing before treating unqualified identifier tokens as semantic
+   references.
+3. Add constructor/member and supported extension lookup without claiming analyzer-equivalent type
+   inference or overload resolution.
+4. Retain missing, ambiguous, non-visible, and external-unindexed candidates rather than guessing.
+5. Add deterministic find-definition and find-references batch APIs that reuse one workspace context.
+
+Acceptance:
+
+- declaration/reference fixtures include nearby shadowing and false-positive negatives;
+- every new reference kind is opt-in until its compatibility contract is documented;
+- existing invocation-target reference output is unchanged;
+- index code never reparses raw source.
+
+### DS-LSP-001: Language Server Foundation
+
+Status: planned. Priority: P2. Prerequisites: DS-INDEX-005, DS-INDEX-006, DS-CLI-003.
+
+Required work:
+
+1. Add an optional `dartscope-lsp` crate with standard input/output transport isolated from analysis
+   crates.
+2. Implement lifecycle, incremental document synchronization, diagnostics, document symbols,
+   workspace symbols, definition, references, and evidence-based hover.
+3. Surface parser capability limits and stale-snapshot states explicitly.
+4. Integrate lint diagnostics and navigation without inventing member/type results unavailable from
+   the index.
+5. Add protocol fixtures, cancellation tests, deterministic diagnostics, and editor smoke tests.
+
+Acceptance:
+
+- the server remains responsive under cancellation and rapid file replacement;
+- all positions round-trip correctly for LF, CRLF, and UTF-16 LSP coordinates;
+- no filesystem scan or SDK process is hidden inside core/index APIs;
+- unsupported requests return honest empty/partial capability responses.
+
+### DS-QUALITY-001: Durable Security, Fuzzing, And Performance Gates
+
+Status: ready. Priority: P1. Prerequisite: DS-AUDIT-001.
+
+Required work:
+
+1. Add pinned RustSec advisory and unused-dependency checks with an explicit allowlist policy and
+   reviewed expiration dates.
+2. Add fuzz targets for lexical masking, directives, pubspec/package-config parsing, GraphQL
+   extraction, and URI normalization.
+3. Add property tests for span monotonicity, deterministic ordering, incremental/full equivalence,
+   combinator visibility, and panic-free malformed input.
+4. Add non-flaky benchmark baselines for parsing, project indexing, reference resolution, and package
+   archive generation.
+5. Add macOS as a non-blocking portability signal for the `0.2` cycle and define promotion criteria.
+
+Acceptance:
+
+- malformed inputs never panic in the bounded fuzz corpus;
+- advisory and unused-dependency findings cannot be silently ignored;
+- benchmarks report regressions without relying on unstable absolute hosted-runner timings;
+- every exception has an owner, rationale, and review date.
+
+### DS-PARSE-007: Alternative Parser Backend Evaluation
+
+Status: research. Priority: P2. Prerequisites: DS-INDEX-006, DS-QUALITY-001.
+
+Research scope:
+
+1. Compare a tree-sitter backend and an out-of-process official analyzer bridge against the existing
+   `DartParser` capability contract.
+2. Evaluate Dart syntax/version coverage, recovery, span fidelity, incremental updates, license,
+   maintenance, binary size, process isolation, and Rust 1.95 compatibility.
+3. Prototype only a bounded normalized-fact exchange; do not expose backend AST types publicly.
+4. Define hybrid selection and fallback behavior without silently mixing confidence levels.
+
+Research exit:
+
+- one backend is selected for an implementation task or both are rejected with evidence;
+- normalized fixture parity and capability differences are documented;
+- security/process boundaries and packaging impact are explicit.
+
 ### DS-COMPAT-001: Upstream Compatibility Radar
 
-Status: research. Priority: P3. Not on the current 0.1 critical path.
+Status: research. Priority: P2. Not on the current 0.1 critical path.
 
 Research scope:
 

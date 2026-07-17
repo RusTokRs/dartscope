@@ -10,8 +10,10 @@ status: active
 
 ## Release Readiness
 
-The workspace version is inherited from the root `Cargo.toml`. Before tagging a release, verify that
-the version and changelog agree, then run:
+The workspace version is inherited from the root `Cargo.toml`. Before an exact version tag exists,
+all notes must remain under `Unreleased`; do not add a dated version heading or release link early.
+During the release operation, move those notes to `## [<version>] - YYYY-MM-DD`, add compare/release
+links, create the matching `v<version>` tag, and verify that all four values agree. Then run:
 
 ```bash
 cargo fmt --all --check
@@ -19,7 +21,9 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
 cargo test --workspace --locked
 cargo test -p dartscope --all-features --locked
+python3 tools/check-repository-consistency.py
 python3 tools/check-release-packages.py
+bash -n tools/publish-crates.sh
 ```
 
 The package checker validates required metadata, versioned internal dependencies, publish-order
