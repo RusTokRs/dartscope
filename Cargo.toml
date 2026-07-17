@@ -18,16 +18,21 @@ edition = "2024"
 rust-version = "1.95"
 license = "MIT"
 repository = "https://github.com/RusTokRs/dartscope"
+homepage = "https://github.com/RusTokRs/dartscope"
+readme = "README.md"
+keywords = ["dart", "flutter", "static-analysis", "code-intelligence"]
+categories = ["development-tools"]
 description = "Rust toolkit for Dart and Flutter code intelligence"
 
 [workspace.dependencies]
-dartscope-core = { path = "crates/dartscope-core" }
-dartscope-parse = { path = "crates/dartscope-parse" }
-dartscope-index = { path = "crates/dartscope-index" }
-dartscope-lints = { path = "crates/dartscope-lints" }
-dartscope-resolve = { path = "crates/dartscope-resolve" }
-dartscope-flutter = { path = "crates/dartscope-flutter" }
-dartscope-json = { path = "crates/dartscope-json" }
+dartscope = { version = "0.1.0", path = "crates/dartscope" }
+dartscope-core = { version = "0.1.0", path = "crates/dartscope-core" }
+dartscope-parse = { version = "0.1.0", path = "crates/dartscope-parse" }
+dartscope-index = { version = "0.1.0", path = "crates/dartscope-index" }
+dartscope-lints = { version = "0.1.0", path = "crates/dartscope-lints" }
+dartscope-resolve = { version = "0.1.0", path = "crates/dartscope-resolve" }
+dartscope-flutter = { version = "0.1.0", path = "crates/dartscope-flutter" }
+dartscope-json = { version = "0.1.0", path = "crates/dartscope-json" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

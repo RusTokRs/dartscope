@@ -661,11 +661,32 @@ See `docs/development/lint-rules.md`.
 
 ### DS-RELEASE-001: Publishable 0.1 Release
 
-Status: planned. Priority: P3. Prerequisites: DS-JSON-001, DS-CLI-002.
+Status: verified. Priority: P3. Prerequisites: DS-JSON-001, DS-CLI-002.
 
-Add complete package metadata, rustdoc coverage, changelog, security policy, crate
-publish order, `cargo package` checks, release CI, and an explicit support matrix for
-Rust, Dart, Flutter, and ecosystem conventions.
+Implemented (2026-07-17):
+
+1. Added inherited homepage, readme, keywords, categories, per-crate docs.rs links, and crates.io
+   version requirements for every internal normal and development dependency.
+2. Added a changelog and a private-reporting-first security policy for the `0.1` release line.
+3. Added an executable nine-crate publish order with metadata/topology validation and generated
+   `.crate` archive inspection.
+4. Added release CI on exact Rust 1.95.0 with workspace, all-feature, rustdoc, package, and artifact
+   gates.
+5. Added a manually dispatched, tag-checked, protected-environment crates.io publishing path that
+   waits for each dependency version before publishing consumers.
+6. Added an explicit support matrix for Rust, host CI, Dart capabilities, Flutter conventions,
+   ecosystem package ranges, and command-facing JSON contracts.
+
+Verification:
+
+- every package archive contains a normalized manifest and inherited README with no packaged path
+  dependency;
+- release metadata and publish-order topology are checked from `cargo metadata --locked`;
+- exact Rust 1.95 formatting, Clippy, rustdoc, workspace tests, umbrella all-features tests, and all
+  nine `cargo package --no-verify` archives pass before finalization.
+
+See `CHANGELOG.md`, `SECURITY.md`, `docs/support-matrix.md`, and
+`docs/release-process.md`.
 
 ### DS-COMPAT-001: Upstream Compatibility Radar
 

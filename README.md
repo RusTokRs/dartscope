@@ -104,6 +104,20 @@ complete workspace, the umbrella crate without default features, and the umbrell
 with all features. See
 [`docs/development/rust-2024-edition.md`](docs/development/rust-2024-edition.md).
 
+## Release And Support
+
+All nine crates carry crates.io-ready metadata and versioned internal dependencies. The release gate
+builds every `.crate` archive in dependency order without publishing it. See the
+[0.1 support matrix](docs/support-matrix.md), [release process](docs/release-process.md),
+[changelog](CHANGELOG.md), and [security policy](SECURITY.md).
+
+```powershell
+python tools/check-release-packages.py
+```
+
+Publishing remains a manually dispatched, protected-environment action from an exact `v<version>`
+tag; normal pushes and tags never publish crates.
+
 ## Quick Start
 
 ```powershell
@@ -228,5 +242,9 @@ DartScope behavior should be traceable to official Dart and Flutter sources firs
 - [Reference strategy](docs/reference-strategy.md)
 - [Library development plan](docs/development/dartscope-library-plan.md)
 - [Rust code standards](docs/development/rust-code-standards.md)
+- [Support matrix](docs/support-matrix.md)
+- [Release process](docs/release-process.md)
+- [Changelog](CHANGELOG.md)
+- [Security policy](SECURITY.md)
 - [Agent workflow](AGENTS.md)
 - [Contributing](CONTRIBUTING.md)

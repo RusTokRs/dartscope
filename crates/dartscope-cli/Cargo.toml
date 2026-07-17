@@ -5,6 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+documentation = "https://docs.rs/dartscope-cli"
 description = "Small CLI wrapper for DartScope local workflows"
 
 [[bin]]
@@ -13,4 +18,4 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-dartscope = { path = "../dartscope", features = ["parse", "index", "json", "flutter"] }
+dartscope = { workspace = true, features = ["parse", "index", "json", "flutter"] }
