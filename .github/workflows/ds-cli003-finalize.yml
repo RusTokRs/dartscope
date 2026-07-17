@@ -1,0 +1,74 @@
+name: Finalize DS-CLI-003
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ds-cli003-finalize.yml"
+      - "tools/ds_cli003_apply.py.gz.b64"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ds-cli003-finalize-main
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    name: Apply, verify, and commit lint CLI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Apply DS-CLI-003 implementation
+        run: |
+          base64 --decode tools/ds_cli003_apply.py.gz.b64 | gzip --decompress > tools/ds_cli003_apply.py
+          python3 tools/ds_cli003_apply.py
+          rm .github/workflows/ds-cli003-finalize.yml
+          rm tools/ds_cli003_apply.py.gz.b64 tools/ds_cli003_apply.py
+      - name: Install actionlint 1.7.12
+        env:
+          GOBIN: ${{ runner.temp }}/actionlint-bin
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$GOBIN" >> "$GITHUB_PATH"
+      - name: Validate workflow policy
+        run: |
+          actionlint -color
+          python3 -m unittest discover -s tools/tests -p 'test_*.py' -v
+          python3 tools/check-workflow-policy.py
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Generate and verify lock graph
+        run: |
+          cargo check -p dartscope-cli
+          cargo tree -p dartscope-cli --locked | grep -F 'toml v1.1.3'
+      - name: Format Rust sources
+        run: cargo fmt --all
+      - name: Run focused tests
+        run: |
+          cargo test -p dartscope-cli --locked --quiet
+          cargo test -p dartscope-json -p dartscope-lints --locked --quiet
+      - name: Run workspace quality gates
+        run: |
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
+          cargo test --workspace --locked --quiet
+          cargo test -p dartscope --all-features --locked --quiet
+      - name: Validate repository and release packages
+        run: |
+          python3 tools/check-repository-consistency.py
+          python3 tools/check-release-packages.py
+          bash -n tools/publish-crates.sh
+      - name: Commit verified DS-CLI-003 implementation
+        run: |
+          git config user.name "dartscope-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: add versioned lint CLI and SARIF"
+          git push origin HEAD:main
