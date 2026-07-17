@@ -1,0 +1,134 @@
+name: Finalize DS-LINT-001 rule engine
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .dartscope-lint001.py
+      - .dartscope-lint001/**
+      - .github/workflows/lint001-finalize.yml
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out staging commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify staging head
+        run: |
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+
+      - name: Publish pending finalization status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          target_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          payload=$(jq -n \
+            --arg state pending \
+            --arg context dartscope/lint001-finalization \
+            --arg description "Rust 1.95 lint rule engine gate running" \
+            --arg target_url "$target_url" \
+            '{state:$state,context:$context,description:$description,target_url:$target_url}')
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -d "$payload"
+
+      - name: Integrate lint crate
+        run: python .dartscope-lint001.py
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Normalize formatting
+        run: cargo fmt --all
+
+      - name: Check patch whitespace
+        run: git diff --check
+
+      - name: Run focused lint tests
+        run: cargo test -p dartscope-lints --locked --quiet
+
+      - name: Test optional umbrella feature
+        run: cargo test -p dartscope --no-default-features --features lints --locked --quiet
+
+      - name: Run workspace Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Build documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --locked
+
+      - name: Run workspace tests
+        run: cargo test --workspace --locked --quiet
+
+      - name: Test umbrella composition
+        run: cargo test -p dartscope --all-features --locked --quiet
+
+      - name: Commit verified lint rule engine
+        run: |
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          rm -rf .dartscope-lint001
+          rm -f .dartscope-lint001.py
+          rm -f .github/workflows/lint001-finalize.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: add optional Dart lint rule engine"
+          git push origin HEAD:main
+          echo "FINAL_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Publish finalization status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          target_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          payload=$(jq -n \
+            --arg state success \
+            --arg context dartscope/lint001-finalization \
+            --arg description "Rust 1.95 lint rule engine gate passed" \
+            --arg target_url "$target_url" \
+            '{state:$state,context:$context,description:$description,target_url:$target_url}')
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${FINAL_SHA}" \
+            -d "$payload"
+
+      - name: Publish failure status
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          target_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          payload=$(jq -n \
+            --arg state failure \
+            --arg context dartscope/lint001-finalization \
+            --arg description "Lint rule engine gate failed" \
+            --arg target_url "$target_url" \
+            '{state:$state,context:$context,description:$description,target_url:$target_url}')
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -d "$payload"
