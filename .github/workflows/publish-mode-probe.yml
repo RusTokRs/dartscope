@@ -1,0 +1,31 @@
+name: Publish Script Mode Probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".dartscope-mode-trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record mode
+        run: |
+          git ls-files --stage tools/publish-crates.sh > .dartscope-mode-result
+          if test -x tools/publish-crates.sh; then
+            echo executable >> .dartscope-mode-result
+          else
+            echo not-executable >> .dartscope-mode-result
+          fi
+      - name: Commit result
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .dartscope-mode-result
+          git commit -m "ci: record publish script mode"
+          git push origin HEAD:main
