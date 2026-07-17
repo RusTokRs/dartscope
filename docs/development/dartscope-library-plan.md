@@ -809,28 +809,48 @@ See `docs/development/ci-supply-chain.md`.
 
 ### DS-CLI-003: Lint Command, Configuration, And SARIF
 
-Status: ready. Priority: P1. Prerequisite: DS-LINT-001.
+Status: verified. Priority: P1. Prerequisite: DS-LINT-001.
 
-Required work:
+Implemented (2026-07-17):
 
-1. Add `dartscope lint <project>` without moving rule semantics into the CLI crate.
-2. Define a documented TOML configuration for rule enablement, severity overrides, import patterns,
-   layer boundaries, naming options, and orphan entry points.
-3. Register a new command-facing JSON envelope with its own schema ID, compatibility tests, and
-   checked-in golden fixtures.
-4. Add SARIF 2.1 output with rule metadata, normalized paths, exact spans, severity, and related-path
-   evidence suitable for GitHub Code Scanning.
-5. Define stable exit codes for clean analysis, findings at the configured failure threshold,
-   invalid configuration, malformed project input, and filesystem errors.
-6. Cover Linux and Windows process behavior, paths with spaces, malformed configuration, deterministic
-   output, stdout/stderr separation, and `--deny-warnings` behavior.
+1. Added `dartscope lint <project>` as a filesystem/process adapter over the existing source-free
+   `lint_project` engine; no rule evaluation moved into the CLI crate.
+2. Added explicit TOML configuration version 1 for rule enablement, severity overrides, forbidden
+   import patterns, layer boundaries, naming options, orphan entry points, and failure thresholds.
+3. Registered `dartscope.lint-analysis` v1, extended the contract registry and migration policy, and
+   added a checked-in empty-model golden fixture.
+4. Added deterministic SARIF 2.1.0 with stable rule metadata, normalized paths, available exact spans,
+   severities, related locations, and `unicodeCodePoints` column semantics.
+5. Added stable lint-specific process outcomes: `4` for threshold findings with structured stdout,
+   `5` for invalid configuration, and `6` for error-bearing project analysis; filesystem and usage
+   errors retain codes `3` and `2`.
+6. Added Linux/Windows process fixtures for inert defaults, paths with spaces, the complete TOML
+   surface, warning thresholds, `--deny-warnings`, malformed configuration, malformed project input,
+   deterministic SARIF, stdout/stderr separation, and command help.
+7. Documented direct GitHub Code Scanning upload without a custom converter.
+
+Findings and limits:
+
+- TOML configuration is loaded only through explicit `--config`; DartScope does not silently discover
+  policy files or enable rules.
+- Unsupported configuration versions, unknown fields, duplicate rule/severity entries, and empty
+  required values are rejected instead of guessed.
+- SARIF artifact URIs are normalized project-relative paths; repository URI bases are caller-owned.
+- Error diagnostics stop lint execution at the first deterministic message. Original analysis commands
+  keep their existing diagnostic-bearing success behavior.
+- The `toml` parser is a direct CLI dependency pinned by `Cargo.lock`; its public types do not cross the
+  DartScope API boundary.
 
 Acceptance:
 
 - every finding maps back to the existing source-free lint engine;
 - JSON and SARIF order is deterministic and versioned independently;
 - default configuration remains inert unless the caller enables rules;
-- a documented GitHub Actions example can upload SARIF without custom parsing.
+- a documented GitHub Actions example can upload SARIF without custom parsing;
+- exact Rust 1.95 formatting, focused tests, Clippy, rustdoc, workspace tests, umbrella all-features,
+  release package validation, and hosted Linux/Windows checks pass.
+
+See `docs/development/lint-cli.md`.
 
 ### DS-INDEX-005: Incremental Workspace Index
 

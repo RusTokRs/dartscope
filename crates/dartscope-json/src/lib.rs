@@ -17,11 +17,12 @@ pub enum JsonContract {
     GraphqlContracts,
     UriGraph,
     FlutterInventory,
+    LintAnalysis,
 }
 
 impl JsonContract {
     /// Every public CLI JSON contract in deterministic command-family order.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::FileAnalysis,
         Self::PubspecAnalysis,
         Self::PubspecConfiguration,
@@ -29,6 +30,7 @@ impl JsonContract {
         Self::GraphqlContracts,
         Self::UriGraph,
         Self::FlutterInventory,
+        Self::LintAnalysis,
     ];
 
     /// Returns the stable schema identifier written into the JSON envelope.
@@ -41,6 +43,7 @@ impl JsonContract {
             Self::GraphqlContracts => "dartscope.graphql-contracts",
             Self::UriGraph => "dartscope.uri-graph",
             Self::FlutterInventory => "dartscope.flutter-inventory",
+            Self::LintAnalysis => "dartscope.lint-analysis",
         }
     }
 
@@ -53,7 +56,8 @@ impl JsonContract {
             | Self::ProjectAnalysis
             | Self::GraphqlContracts
             | Self::UriGraph
-            | Self::FlutterInventory => 1,
+            | Self::FlutterInventory
+            | Self::LintAnalysis => 1,
         }
     }
 

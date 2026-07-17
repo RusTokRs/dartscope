@@ -35,6 +35,45 @@ impl DartLintRuleId {
             Self::OrphanFile => "dartscope.orphan_file",
         }
     }
+
+    /// Stable SARIF-compatible short name.
+    pub const fn short_name(self) -> &'static str {
+        match self {
+            Self::ForbiddenImport => "forbidden_import",
+            Self::LayerBoundary => "layer_boundary",
+            Self::NamingConvention => "naming_convention",
+            Self::UnresolvedPart => "unresolved_part",
+            Self::OrphanFile => "orphan_file",
+        }
+    }
+
+    /// Human-readable rule title.
+    pub const fn title(self) -> &'static str {
+        match self {
+            Self::ForbiddenImport => "Forbidden import",
+            Self::LayerBoundary => "Layer boundary",
+            Self::NamingConvention => "Naming convention",
+            Self::UnresolvedPart => "Unresolved part",
+            Self::OrphanFile => "Orphan file",
+        }
+    }
+
+    /// Stable rule description used by command-facing metadata.
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::ForbiddenImport => "Reports imports matching configured forbidden URI patterns.",
+            Self::LayerBoundary => {
+                "Reports resolved internal imports that cross configured layer boundaries."
+            }
+            Self::NamingConvention => {
+                "Reports supported file and top-level declaration names outside configured conventions."
+            }
+            Self::UnresolvedPart => {
+                "Reports part directives that do not resolve to a valid part file."
+            }
+            Self::OrphanFile => "Reports files unreachable from configured project entry points.",
+        }
+    }
 }
 
 /// Explicit rule severity override.

@@ -1,7 +1,8 @@
 # CLI Contract
 
 `dartscope` is a JSON-producing command-line interface over the public DartScope analysis APIs.
-This document defines the stable process-level behavior for the 0.1 command family.
+This document defines the stable process-level behavior for the 0.1 command family and the
+additive `0.2` lint command.
 
 ## Global interface
 
@@ -28,6 +29,7 @@ The supported commands are:
 | `graphql-contracts` | project directory | repeatable `--env key=value` | `dartscope.graphql-contracts` |
 | `uri-graph` | project directory | repeatable `--env key=value` | `dartscope.uri-graph` |
 | `flutter-inventory` | project directory | none | `dartscope.flutter-inventory` |
+| `lint` | project directory | `--config`, `--format`, `--deny-warnings` | `dartscope.lint-analysis` or SARIF 2.1.0 |
 
 ## Exit codes
 
@@ -36,11 +38,15 @@ The supported commands are:
 | `0` | The requested help, version, or JSON operation completed successfully. |
 | `1` | DartScope could not serialize or otherwise complete an internal operation. |
 | `2` | The command line is invalid: unknown command, missing path, unexpected option, or malformed `--env`. |
-| `3` | A requested file or project directory cannot be read or has the wrong filesystem type. |
+| `3` | A requested file, project directory, or lint configuration cannot be read. |
+| `4` | Lint structured output was emitted and a finding reached the configured failure threshold. |
+| `5` | Lint TOML configuration is malformed, unsupported, or semantically invalid. |
+| `6` | Lint project analysis produced an error diagnostic and rule execution was not trusted. |
 
-Malformed Dart, YAML, and package-configuration contents are analysis inputs rather than CLI
-argument errors. They produce a successful JSON envelope containing diagnostics instead of a
-process panic.
+Malformed Dart, YAML, and package-configuration contents remain diagnostic-bearing success inputs
+for the original analysis commands. The `lint` command uses exit code `6` instead because running
+policy rules over an error-bearing project would claim more confidence than the normalized input
+supports. Lint findings at exit code `4` remain structured stdout, not stderr errors.
 
 ## Project discovery
 

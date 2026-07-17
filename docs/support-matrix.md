@@ -73,6 +73,7 @@ package.
 
 ## Serialized And CLI Contracts
 
-Seven CLI command families use named v1 JSON envelopes. They are pre-1.0 contracts: incompatible
-changes require a new schema major and a migration note. Library-only reference and lint outputs are
-not command-facing schemas until separately registered.
+Eight CLI command families use named v1 JSON envelopes, including `dartscope.lint-analysis`.
+The lint command can alternatively emit SARIF 2.1.0. These are pre-1.0 contracts: incompatible changes
+require a new schema major and a migration note. Library-only reference outputs are not command-facing
+schemas until separately registered.

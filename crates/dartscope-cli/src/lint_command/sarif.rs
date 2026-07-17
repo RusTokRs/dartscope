@@ -158,7 +158,10 @@ impl SarifResult {
             message: SarifMessage {
                 text: diagnostic.message.clone(),
             },
-            locations: vec![SarifLocation::new(&diagnostic.path, diagnostic.span.as_ref())],
+            locations: vec![SarifLocation::new(
+                &diagnostic.path,
+                diagnostic.span.as_ref(),
+            )],
             related_locations: diagnostic
                 .related_paths
                 .iter()

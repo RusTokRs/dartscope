@@ -35,7 +35,8 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
 - `dartscope-json` owns named versioned JSON envelopes and checked-in golden contracts;
   low-level generic Serde helpers remain available but are not stable command schemas.
 - `dartscope-cli` exposes the stable process boundary with help, version output, documented exit
-  codes, deterministic discovery, and versioned JSON for every analysis command.
+  codes, deterministic discovery, versioned JSON for every analysis command, and a configured lint
+  command with SARIF 2.1.0 output.
 - `dartscope` is a thin umbrella crate with feature-gated re-exports.
 
 ## Non-Goals
@@ -90,7 +91,9 @@ See [`docs/development/flutter-boundary.md`](docs/development/flutter-boundary.m
 General declaration queries are documented in
 [`docs/development/symbol-resolution.md`](docs/development/symbol-resolution.md). Optional lint
 configuration and built-in rules are documented in
-[`docs/development/lint-rules.md`](docs/development/lint-rules.md).
+[`docs/development/lint-rules.md`](docs/development/lint-rules.md). The CLI configuration, exit-code,
+and SARIF contracts are documented in
+[`docs/development/lint-cli.md`](docs/development/lint-cli.md).
 
 ## Rust Toolchain
 
@@ -135,6 +138,8 @@ cargo run -p dartscope-cli -- graphql-contracts path\to\flutter_project
 cargo run -p dartscope-cli -- uri-graph path\to\flutter_project
 cargo run -p dartscope-cli -- uri-graph path\to\flutter_project --env dart.library.io=true
 cargo run -p dartscope-cli -- flutter-inventory path\to\flutter_project
+cargo run -p dartscope-cli -- lint path\to\project --config dartscope.toml
+cargo run -p dartscope-cli -- lint path\to\project --config dartscope.toml --format sarif --deny-warnings
 ```
 
 `analyze-project` recursively scans regular `.dart` files and `pubspec.yaml` files,

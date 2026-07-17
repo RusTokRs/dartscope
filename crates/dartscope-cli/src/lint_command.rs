@@ -1,17 +1,14 @@
-use std::collections::BTreeSet;
-use std::fs;
 use dartscope::{
-    DartDiagnostic, DartForbiddenImportPattern, DartLayerBoundary,
-    DartLintAnalysis, DartLintConfig, DartLintRuleId,
-    DartLintSeverityOverride, DartNamingRuleConfig, DartOrphanFileRuleConfig,
-    DartProjectAnalysis, DiagnosticSeverity, JsonContract, analyze_project, lint_project,
-    to_json_contract_pretty,
+    DartDiagnostic, DartForbiddenImportPattern, DartLayerBoundary, DartLintAnalysis,
+    DartLintConfig, DartLintRuleId, DartLintSeverityOverride, DartNamingRuleConfig,
+    DartOrphanFileRuleConfig, DartProjectAnalysis, DiagnosticSeverity, JsonContract,
+    analyze_project, lint_project, to_json_contract_pretty,
 };
 use serde::Deserialize;
+use std::collections::BTreeSet;
+use std::fs;
 
-use super::{
-    CliError, CliOutput, EXIT_FINDINGS, collect_project_input,
-};
+use super::{CliError, CliOutput, EXIT_FINDINGS, collect_project_input};
 
 const CONFIG_VERSION: u16 = 1;
 mod sarif;
@@ -138,17 +135,14 @@ enum LintFailureThreshold {
 
 impl LintFailureThreshold {
     fn is_failure(self, analysis: &DartLintAnalysis) -> bool {
-        analysis
-            .diagnostics
-            .iter()
-            .any(|diagnostic| match self {
-                Self::Never => false,
-                Self::Warning => matches!(
-                    diagnostic.severity,
-                    DiagnosticSeverity::Warning | DiagnosticSeverity::Error
-                ),
-                Self::Error => diagnostic.severity == DiagnosticSeverity::Error,
-            })
+        analysis.diagnostics.iter().any(|diagnostic| match self {
+            Self::Never => false,
+            Self::Warning => matches!(
+                diagnostic.severity,
+                DiagnosticSeverity::Warning | DiagnosticSeverity::Error
+            ),
+            Self::Error => diagnostic.severity == DiagnosticSeverity::Error,
+        })
     }
 }
 
@@ -189,13 +183,11 @@ impl LintFileConfig {
             )));
         }
 
+        reject_duplicates(self.enabled_rules.iter().copied(), "enabled rule", path)?;
         reject_duplicates(
-            self.enabled_rules.iter().copied(),
-            "enabled rule",
-            path,
-        )?;
-        reject_duplicates(
-            self.severity_overrides.iter().map(|override_| override_.rule_id),
+            self.severity_overrides
+                .iter()
+                .map(|override_| override_.rule_id),
             "severity override",
             path,
         )?;
@@ -210,11 +202,8 @@ impl LintFileConfig {
             normalize_optional_prefix(&mut pattern.source_prefix, "source_prefix", path)?;
         }
         for boundary in &mut self.layer_boundaries {
-            boundary.source_prefix = normalize_required_prefix(
-                &boundary.source_prefix,
-                "layer source_prefix",
-                path,
-            )?;
+            boundary.source_prefix =
+                normalize_required_prefix(&boundary.source_prefix, "layer source_prefix", path)?;
             for target in &mut boundary.denied_target_prefixes {
                 *target = normalize_required_prefix(target, "denied target prefix", path)?;
             }
@@ -250,8 +239,9 @@ impl LintFileConfig {
 }
 
 fn read_config(path: &str) -> Result<LintFileConfig, CliError> {
-    let source = fs::read_to_string(path)
-        .map_err(|error| CliError::input(format!("failed to read lint configuration {path}: {error}")))?;
+    let source = fs::read_to_string(path).map_err(|error| {
+        CliError::input(format!("failed to read lint configuration {path}: {error}"))
+    })?;
     let mut config: LintFileConfig = toml::from_str(&source).map_err(|error| {
         CliError::configuration(format!("invalid lint configuration {path}: {error}"))
     })?;
@@ -287,11 +277,7 @@ fn normalize_optional_prefix(
     Ok(())
 }
 
-fn normalize_prefixes(
-    values: &mut [String],
-    label: &str,
-    path: &str,
-) -> Result<(), CliError> {
+fn normalize_prefixes(values: &mut [String], label: &str, path: &str) -> Result<(), CliError> {
     for value in values {
         *value = normalize_required_prefix(value, label, path)?;
     }
@@ -347,4 +333,3 @@ fn project_error(fallback_path: &str, diagnostic: &DartDiagnostic) -> Option<Str
         )
     })
 }
-

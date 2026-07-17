@@ -22,6 +22,8 @@ pre-1.0.
   manually gated crates.io publishing workflow.
 - The audited `0.2` development queue, beginning with immutable SHA-pinned Node 24 Actions,
   `actionlint`, enforceable workflow permissions, and read-only pull-request execution.
+- `dartscope lint` with explicit versioned TOML configuration, a `dartscope.lint-analysis` v1 JSON
+  contract, SARIF 2.1.0 output, deterministic thresholds, and stable process exit codes.
 
 ### Compatibility
 

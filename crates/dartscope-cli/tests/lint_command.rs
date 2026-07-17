@@ -28,7 +28,10 @@ fn lint_help_and_default_configuration_are_inert() {
 #[test]
 fn toml_configuration_and_deny_warnings_use_stable_exit_codes() {
     let project = sample_project("configured warnings");
-    write_file(&project.path().join("lib/BadName.dart"), "class bad_name {}\n");
+    write_file(
+        &project.path().join("lib/BadName.dart"),
+        "class bad_name {}\n",
+    );
     let config = project.path().join("dartscope lint.toml");
     write_file(
         &config,
@@ -65,7 +68,10 @@ fn toml_configuration_and_deny_warnings_use_stable_exit_codes() {
 #[test]
 fn sarif_output_is_deterministic_and_keeps_spans_and_rule_metadata() {
     let project = sample_project("sarif output");
-    write_file(&project.path().join("lib/BadName.dart"), "class bad_name {}\n");
+    write_file(
+        &project.path().join("lib/BadName.dart"),
+        "class bad_name {}\n",
+    );
     let config = project.path().join("dartscope.toml");
     write_file(
         &config,
@@ -206,7 +212,10 @@ fn full_toml_surface_maps_to_the_existing_lint_engine() {
     ]);
     assert_structured_output(&output, 0, "dartscope.lint-analysis");
     let json = stdout(&output);
-    assert!(json.contains("dartscope.forbidden_import"), "stdout: {json}");
+    assert!(
+        json.contains("dartscope.forbidden_import"),
+        "stdout: {json}"
+    );
     assert!(json.contains("\"severity\": \"error\""), "stdout: {json}");
     assert!(json.contains("\"enabled_rules\": 5"), "stdout: {json}");
 }
@@ -245,7 +254,11 @@ fn run_os(args: impl IntoIterator<Item = OsString>) -> Output {
 
 fn assert_text_success(output: &Output, expected: &str) {
     assert_output_code(output, 0);
-    assert!(stdout(output).contains(expected), "stdout: {}", stdout(output));
+    assert!(
+        stdout(output).contains(expected),
+        "stdout: {}",
+        stdout(output)
+    );
 }
 
 fn assert_structured_output(output: &Output, exit_code: i32, schema: &str) {

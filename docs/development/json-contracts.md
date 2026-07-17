@@ -23,6 +23,7 @@ version, and `data` contains the serialized domain model. Consumers must dispatc
 - `dartscope.graphql-contracts` v1 — `graphql-contracts`
 - `dartscope.uri-graph` v1 — `uri-graph`
 - `dartscope.flutter-inventory` v1 — `flutter-inventory`
+- `dartscope.lint-analysis` v1 — `lint --format json`
 
 ## Compatibility policy
 
@@ -46,7 +47,8 @@ The following changes require a new major version for the affected schema:
 A schema version bump keeps the old fixture in the repository, adds a new fixture, and records
 migration guidance below. CLI commands never emit an unversioned payload.
 
-The low-level `to_json` and `to_json_pretty` helpers intentionally remain generic Serde helpers.
+SARIF output is independently versioned by the SARIF `2.1.0` document and schema URI rather than by
+a DartScope envelope. The low-level `to_json` and `to_json_pretty` helpers intentionally remain generic Serde helpers.
 Their raw output is not a stable DartScope schema and must not be used for command-facing JSON.
 
 ## Deterministic output
@@ -64,6 +66,7 @@ Golden tests run on the standard Linux and Windows matrix.
 - Initial release: `dartscope.graphql-contracts` v1.
 - Initial release: `dartscope.uri-graph` v1.
 - Initial release: `dartscope.flutter-inventory` v1.
+- `0.2` addition: `dartscope.lint-analysis` v1.
 
 ## Additive v1 migration: generic invocations and optional Flutter composition
 

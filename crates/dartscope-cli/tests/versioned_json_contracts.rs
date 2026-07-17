@@ -1,6 +1,6 @@
 use dartscope::{
-    DartFileAnalysis, DartGraphqlContractAnalysis, DartProjectAnalysis, DartProjectSummary,
-    DartUriGraph, FlutterInventory, JsonContract, to_json_contract_pretty,
+    DartFileAnalysis, DartGraphqlContractAnalysis, DartLintAnalysis, DartProjectAnalysis,
+    DartProjectSummary, DartUriGraph, FlutterInventory, JsonContract, to_json_contract_pretty,
 };
 
 macro_rules! assert_golden {
@@ -24,6 +24,7 @@ fn checked_in_v1_golden_contracts_match_public_models() {
     let uri_graph = DartUriGraph::default();
     let graphql = DartGraphqlContractAnalysis::default();
     let flutter = FlutterInventory::default();
+    let lint = DartLintAnalysis::default();
 
     assert_golden!(
         JsonContract::FileAnalysis,
@@ -49,6 +50,11 @@ fn checked_in_v1_golden_contracts_match_public_models() {
         JsonContract::FlutterInventory,
         &flutter,
         include_str!("fixtures/flutter-inventory-v1.json")
+    );
+    assert_golden!(
+        JsonContract::LintAnalysis,
+        &lint,
+        include_str!("fixtures/lint-analysis-v1.json")
     );
 }
 

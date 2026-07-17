@@ -1,3 +1,5 @@
+mod lint_command;
+
 use std::env;
 use std::fmt;
 use std::fs;
@@ -16,20 +18,44 @@ use dartscope::{
 const EXIT_INTERNAL: u8 = 1;
 const EXIT_USAGE: u8 = 2;
 const EXIT_INPUT: u8 = 3;
+const EXIT_FINDINGS: u8 = 4;
+const EXIT_CONFIGURATION: u8 = 5;
+const EXIT_PROJECT: u8 = 6;
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct CliOutput {
+    text: String,
+    exit_code: u8,
+}
+
+impl CliOutput {
+    fn success(text: impl Into<String>) -> Self {
+        Self::new(text, 0)
+    }
+
+    fn new(text: impl Into<String>, exit_code: u8) -> Self {
+        Self {
+            text: text.into(),
+            exit_code,
+        }
+    }
+}
 
 macro_rules! serialize_contract {
     ($contract:expr, $value:expr) => {
-        to_json_contract_pretty($contract, $value).map_err(|error| {
-            CliError::internal(format!("failed to serialize JSON output: {error}"))
-        })
+        to_json_contract_pretty($contract, $value)
+            .map(CliOutput::success)
+            .map_err(|error| {
+                CliError::internal(format!("failed to serialize JSON output: {error}"))
+            })
     };
 }
 
 fn main() -> ExitCode {
     match run(env::args().skip(1)) {
         Ok(output) => {
-            println!("{output}");
-            ExitCode::SUCCESS
+            println!("{}", output.text);
+            ExitCode::from(output.exit_code)
         }
         Err(error) => {
             eprintln!("error: {error}");
@@ -38,7 +64,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(args: impl IntoIterator<Item = String>) -> Result<String, CliError> {
+fn run(args: impl IntoIterator<Item = String>) -> Result<CliOutput, CliError> {
     let args: Vec<String> = args.into_iter().collect();
     let Some(first) = args.first() else {
         return Err(CliError::usage(format!(
@@ -50,11 +76,11 @@ fn run(args: impl IntoIterator<Item = String>) -> Result<String, CliError> {
     match first.as_str() {
         "--help" | "-h" => {
             reject_global_extra_args(&args[1..], "--help")?;
-            return Ok(global_help());
+            return Ok(CliOutput::success(global_help()));
         }
         "--version" | "-V" => {
             reject_global_extra_args(&args[1..], "--version")?;
-            return Ok(version_text());
+            return Ok(CliOutput::success(version_text()));
         }
         "help" => return help_command(&args[1..]),
         _ => {}
@@ -67,7 +93,7 @@ fn run(args: impl IntoIterator<Item = String>) -> Result<String, CliError> {
         .is_some_and(|argument| matches!(argument.as_str(), "--help" | "-h"))
     {
         reject_global_extra_args(&args[2..], "--help")?;
-        return Ok(command.help());
+        return Ok(CliOutput::success(command.help()));
     }
 
     let path = args.get(1).ok_or_else(|| {
@@ -80,11 +106,11 @@ fn run(args: impl IntoIterator<Item = String>) -> Result<String, CliError> {
     execute(command, path, &args[2..])
 }
 
-fn help_command(args: &[String]) -> Result<String, CliError> {
+fn help_command(args: &[String]) -> Result<CliOutput, CliError> {
     match args {
-        [] => Ok(global_help()),
+        [] => Ok(CliOutput::success(global_help())),
         [command] => CliCommand::parse(command)
-            .map(CliCommand::help)
+            .map(|command| CliOutput::success(command.help()))
             .ok_or_else(|| {
                 CliError::usage(format!("unknown command: {command}\n\n{}", global_help()))
             }),
@@ -92,7 +118,7 @@ fn help_command(args: &[String]) -> Result<String, CliError> {
     }
 }
 
-fn execute(command: CliCommand, path: &str, extra_args: &[String]) -> Result<String, CliError> {
+fn execute(command: CliCommand, path: &str, extra_args: &[String]) -> Result<CliOutput, CliError> {
     match command {
         CliCommand::AnalyzeFile => {
             reject_extra_args(extra_args, command)?;
@@ -139,6 +165,7 @@ fn execute(command: CliCommand, path: &str, extra_args: &[String]) -> Result<Str
             let inventory = extract_flutter_inventory_with_catalogs(&project, &input.flutter);
             serialize_contract!(JsonContract::FlutterInventory, &inventory)
         }
+        CliCommand::Lint => lint_command::execute(path, extra_args),
     }
 }
 
@@ -434,10 +461,11 @@ enum CliCommand {
     GraphqlContracts,
     UriGraph,
     FlutterInventory,
+    Lint,
 }
 
 impl CliCommand {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 8] = [
         Self::AnalyzeFile,
         Self::Pubspec,
         Self::PubspecConfig,
@@ -445,6 +473,7 @@ impl CliCommand {
         Self::GraphqlContracts,
         Self::UriGraph,
         Self::FlutterInventory,
+        Self::Lint,
     ];
 
     fn parse(value: &str) -> Option<Self> {
@@ -462,6 +491,7 @@ impl CliCommand {
             Self::GraphqlContracts => "graphql-contracts",
             Self::UriGraph => "uri-graph",
             Self::FlutterInventory => "flutter-inventory",
+            Self::Lint => "lint",
         }
     }
 
@@ -476,6 +506,7 @@ impl CliCommand {
             Self::FlutterInventory => {
                 "Aggregate Flutter widgets, routes, assets, and localizations"
             }
+            Self::Lint => "Run configured deterministic project lints",
         }
     }
 
@@ -488,14 +519,19 @@ impl CliCommand {
             Self::GraphqlContracts => "dartscope graphql-contracts <path> [--env <key=value>]...",
             Self::UriGraph => "dartscope uri-graph <path> [--env <key=value>]...",
             Self::FlutterInventory => "dartscope flutter-inventory <path>",
+            Self::Lint => "dartscope lint <project>",
         }
     }
 
     fn help(self) -> String {
-        let options = if matches!(self, Self::GraphqlContracts | Self::UriGraph) {
-            "\nOPTIONS:\n  --env <key=value>  Add a Dart compilation-environment entry; repeatable\n  -h, --help         Print command help"
-        } else {
-            "\nOPTIONS:\n  -h, --help  Print command help"
+        let options = match self {
+            Self::GraphqlContracts | Self::UriGraph => {
+                "\nOPTIONS:\n  --env <key=value>  Add a Dart compilation-environment entry; repeatable\n  -h, --help         Print command help"
+            }
+            Self::Lint => {
+                "\nOPTIONS:\n  --config <path>        Read versioned TOML lint configuration\n  --format <json|sarif>  Select structured output; default: json\n  --deny-warnings        Fail when warning findings are present\n  -h, --help             Print command help"
+            }
+            _ => "\nOPTIONS:\n  -h, --help  Print command help",
         };
         format!(
             "{}\n\nUSAGE:\n  {}\n{options}",
@@ -510,6 +546,8 @@ enum CliErrorKind {
     Internal,
     Usage,
     Input,
+    Configuration,
+    Project,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -540,11 +578,27 @@ impl CliError {
         }
     }
 
+    fn configuration(message: impl Into<String>) -> Self {
+        Self {
+            kind: CliErrorKind::Configuration,
+            message: message.into(),
+        }
+    }
+
+    fn project(message: impl Into<String>) -> Self {
+        Self {
+            kind: CliErrorKind::Project,
+            message: message.into(),
+        }
+    }
+
     const fn exit_code(&self) -> u8 {
         match self.kind {
             CliErrorKind::Internal => EXIT_INTERNAL,
             CliErrorKind::Usage => EXIT_USAGE,
             CliErrorKind::Input => EXIT_INPUT,
+            CliErrorKind::Configuration => EXIT_CONFIGURATION,
+            CliErrorKind::Project => EXIT_PROJECT,
         }
     }
 }

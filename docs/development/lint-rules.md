@@ -43,5 +43,6 @@ points. Naming ignores non-ASCII identifiers rather than claiming Unicode casing
 Orphan analysis returns no findings when none of the configured entry points exist in the loaded
 project. External packages absent from the project index are not treated as internal layer targets.
 
-The crate is an optional umbrella feature and does not add a command-facing JSON schema. A future
-CLI lint command must register its own versioned contract and checked-in golden fixtures.
+The crate remains an optional umbrella feature. `dartscope lint` is a separate filesystem adapter
+that maps versioned TOML into this API and emits `dartscope.lint-analysis` v1 or SARIF 2.1.0 without
+moving rule semantics into the CLI crate. See `docs/development/lint-cli.md`.
