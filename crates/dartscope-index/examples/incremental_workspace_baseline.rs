@@ -28,11 +28,14 @@ fn main() {
         );
         let update = workspace.upsert_file(changed);
 
+        let counters = workspace.counters();
+        assert_eq!(counters.uri_files_rebuilt, file_count as u64);
+        assert_eq!(counters.reference_files_rebuilt, 0);
         println!(
             "files={file_count} affected={} rebuilt={:?} counters={:?}",
             update.affected_paths.len(),
             update.rebuilt,
-            workspace.counters()
+            counters
         );
     }
 }

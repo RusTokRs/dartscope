@@ -10,6 +10,13 @@ use crate::uri_graph::build_uri_graph;
 
 pub fn analyze_part_links(project: &DartProjectAnalysis) -> DartPartLinkAnalysis {
     let uri_graph = build_uri_graph(project);
+    analyze_part_links_with_graph(project, &uri_graph)
+}
+
+pub(crate) fn analyze_part_links_with_graph(
+    project: &DartProjectAnalysis,
+    uri_graph: &dartscope_core::DartUriGraph,
+) -> DartPartLinkAnalysis {
     let files_by_path: HashMap<_, _> = project
         .files
         .iter()

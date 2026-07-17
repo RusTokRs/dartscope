@@ -69,7 +69,8 @@ references rather than implementation caches.
 which products were rebuilt. Reverse dependencies include resolved targets, missing target paths, and
 ambiguous package candidates from both the old and new URI graph.
 
-The first implementation reuses products at subsystem granularity:
+The current implementation combines immutable subsystem snapshots with per-file URI-reference and
+identifier-resolution caches:
 
 | Change | Project | URI graph | Part links | GraphQL | References |
 | --- | --- | --- | --- | --- | --- |
@@ -82,9 +83,14 @@ The first implementation reuses products at subsystem granularity:
 | compilation environment | reuse | rebuild | reuse | rebuild | rebuild |
 | package-resolution metadata | rebuild | rebuild | rebuild | rebuild | rebuild |
 
-`DartWorkspaceIndexCounters` records generations, no-op updates, and rebuild counts. These are
-semantic operation counters rather than elapsed-time assertions, so they are deterministic across
-Linux, Windows, and differently loaded runners.
+`DartWorkspaceIndexCounters` records generations, aggregate rebuilds, and the exact number of URI
+source files and identifier-reference source files recomputed. Unaffected per-file cache entries remain
+shared internally. These are semantic operation counters rather than elapsed-time assertions, so they
+are deterministic across Linux, Windows, and differently loaded runners.
+
+A local reference-fact replacement invalidates only its source path. File insertion/removal recomputes
+that path plus direct URI sources whose previous target resolution may change. Namespace/declaration
+changes still report the transitive reverse closure and recompute reference sources in that closure.
 
 Run the synthetic 1k/10k-file operation baseline with:
 
@@ -96,13 +102,12 @@ cargo run -p dartscope-index --example incremental_workspace_baseline --release
 
 After every mutation, the snapshot project and derived outputs must equal a clean stateless rebuild over
 the same normalized inputs and `DartIndexOptions`. Tests cover replacement, removal, package metadata,
-conditional environments, paths with Windows separators, retained snapshots, no-op updates, and reverse
-closure ordering.
+conditional environments, paths with Windows separators, retained snapshots, no-op updates, reverse
+closure ordering, and a deterministic 64-step mixed update sequence.
 
 ## Current Boundary
 
-This foundation reports the exact reverse closure and avoids unrelated subsystem rebuilds. A later
-DS-INDEX-005 slice will move URI, namespace, GraphQL, and reference storage from subsystem-level reuse to
-per-file and per-library caches, then expose the same invalidation evidence to lint contexts. The public
-stateful API and existing stateless APIs are intended to remain stable while that internal granularity
-improves.
+URI references and identifier-reference resolutions now use per-source-file caches while public
+snapshots retain the same aggregate models. A later DS-INDEX-005 slice will add per-library namespace and
+GraphQL binding caches, then expose the same invalidation evidence to lint contexts. The public stateful
+API and existing stateless APIs remain stable while that internal granularity improves.

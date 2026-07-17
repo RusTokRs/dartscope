@@ -3,15 +3,16 @@ use std::sync::Arc;
 
 use dartscope_core::{
     DartDiagnostic, DartFileAnalysis, DartFileReferenceAnalysis, DartGraphqlContractAnalysis,
-    DartIdentifierReference, DartIdentifierReferenceResolutionAnalysis, DartPartLinkAnalysis,
-    DartProjectAnalysis, DartProjectReferenceAnalysis, DartProjectSummary, DartUriGraph,
+    DartIdentifierReference, DartIdentifierReferenceResolution,
+    DartIdentifierReferenceResolutionAnalysis, DartPartLinkAnalysis, DartProjectAnalysis,
+    DartProjectReferenceAnalysis, DartProjectSummary, DartUriGraph, DartUriReference,
     PackageConfigAnalysis, PubspecAnalysis, normalize_path,
 };
 
 use crate::graphql::analyze_graphql_contracts_with_options;
-use crate::parts::analyze_part_links;
+use crate::parts::analyze_part_links_with_graph;
 use crate::references::resolve_identifier_references_with_options;
-use crate::uri_graph::{DartIndexOptions, build_uri_graph_with_options};
+use crate::uri_graph::{DartIndexOptions, UriGraphBuilder, sort_uri_references};
 
 /// Immutable, shareable view of one workspace-index generation.
 ///
@@ -64,9 +65,11 @@ pub struct DartWorkspaceIndexCounters {
     pub no_op_updates: u64,
     pub project_rebuilds: u64,
     pub uri_graph_rebuilds: u64,
+    pub uri_files_rebuilt: u64,
     pub part_link_rebuilds: u64,
     pub graphql_rebuilds: u64,
     pub reference_rebuilds: u64,
+    pub reference_files_rebuilt: u64,
 }
 
 /// Derived products rebuilt by one workspace mutation.
@@ -117,6 +120,8 @@ pub struct DartWorkspaceIndex {
     package_configs: BTreeMap<String, PackageConfigAnalysis>,
     project_diagnostics: Vec<DartDiagnostic>,
     references_by_path: BTreeMap<String, Vec<DartIdentifierReference>>,
+    uri_references_by_path: BTreeMap<String, Arc<Vec<DartUriReference>>>,
+    reference_resolutions_by_path: BTreeMap<String, Arc<Vec<DartIdentifierReferenceResolution>>>,
     options: DartIndexOptions,
     snapshot: Arc<DartWorkspaceSnapshot>,
     counters: DartWorkspaceIndexCounters,
@@ -182,14 +187,16 @@ impl DartWorkspaceIndex {
             &package_configs,
             &project_diagnostics,
         ));
-        let uri_graph = Arc::new(build_uri_graph_with_options(&project, &options));
-        let part_links = Arc::new(analyze_part_links(&project));
+        let (uri_references_by_path, uri_graph) = build_uri_reference_cache(&project, &options);
+        let uri_graph = Arc::new(uri_graph);
+        let part_links = Arc::new(analyze_part_links_with_graph(&project, &uri_graph));
         let graphql_contracts =
             Arc::new(analyze_graphql_contracts_with_options(&project, &options));
-        let references = flatten_references(&references_by_path);
-        let identifier_reference_resolutions = Arc::new(
-            resolve_identifier_references_with_options(&project, &references, &options),
-        );
+        let (reference_resolutions_by_path, identifier_reference_resolutions) =
+            build_reference_resolution_cache(&project, &references_by_path, &options);
+        let identifier_reference_resolutions = Arc::new(identifier_reference_resolutions);
+        let initial_uri_files = uri_references_by_path.len() as u64;
+        let initial_reference_files = reference_resolutions_by_path.len() as u64;
         let snapshot = Arc::new(DartWorkspaceSnapshot {
             generation: 0,
             project,
@@ -206,14 +213,18 @@ impl DartWorkspaceIndex {
             package_configs,
             project_diagnostics,
             references_by_path,
+            uri_references_by_path,
+            reference_resolutions_by_path,
             options,
             snapshot,
             counters: DartWorkspaceIndexCounters {
                 project_rebuilds: 1,
                 uri_graph_rebuilds: 1,
+                uri_files_rebuilt: initial_uri_files,
                 part_link_rebuilds: 1,
                 graphql_rebuilds: 1,
                 reference_rebuilds: 1,
+                reference_files_rebuilt: initial_reference_files,
                 ..DartWorkspaceIndexCounters::default()
             },
         }
@@ -277,7 +288,7 @@ impl DartWorkspaceIndex {
         } else {
             self.references_by_path.insert(path.clone(), new_references);
         }
-        self.rebuild(plan, BTreeSet::from([path]), false)
+        self.rebuild(plan, BTreeSet::from([path]), false, old_file.is_none())
     }
 
     /// Removes a file and its opt-in reference facts.
@@ -287,7 +298,7 @@ impl DartWorkspaceIndex {
             return self.no_op_update();
         }
         self.references_by_path.remove(&path);
-        self.rebuild(RebuildPlan::all(), BTreeSet::from([path]), false)
+        self.rebuild(RebuildPlan::all(), BTreeSet::from([path]), false, true)
     }
 
     /// Inserts or replaces one pubspec analysis.
@@ -307,6 +318,7 @@ impl DartWorkspaceIndex {
             RebuildPlan::metadata(resolution_changed),
             BTreeSet::from([path]),
             resolution_changed,
+            false,
         )
     }
 
@@ -316,7 +328,12 @@ impl DartWorkspaceIndex {
         if self.pubspecs.remove(&path).is_none() {
             return self.no_op_update();
         }
-        self.rebuild(RebuildPlan::metadata(true), BTreeSet::from([path]), true)
+        self.rebuild(
+            RebuildPlan::metadata(true),
+            BTreeSet::from([path]),
+            true,
+            false,
+        )
     }
 
     /// Inserts or replaces one parsed `.dart_tool/package_config.json` analysis.
@@ -327,7 +344,12 @@ impl DartWorkspaceIndex {
             return self.no_op_update();
         }
         self.package_configs.insert(path.clone(), config);
-        self.rebuild(RebuildPlan::metadata(true), BTreeSet::from([path]), true)
+        self.rebuild(
+            RebuildPlan::metadata(true),
+            BTreeSet::from([path]),
+            true,
+            false,
+        )
     }
 
     /// Removes one package configuration by normalized path.
@@ -336,7 +358,12 @@ impl DartWorkspaceIndex {
         if self.package_configs.remove(&path).is_none() {
             return self.no_op_update();
         }
-        self.rebuild(RebuildPlan::metadata(true), BTreeSet::from([path]), true)
+        self.rebuild(
+            RebuildPlan::metadata(true),
+            BTreeSet::from([path]),
+            true,
+            false,
+        )
     }
 
     /// Replaces conditional-compilation options without changing normalized project inputs.
@@ -345,7 +372,7 @@ impl DartWorkspaceIndex {
             return self.no_op_update();
         }
         self.options = options;
-        self.rebuild(RebuildPlan::options(), BTreeSet::new(), true)
+        self.rebuild(RebuildPlan::options(), BTreeSet::new(), true, false)
     }
 
     /// Changes only the informational project root retained in snapshots.
@@ -355,7 +382,7 @@ impl DartWorkspaceIndex {
             return self.no_op_update();
         }
         self.root = root;
-        self.rebuild(RebuildPlan::project_only(), BTreeSet::new(), false)
+        self.rebuild(RebuildPlan::project_only(), BTreeSet::new(), false, false)
     }
 
     fn no_op_update(&mut self) -> DartWorkspaceUpdate {
@@ -373,6 +400,7 @@ impl DartWorkspaceIndex {
         plan: RebuildPlan,
         changed_paths: BTreeSet<String>,
         global_invalidation: bool,
+        file_set_changed: bool,
     ) -> DartWorkspaceUpdate {
         debug_assert!(plan.public().any());
         let old = Arc::clone(&self.snapshot);
@@ -388,15 +416,60 @@ impl DartWorkspaceIndex {
         } else {
             Arc::clone(&old.project)
         };
+
         let uri_graph = if plan.uri_graph {
             self.counters.uri_graph_rebuilds += 1;
-            Arc::new(build_uri_graph_with_options(&project, &self.options))
+            let rebuild_paths = uri_rebuild_paths(
+                &changed_paths,
+                &old.uri_graph,
+                &project,
+                global_invalidation,
+                file_set_changed,
+            );
+            let options = self.options.clone();
+            let builder = UriGraphBuilder::new(&project, &options);
+            if global_invalidation {
+                self.uri_references_by_path.clear();
+            }
+            let files = &self.files;
+            self.uri_references_by_path
+                .retain(|path, _| files.contains_key(path));
+            let mut rebuilt_files = 0_u64;
+            for path in rebuild_paths {
+                let Some(file) = self.files.get(&path) else {
+                    continue;
+                };
+                self.uri_references_by_path
+                    .insert(path, Arc::new(builder.references_for_file(file)));
+                rebuilt_files += 1;
+            }
+            for file in &project.files {
+                if self.uri_references_by_path.contains_key(&file.path) {
+                    continue;
+                }
+                self.uri_references_by_path.insert(
+                    file.path.clone(),
+                    Arc::new(builder.references_for_file(file)),
+                );
+                rebuilt_files += 1;
+            }
+            self.counters.uri_files_rebuilt += rebuilt_files;
+            Arc::new(aggregate_uri_graph(&self.uri_references_by_path))
         } else {
             Arc::clone(&old.uri_graph)
         };
+
+        let affected_paths = affected_paths(
+            &changed_paths,
+            &old.uri_graph,
+            &uri_graph,
+            &project,
+            global_invalidation,
+            plan.propagate_dependents,
+        );
         let part_links = if plan.part_links {
             self.counters.part_link_rebuilds += 1;
-            Arc::new(analyze_part_links(&project))
+            Arc::new(analyze_part_links_with_graph(&project, &uri_graph))
         } else {
             Arc::clone(&old.part_links)
         };
@@ -411,24 +484,49 @@ impl DartWorkspaceIndex {
         };
         let identifier_reference_resolutions = if plan.identifier_references {
             self.counters.reference_rebuilds += 1;
-            let references = flatten_references(&self.references_by_path);
-            Arc::new(resolve_identifier_references_with_options(
-                &project,
-                &references,
-                &self.options,
+            let rebuild_paths = reference_rebuild_paths(
+                &changed_paths,
+                &affected_paths,
+                &self.references_by_path,
+                global_invalidation,
+                plan.propagate_dependents,
+            );
+            if global_invalidation {
+                self.reference_resolutions_by_path.clear();
+            }
+            let references_by_path = &self.references_by_path;
+            self.reference_resolutions_by_path
+                .retain(|path, _| references_by_path.contains_key(path));
+            let mut rebuilt_files = 0_u64;
+            for path in rebuild_paths {
+                let Some(references) = self.references_by_path.get(&path) else {
+                    self.reference_resolutions_by_path.remove(&path);
+                    continue;
+                };
+                let analysis =
+                    resolve_identifier_references_with_options(&project, references, &self.options);
+                self.reference_resolutions_by_path
+                    .insert(path, Arc::new(analysis.resolutions));
+                rebuilt_files += 1;
+            }
+            for (path, references) in &self.references_by_path {
+                if self.reference_resolutions_by_path.contains_key(path) {
+                    continue;
+                }
+                let analysis =
+                    resolve_identifier_references_with_options(&project, references, &self.options);
+                self.reference_resolutions_by_path
+                    .insert(path.clone(), Arc::new(analysis.resolutions));
+                rebuilt_files += 1;
+            }
+            self.counters.reference_files_rebuilt += rebuilt_files;
+            Arc::new(aggregate_reference_resolutions(
+                &self.reference_resolutions_by_path,
             ))
         } else {
             Arc::clone(&old.identifier_reference_resolutions)
         };
 
-        let affected_paths = affected_paths(
-            &changed_paths,
-            &old.uri_graph,
-            &uri_graph,
-            &project,
-            global_invalidation,
-            plan.has_dependency_impact(),
-        );
         self.counters.generations += 1;
         let generation = old.generation + 1;
         self.snapshot = Arc::new(DartWorkspaceSnapshot {
@@ -456,6 +554,7 @@ struct RebuildPlan {
     part_links: bool,
     graphql_contracts: bool,
     identifier_references: bool,
+    propagate_dependents: bool,
 }
 
 impl RebuildPlan {
@@ -466,6 +565,7 @@ impl RebuildPlan {
             part_links: true,
             graphql_contracts: true,
             identifier_references: true,
+            propagate_dependents: true,
         }
     }
 
@@ -476,6 +576,7 @@ impl RebuildPlan {
             part_links: false,
             graphql_contracts: false,
             identifier_references: false,
+            propagate_dependents: false,
         }
     }
 
@@ -486,6 +587,7 @@ impl RebuildPlan {
             part_links: resolution_changed,
             graphql_contracts: resolution_changed,
             identifier_references: resolution_changed,
+            propagate_dependents: resolution_changed,
         }
     }
 
@@ -496,6 +598,7 @@ impl RebuildPlan {
             part_links: false,
             graphql_contracts: true,
             identifier_references: true,
+            propagate_dependents: true,
         }
     }
 
@@ -507,10 +610,6 @@ impl RebuildPlan {
             graphql_contracts: self.graphql_contracts,
             identifier_references: self.identifier_references,
         }
-    }
-
-    const fn has_dependency_impact(self) -> bool {
-        self.uri_graph || self.part_links || self.graphql_contracts || self.identifier_references
     }
 }
 
@@ -525,18 +624,132 @@ fn file_rebuild_plan(
     let library_membership_changed = old.library != new.library || old.part_of != new.part_of;
     let namespace_changed =
         import_export_changed || part_directives_changed || library_membership_changed;
+    let declarations_changed = old.declarations != new.declarations;
+    let graphql_operations_changed = old.graphql_operations != new.graphql_operations;
 
     RebuildPlan {
         project: file_changed,
         uri_graph: import_export_changed || part_directives_changed,
         part_links: part_directives_changed || library_membership_changed,
         graphql_contracts: namespace_changed
-            || old.graphql_operations != new.graphql_operations
+            || graphql_operations_changed
             || old.graphql_operation_uses != new.graphql_operation_uses,
-        identifier_references: namespace_changed
-            || old.declarations != new.declarations
-            || references_changed,
+        identifier_references: namespace_changed || declarations_changed || references_changed,
+        propagate_dependents: namespace_changed
+            || declarations_changed
+            || graphql_operations_changed,
     }
+}
+
+fn build_uri_reference_cache(
+    project: &DartProjectAnalysis,
+    options: &DartIndexOptions,
+) -> (BTreeMap<String, Arc<Vec<DartUriReference>>>, DartUriGraph) {
+    let builder = UriGraphBuilder::new(project, options);
+    let cache = project
+        .files
+        .iter()
+        .map(|file| {
+            (
+                file.path.clone(),
+                Arc::new(builder.references_for_file(file)),
+            )
+        })
+        .collect();
+    let graph = aggregate_uri_graph(&cache);
+    (cache, graph)
+}
+
+fn aggregate_uri_graph(cache: &BTreeMap<String, Arc<Vec<DartUriReference>>>) -> DartUriGraph {
+    let mut references: Vec<_> = cache
+        .values()
+        .flat_map(|references| references.iter().cloned())
+        .collect();
+    sort_uri_references(&mut references);
+    DartUriGraph { references }
+}
+
+fn build_reference_resolution_cache(
+    project: &DartProjectAnalysis,
+    references_by_path: &BTreeMap<String, Vec<DartIdentifierReference>>,
+    options: &DartIndexOptions,
+) -> (
+    BTreeMap<String, Arc<Vec<DartIdentifierReferenceResolution>>>,
+    DartIdentifierReferenceResolutionAnalysis,
+) {
+    let cache = references_by_path
+        .iter()
+        .map(|(path, references)| {
+            let analysis = resolve_identifier_references_with_options(project, references, options);
+            (path.clone(), Arc::new(analysis.resolutions))
+        })
+        .collect();
+    let analysis = aggregate_reference_resolutions(&cache);
+    (cache, analysis)
+}
+
+fn aggregate_reference_resolutions(
+    cache: &BTreeMap<String, Arc<Vec<DartIdentifierReferenceResolution>>>,
+) -> DartIdentifierReferenceResolutionAnalysis {
+    DartIdentifierReferenceResolutionAnalysis {
+        resolutions: cache
+            .values()
+            .flat_map(|resolutions| resolutions.iter().cloned())
+            .collect(),
+    }
+}
+
+fn uri_rebuild_paths(
+    changed_paths: &BTreeSet<String>,
+    old_graph: &DartUriGraph,
+    project: &DartProjectAnalysis,
+    global_invalidation: bool,
+    file_set_changed: bool,
+) -> BTreeSet<String> {
+    if global_invalidation {
+        return project.files.iter().map(|file| file.path.clone()).collect();
+    }
+
+    let known_files: BTreeSet<_> = project
+        .files
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect();
+    let mut paths: BTreeSet<_> = changed_paths
+        .iter()
+        .filter(|path| known_files.contains(path.as_str()))
+        .cloned()
+        .collect();
+    if file_set_changed {
+        let reverse = reverse_dependencies(old_graph);
+        for changed in changed_paths {
+            if let Some(sources) = reverse.get(changed) {
+                paths.extend(sources.iter().cloned());
+            }
+        }
+    }
+    paths
+}
+
+fn reference_rebuild_paths(
+    changed_paths: &BTreeSet<String>,
+    affected_paths: &[String],
+    references_by_path: &BTreeMap<String, Vec<DartIdentifierReference>>,
+    global_invalidation: bool,
+    propagate_dependents: bool,
+) -> BTreeSet<String> {
+    if global_invalidation {
+        return references_by_path.keys().cloned().collect();
+    }
+    let candidates: Box<dyn Iterator<Item = &String> + '_> = if propagate_dependents {
+        Box::new(affected_paths.iter())
+    } else {
+        Box::new(changed_paths.iter())
+    };
+    candidates
+        .filter(|path| references_by_path.contains_key(*path))
+        .cloned()
+        .collect()
 }
 
 fn build_project(
@@ -722,15 +935,6 @@ fn sort_and_deduplicate_references(references: &mut Vec<DartIdentifierReference>
             ))
     });
     references.dedup();
-}
-
-fn flatten_references(
-    references_by_path: &BTreeMap<String, Vec<DartIdentifierReference>>,
-) -> Vec<DartIdentifierReference> {
-    references_by_path
-        .values()
-        .flat_map(|references| references.iter().cloned())
-        .collect()
 }
 
 fn affected_paths(

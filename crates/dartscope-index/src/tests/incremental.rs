@@ -237,6 +237,180 @@ fn workspace_state_and_snapshots_are_send_and_sync() {
     assert_send_sync::<std::sync::Arc<DartWorkspaceSnapshot>>();
 }
 
+#[test]
+fn per_file_caches_rebuild_only_relevant_sources() {
+    let analysis = reference_project(&[
+        ("lib/a.dart", "import 'b.dart';\nvoid useB() { B(); }\n"),
+        ("lib/b.dart", "class B {}\n"),
+        ("lib/x.dart", "import 'y.dart';\nvoid useY() { Y(); }\n"),
+        ("lib/y.dart", "class Y {}\n"),
+    ]);
+    let mut index = DartWorkspaceIndex::from_reference_project(analysis);
+    let before = index.counters();
+
+    let update = index.upsert_file_with_references(analyze_file_with_references(
+        DartFileInput::new("lib/b.dart", "class B { int value = 1; }\n"),
+    ));
+
+    assert_eq!(update.affected_paths, vec!["lib/a.dart", "lib/b.dart"]);
+    assert_eq!(index.counters().uri_files_rebuilt, before.uri_files_rebuilt);
+    assert_eq!(
+        index.counters().reference_files_rebuilt,
+        before.reference_files_rebuilt + 1
+    );
+    assert_snapshot_matches(
+        &index,
+        &reference_project(&[
+            ("lib/a.dart", "import 'b.dart';\nvoid useB() { B(); }\n"),
+            ("lib/b.dart", "class B { int value = 1; }\n"),
+            ("lib/x.dart", "import 'y.dart';\nvoid useY() { Y(); }\n"),
+            ("lib/y.dart", "class Y {}\n"),
+        ]),
+        &DartIndexOptions::default(),
+    );
+}
+
+#[test]
+fn local_reference_fact_changes_do_not_invalidate_importers() {
+    let analysis = reference_project(&[
+        ("lib/a.dart", "import 'b.dart';\nvoid useB() { B(); }\n"),
+        ("lib/b.dart", "class B {}\n"),
+        ("lib/root.dart", "import 'a.dart';\n"),
+    ]);
+    let mut index = DartWorkspaceIndex::from_reference_project(analysis.clone());
+    let mut changed = analyze_file_with_references(DartFileInput::new(
+        "lib/a.dart",
+        "import 'b.dart';\nvoid useB() { B(); }\n",
+    ));
+    changed.references[0].name = "Missing".to_string();
+    let before = index.counters();
+
+    let update = index.upsert_file_with_references(changed);
+
+    assert_eq!(update.affected_paths, vec!["lib/a.dart"]);
+    assert_eq!(index.counters().uri_files_rebuilt, before.uri_files_rebuilt);
+    assert_eq!(
+        index.counters().reference_files_rebuilt,
+        before.reference_files_rebuilt + 1
+    );
+}
+
+#[test]
+fn adding_a_missing_target_rebuilds_only_the_target_and_direct_uri_sources() {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        vec![DartFileInput::new(
+            "lib/client.dart",
+            "import 'target.dart';\n",
+        )],
+        vec![],
+    ));
+    let mut index = DartWorkspaceIndex::from_project(project);
+    let before = index.counters();
+    assert_eq!(
+        index.snapshot().uri_graph().references[0].resolution,
+        DartUriResolution::MissingTarget
+    );
+
+    let update = index.upsert_file(analyze_file(DartFileInput::new(
+        "lib/target.dart",
+        "class Target {}\n",
+    )));
+
+    assert_eq!(
+        index.counters().uri_files_rebuilt,
+        before.uri_files_rebuilt + 2
+    );
+    assert_eq!(
+        index.snapshot().uri_graph().references[0].resolution,
+        DartUriResolution::Resolved
+    );
+    assert_eq!(
+        update.affected_paths,
+        vec!["lib/client.dart", "lib/target.dart"]
+    );
+}
+
+#[test]
+fn deterministic_randomized_update_sequences_match_clean_rebuilds() {
+    use std::collections::BTreeMap;
+
+    let mut sources = BTreeMap::from([
+        (
+            "lib/a.dart".to_string(),
+            "import 'b.dart';\nvoid useC() { C(); }\n".to_string(),
+        ),
+        ("lib/b.dart".to_string(), "export 'c.dart';\n".to_string()),
+        ("lib/c.dart".to_string(), "class C {}\n".to_string()),
+        ("lib/spare.dart".to_string(), "class Spare {}\n".to_string()),
+    ]);
+    let initial_pairs: Vec<_> = sources
+        .iter()
+        .map(|(path, source)| (path.as_str(), source.as_str()))
+        .collect();
+    let mut index = DartWorkspaceIndex::from_reference_project(reference_project(&initial_pairs));
+    let mut state = 0x5eed_u64;
+
+    for step in 0..64 {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1);
+        match state % 4 {
+            0 => {
+                let source = if step % 2 == 0 {
+                    "class C { int value = 1; }\n"
+                } else {
+                    "class C {}\n"
+                };
+                sources.insert("lib/c.dart".to_string(), source.to_string());
+                index.upsert_file_with_references(analyze_file_with_references(
+                    DartFileInput::new("lib/c.dart", source),
+                ));
+            }
+            1 => {
+                let source = if step % 2 == 0 {
+                    "import 'b.dart';\nvoid useC() { C(); C(); }\n"
+                } else {
+                    "import 'b.dart';\nvoid useC() { C(); }\n"
+                };
+                sources.insert("lib/a.dart".to_string(), source.to_string());
+                index.upsert_file_with_references(analyze_file_with_references(
+                    DartFileInput::new("lib/a.dart", source),
+                ));
+            }
+            2 => {
+                if sources.remove("lib/c.dart").is_some() {
+                    index.remove_file("lib/c.dart");
+                } else {
+                    let source = "class C {}\n";
+                    sources.insert("lib/c.dart".to_string(), source.to_string());
+                    index.upsert_file_with_references(analyze_file_with_references(
+                        DartFileInput::new("lib/c.dart", source),
+                    ));
+                }
+            }
+            _ => {
+                let source = if step % 2 == 0 {
+                    "export 'c.dart';\nexport 'spare.dart';\n"
+                } else {
+                    "export 'c.dart';\n"
+                };
+                sources.insert("lib/b.dart".to_string(), source.to_string());
+                index.upsert_file_with_references(analyze_file_with_references(
+                    DartFileInput::new("lib/b.dart", source),
+                ));
+            }
+        }
+
+        let pairs: Vec<_> = sources
+            .iter()
+            .map(|(path, source)| (path.as_str(), source.as_str()))
+            .collect();
+        let baseline = reference_project(&pairs);
+        assert_snapshot_matches(&index, &baseline, &DartIndexOptions::default());
+    }
+}
+
 fn reference_project(sources: &[(&str, &str)]) -> DartProjectReferenceAnalysis {
     analyze_project_with_references(DartProjectInput::new(
         ".",

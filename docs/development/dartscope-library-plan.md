@@ -881,15 +881,18 @@ Foundation implemented (2026-07-17):
    environments, Windows separators, retained snapshots, no-op updates, and thread-safety bounds.
 6. Added a non-blocking 1k/10k-file synthetic operation-count baseline and documented ownership,
    invalidation, and snapshot contracts.
+7. Added per-source URI-reference and identifier-resolution caches, per-file operation counters, and a
+   deterministic 64-step mixed update equivalence test.
+8. **P1 fixed:** replacing parser reference facts without changing a file namespace previously
+   invalidated every transitive importer; it now invalidates only that source path.
 
 Remaining work:
 
-1. Replace subsystem-level URI, namespace, GraphQL, and reference recomputation with per-file and
-   per-library caches while preserving the new public stateful API.
+1. Add per-library namespace and GraphQL binding caches while preserving the public aggregate snapshot
+   models and stateless output equivalence.
 2. Feed the same affected-library evidence into lint contexts without introducing an index/lint
    dependency cycle.
-3. Add randomized update-sequence property tests and memory/update-time baselines for the finer-grained
-   cache implementation.
+3. Add memory/update-time baselines for the per-library cache implementation.
 
 Acceptance:
 

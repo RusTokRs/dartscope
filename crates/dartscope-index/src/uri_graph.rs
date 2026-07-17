@@ -32,6 +32,98 @@ impl DartIndexOptions {
     }
 }
 
+pub(crate) struct UriGraphBuilder<'project, 'options> {
+    context: UriResolutionContext<'project>,
+    options: &'options DartIndexOptions,
+}
+
+impl<'project, 'options> UriGraphBuilder<'project, 'options> {
+    pub(crate) fn new(
+        project: &'project DartProjectAnalysis,
+        options: &'options DartIndexOptions,
+    ) -> Self {
+        let known_files: HashSet<_> = project
+            .files
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect();
+        let mut package_roots: HashMap<&str, Vec<String>> = HashMap::new();
+
+        for pubspec in &project.pubspecs {
+            if let Some(package_name) = pubspec.package_name.as_deref() {
+                package_roots
+                    .entry(package_name)
+                    .or_default()
+                    .push(parent_path(&pubspec.path));
+            }
+        }
+        for roots in package_roots.values_mut() {
+            roots.sort();
+            roots.dedup();
+        }
+
+        Self {
+            context: UriResolutionContext {
+                known_files,
+                package_roots,
+                package_configs: &project.package_configs,
+            },
+            options,
+        }
+    }
+
+    pub(crate) fn references_for_file(
+        &self,
+        file: &dartscope_core::DartFileAnalysis,
+    ) -> Vec<DartUriReference> {
+        let mut references = Vec::new();
+        for import in &file.imports {
+            for (uri, condition) in configurable_uris(
+                &import.uri,
+                &import.configurations,
+                self.options.compilation_environment.as_ref(),
+            ) {
+                references.push(resolve_uri_reference(
+                    &file.path,
+                    uri,
+                    condition,
+                    &import.span,
+                    DartUriReferenceKind::Import,
+                    &self.context,
+                ));
+            }
+        }
+        for export in &file.exports {
+            for (uri, condition) in configurable_uris(
+                &export.uri,
+                &export.configurations,
+                self.options.compilation_environment.as_ref(),
+            ) {
+                references.push(resolve_uri_reference(
+                    &file.path,
+                    uri,
+                    condition,
+                    &export.span,
+                    DartUriReferenceKind::Export,
+                    &self.context,
+                ));
+            }
+        }
+        for part in &file.parts {
+            references.push(resolve_uri_reference(
+                &file.path,
+                &part.uri,
+                None,
+                &part.span,
+                DartUriReferenceKind::Part,
+                &self.context,
+            ));
+        }
+        sort_uri_references(&mut references);
+        references
+    }
+}
+
 pub fn build_uri_graph(project: &DartProjectAnalysis) -> DartUriGraph {
     build_uri_graph_with_options(project, &DartIndexOptions::default())
 }
@@ -40,78 +132,17 @@ pub fn build_uri_graph_with_options(
     project: &DartProjectAnalysis,
     options: &DartIndexOptions,
 ) -> DartUriGraph {
-    let known_files: HashSet<_> = project
-        .files
-        .iter()
-        .map(|file| file.path.as_str())
-        .collect();
-    let mut package_roots: HashMap<&str, Vec<String>> = HashMap::new();
-
-    for pubspec in &project.pubspecs {
-        if let Some(package_name) = pubspec.package_name.as_deref() {
-            package_roots
-                .entry(package_name)
-                .or_default()
-                .push(parent_path(&pubspec.path));
-        }
-    }
-    for roots in package_roots.values_mut() {
-        roots.sort();
-        roots.dedup();
-    }
-    let context = UriResolutionContext {
-        known_files,
-        package_roots,
-        package_configs: &project.package_configs,
-    };
-
+    let builder = UriGraphBuilder::new(project, options);
     let mut graph = DartUriGraph::default();
     for file in &project.files {
-        for import in &file.imports {
-            for (uri, condition) in configurable_uris(
-                &import.uri,
-                &import.configurations,
-                options.compilation_environment.as_ref(),
-            ) {
-                graph.references.push(resolve_uri_reference(
-                    &file.path,
-                    uri,
-                    condition,
-                    &import.span,
-                    DartUriReferenceKind::Import,
-                    &context,
-                ));
-            }
-        }
-        for export in &file.exports {
-            for (uri, condition) in configurable_uris(
-                &export.uri,
-                &export.configurations,
-                options.compilation_environment.as_ref(),
-            ) {
-                graph.references.push(resolve_uri_reference(
-                    &file.path,
-                    uri,
-                    condition,
-                    &export.span,
-                    DartUriReferenceKind::Export,
-                    &context,
-                ));
-            }
-        }
-        for part in &file.parts {
-            graph.references.push(resolve_uri_reference(
-                &file.path,
-                &part.uri,
-                None,
-                &part.span,
-                DartUriReferenceKind::Part,
-                &context,
-            ));
-        }
+        graph.references.extend(builder.references_for_file(file));
     }
+    sort_uri_references(&mut graph.references);
+    graph
+}
 
-    graph.references.sort_by(|left, right| {
+pub(crate) fn sort_uri_references(references: &mut [DartUriReference]) {
+    references.sort_by(|left, right| {
         (
             &left.source_path,
             left.source_span.byte_start,
@@ -125,7 +156,6 @@ pub fn build_uri_graph_with_options(
                 &right.uri,
             ))
     });
-    graph
 }
 
 fn configurable_uris<'a>(
