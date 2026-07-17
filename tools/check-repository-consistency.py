@@ -97,6 +97,20 @@ def main() -> None:
             + ", ".join(tracked_python_artifacts)
         )
 
+    verification_reset = (ROOT / "tools/reset-verification-worktree.sh").read_text(
+        encoding="utf-8"
+    )
+    for required_command in (
+        'git fetch "$remote" "$branch"',
+        'git reset --hard "$remote/$branch"',
+        "git clean -fdx",
+    ):
+        if required_command not in verification_reset:
+            failures.append(
+                "verification worktree reset helper is missing required command: "
+                + required_command
+            )
+
     publish_mode = run("git", "ls-files", "--stage", "tools/publish-crates.sh").split()[0]
     if publish_mode != "100755":
         failures.append(f"tools/publish-crates.sh Git mode is {publish_mode}, expected 100755")
