@@ -18,3 +18,4 @@ if hashlib.sha256(script).hexdigest() != '07d8d40a2936435f070d63cb74ae89e2d7ab31
     raise SystemExit('decoded patch checksum mismatch')
 
 exec(compile(script, '.dartscope-index004-references-payload.py', 'exec'))
+# trigger finalization after workflow registration
