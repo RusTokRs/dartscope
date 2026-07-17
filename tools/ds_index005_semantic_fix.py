@@ -23,3 +23,5 @@ with tempfile.TemporaryDirectory() as directory:
     recovered.write_bytes(result.stdout)
     namespace = {"__name__": "__main__", "__file__": str(recovered)}
     exec(compile(result.stdout, str(recovered), "exec"), namespace)
+
+# trigger revision 2
