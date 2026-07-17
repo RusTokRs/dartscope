@@ -17,7 +17,7 @@ struct UriResolutionContext<'a> {
     package_configs: &'a [dartscope_core::PackageConfigAnalysis],
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct DartIndexOptions {
     pub compilation_environment: Option<DartCompilationEnvironment>,
 }

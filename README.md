@@ -20,7 +20,9 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
   namespace engine resolves top-level Dart declarations, batch-resolves opt-in conservative
   invocation-target references, and links GraphQL operation constants through same-library, import,
   re-export, combinator, privacy, part, and conditional-environment semantics; GraphQL linking also
-  compares operation, client-call, and variable contracts without parser internals.
+  compares operation, client-call, and variable contracts without parser internals. A stateful
+  workspace index accepts normalized upserts/removals, retains immutable snapshots, reports reverse
+  invalidation closures, and reuses unaffected derived subsystems without hidden filesystem access.
 - `dartscope-lints` is an optional deterministic rule engine over normalized project and index facts.
   It provides stable rule IDs, explicit configuration, severity overrides, and evidence-bearing
   diagnostics without reading source files or invoking Dart tooling.
@@ -93,7 +95,9 @@ General declaration queries are documented in
 configuration and built-in rules are documented in
 [`docs/development/lint-rules.md`](docs/development/lint-rules.md). The CLI configuration, exit-code,
 and SARIF contracts are documented in
-[`docs/development/lint-cli.md`](docs/development/lint-cli.md).
+[`docs/development/lint-cli.md`](docs/development/lint-cli.md). Stateful workspace snapshots and
+invalidation contracts are documented in
+[`docs/development/incremental-index.md`](docs/development/incremental-index.md).
 
 ## Rust Toolchain
 

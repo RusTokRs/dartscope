@@ -864,24 +864,41 @@ See `docs/development/lint-cli.md`.
 
 ### DS-INDEX-005: Incremental Workspace Index
 
-Status: ready. Priority: P1. Prerequisites: DS-INDEX-004, DS-AUDIT-001.
+Status: in progress. Priority: P1. Prerequisites: DS-INDEX-004, DS-AUDIT-001.
 
-Required work:
+Foundation implemented (2026-07-17):
 
-1. Add a stateful index with explicit `upsert_file`, `remove_file`, configuration update, and immutable
-   snapshot operations over normalized inputs.
-2. Maintain reverse import/export/part edges and invalidate only affected libraries, namespaces,
-   GraphQL bindings, references, and lint contexts.
-3. Preserve deterministic output equivalence with a clean full rebuild after every update sequence.
-4. Define thread-safety and snapshot ownership without exposing parser ASTs or performing hidden I/O.
-5. Add operation counters and benchmarks for 1k- and 10k-file synthetic workspaces.
+1. Added `DartWorkspaceIndex` with normalized file, pubspec, package-config, root, and conditional-
+   environment updates plus immutable `Arc<DartWorkspaceSnapshot>` generations.
+2. Preserved the existing stateless URI, part-link, GraphQL, and reference algorithms as the semantic
+   implementation used by every stateful snapshot; no parser AST or hidden filesystem access crosses
+   the index boundary.
+3. Added deterministic reverse import/export/part closure evidence from both old and new graphs,
+   including missing targets and ambiguous package candidates.
+4. Added subsystem-granular reuse and counters: diagnostics-only, declaration-only, GraphQL-only,
+   reference-only, options, and package-resolution changes rebuild only their required products.
+5. Added full-rebuild equivalence tests for replacement, removal, package metadata, conditional
+   environments, Windows separators, retained snapshots, no-op updates, and thread-safety bounds.
+6. Added a non-blocking 1k/10k-file synthetic operation-count baseline and documented ownership,
+   invalidation, and snapshot contracts.
+
+Remaining work:
+
+1. Replace subsystem-level URI, namespace, GraphQL, and reference recomputation with per-file and
+   per-library caches while preserving the new public stateful API.
+2. Feed the same affected-library evidence into lint contexts without introducing an index/lint
+   dependency cycle.
+3. Add randomized update-sequence property tests and memory/update-time baselines for the finer-grained
+   cache implementation.
 
 Acceptance:
 
-- incremental and full rebuild snapshots compare equal in property tests;
-- removing or changing a library invalidates every dependent result and no unrelated result;
-- memory and update-time baselines are checked without making wall-clock flakes blocking;
+- incremental and full rebuild snapshots compare equal after every tested update sequence;
+- removing or changing a library reports every transitive dependent in deterministic order;
+- unaffected derived subsystems are reused and operation counters are stable across hosts;
 - existing stateless APIs remain available.
+
+See `docs/development/incremental-index.md`.
 
 ### DS-INDEX-006: Broader Reference And Scope Resolution
 

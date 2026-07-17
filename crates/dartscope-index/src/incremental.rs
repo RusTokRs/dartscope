@@ -644,7 +644,7 @@ fn additional_project_diagnostics(project: &DartProjectAnalysis) -> Vec<DartDiag
         let matched = child_diagnostics
             .iter()
             .enumerate()
-            .find(|(index, candidate)| !consumed[*index] && *candidate == diagnostic)
+            .find(|(index, candidate)| !consumed[*index] && **candidate == diagnostic)
             .map(|(index, _)| index);
         if let Some(index) = matched {
             consumed[index] = true;

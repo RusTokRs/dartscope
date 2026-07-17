@@ -24,6 +24,8 @@ pre-1.0.
   `actionlint`, enforceable workflow permissions, and read-only pull-request execution.
 - `dartscope lint` with explicit versioned TOML configuration, a `dartscope.lint-analysis` v1 JSON
   contract, SARIF 2.1.0 output, deterministic thresholds, and stable process exit codes.
+- A stateful workspace index foundation with normalized file/configuration mutations, immutable shared
+  snapshots, deterministic reverse invalidation evidence, subsystem reuse, and operation counters.
 
 ### Compatibility
 
