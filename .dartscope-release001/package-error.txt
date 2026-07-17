@@ -1,4 +1,24 @@
 [1m[92m   Packaging[0m dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
 [1m[92m    Updating[0m crates.io index
 [1m[92m    Packaged[0m 11 files, 67.9KiB (16.0KiB compressed)
-dartscope-core packaged manifest still contains a path dependency
+[1m[92m   Packaging[0m dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+[1m[92m    Updating[0m crates.io index
+[1m[91merror[0m: failed to prepare local package for uploading
+
+Caused by:
+  no matching package named `dartscope-core` found
+  location searched: crates.io index
+  required by package `dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)`
+Traceback (most recent call last):
+  File "/home/runner/work/dartscope/dartscope/tools/check-release-packages.py", line 168, in <module>
+    main()
+  File "/home/runner/work/dartscope/dartscope/tools/check-release-packages.py", line 163, in main
+    package_archives(order, version)
+  File "/home/runner/work/dartscope/dartscope/tools/check-release-packages.py", line 109, in package_archives
+    run(
+  File "/home/runner/work/dartscope/dartscope/tools/check-release-packages.py", line 20, in run
+    completed = subprocess.run(
+                ^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '('cargo', 'package', '-p', 'dartscope-resolve', '--locked', '--allow-dirty', '--no-verify')' returned non-zero exit status 101.
