@@ -181,6 +181,8 @@ jobs:
         run: |
           rustup toolchain install 1.95.0 --profile minimal --component rustfmt
           cargo fmt --all
+      - name: Preserve temporary workflow for bot push
+        run: git checkout "$GITHUB_SHA" -- .github/workflows/ci.yml
       - name: Remove staging files
         run: |
           rm .github/payloads/flutter002.chunk*.b64
