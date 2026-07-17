@@ -809,7 +809,7 @@ See `docs/development/ci-supply-chain.md`.
 
 ### DS-CLI-003: Lint Command, Configuration, And SARIF
 
-Status: verified. Priority: P1. Prerequisite: DS-LINT-001.
+Status: implemented. Priority: P1. Prerequisite: DS-LINT-001.
 
 Implemented (2026-07-17):
 
@@ -845,6 +845,9 @@ Findings and limits:
 - **P1 fixed:** the first successful finalization staged Python bytecode created by policy-test imports.
   Generated Python artifacts are now ignored and a permanent repository-consistency check rejects any
   tracked recurrence.
+- **Verification pending:** the Rust 1.95 Ubuntu feature finalizer and focused cleanup gate passed, but
+  GitHub did not publish the permanent Linux/Windows aggregate status for the final clean main SHA.
+  Promote this task to `verified` only after a later clean main SHA reports `dartscope/ci` success.
 
 Acceptance:
 
@@ -853,7 +856,9 @@ Acceptance:
 - default configuration remains inert unless the caller enables rules;
 - a documented GitHub Actions example can upload SARIF without custom parsing;
 - exact Rust 1.95 formatting, focused tests, Clippy, rustdoc, workspace tests, umbrella all-features,
-  release package validation, and hosted Linux/Windows checks pass.
+  and release package validation pass in the bounded finalizer;
+- a clean permanent hosted Linux/Windows matrix reports aggregate `dartscope/ci` success before the
+  task is promoted from `implemented` to `verified`.
 
 See `docs/development/lint-cli.md`.
 
