@@ -89,6 +89,7 @@ jobs:
 
       - name: Commit verified namespace resolution
         run: |
+          rm -rf .dartscope-index004-payload
           rm -f .dartscope-index004-slice.py .dartscope-index004-error.txt .github/workflows/index004-finalize.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
