@@ -62,14 +62,14 @@ fn go_router_fixture_keeps_resolution_order_and_source_evidence() {
     ));
     let inventory = extract_flutter_inventory(&project);
 
-    assert_eq!(inventory.routes.len(), 3);
+    assert_eq!(inventory.routes.len(), 4);
     assert_eq!(
         inventory
             .routes
             .iter()
             .filter_map(|route| route.resolved_path.as_deref())
             .collect::<Vec<_>>(),
-        ["/", "/settings", "/profile/:id"]
+        ["/", "/settings", "/profile/:id", "/legacy"]
     );
     assert_eq!(inventory.routes[0].name.as_deref(), Some("home"));
     assert_eq!(inventory.routes[1].name.as_deref(), Some("settings"));
@@ -100,7 +100,7 @@ fn explicit_project_composition_populates_v1_compatibility_projection() {
     populate_flutter_project_analysis(&mut project);
 
     assert_eq!(project.summary.flutter_widgets, 5);
-    assert_eq!(project.summary.flutter_routes, 3);
+    assert_eq!(project.summary.flutter_routes, 4);
     assert_eq!(project.summary.flutter_assets, 2);
     assert_eq!(project.summary.flutter_localizations, 1);
     assert!(

@@ -581,7 +581,7 @@ See `docs/development/flutter-catalogs.md`.
 
 ### DS-FLUTTER-004: Routes, Themes, And State Conventions
 
-Status: ready. Priority: P2. Prerequisite: DS-FLUTTER-002.
+Status: in_progress. Priority: P2. Prerequisite: DS-FLUTTER-002.
 
 Required work:
 
@@ -593,6 +593,15 @@ Required work:
    packages, including package/version evidence and nearby negative fixtures.
 4. Keep package conventions in `dartscope-flutter`; do not reinterpret application-specific
    manifests or move framework semantics into the pure parser.
+
+Progress (2026-07-17):
+
+- [x] Derive official `MaterialApp` and `WidgetsApp` home/default routes, route tables, and
+  `initialRoute` facts, plus `Navigator.initialRoute`.
+- [x] Derive official static and `Navigator.of(context)` named-route navigation calls, including
+  restorable variants, with constant resolution and source spans.
+- [ ] Normalize supported theme construction and application facts.
+- [ ] Define versioned opt-in `go_router` and state-management support metadata and fixtures.
 
 Acceptance:
 

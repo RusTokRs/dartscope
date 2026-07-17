@@ -21,8 +21,9 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
   client-call, and variable contracts without depending on parser internals.
 - `dartscope-resolve` parses official package configuration v2 inputs and owns package
   and URI resolution primitives without performing filesystem I/O.
-- `dartscope-flutter` derives widget, route, asset, and localization conventions from generic
-  imports, declarations, and invocations, aggregates project-level inventory, links direct asset
+- `dartscope-flutter` derives widget, official application-route and named-navigation, asset, and
+  localization conventions from generic imports, declarations, and invocations, aggregates
+  project-level inventory, links direct asset
   uses to pubspec declarations, and validates generated-localization uses against explicit
   `l10n.yaml` and ARB inputs. It is optional for pure Dart consumers and performs no I/O.
 - `dartscope-json` owns named versioned JSON envelopes and checked-in golden contracts;
@@ -111,8 +112,9 @@ Current output includes generic invocation and named-argument facts, top-level s
 GraphQL operation documents from Dart raw string constants, declared operation
 variables, client uses such as `gql(operationConstant)` inside
 `query`/`mutate`/`subscribe` calls, supplied client variable names, conservative Flutter
-widget hints, `GoRoute` hints with `resolved_path` when a route path can be resolved
-from same-file string constants, and high-confidence direct Flutter asset/localization
+widget hints, official `MaterialApp`/`WidgetsApp` route tables and named `Navigator` calls,
+legacy `GoRoute` hints with `resolved_path` when a route path can be resolved from same-file string
+constants, and high-confidence direct Flutter asset/localization
 references such as `Image.asset(...)`, `AssetImage(...)`, `rootBundle.loadString(...)`,
 `DefaultAssetBundle.of(...).loadString(...)`, and `AppLocalizations.of(context)!.key`.
 Only the `flutter-inventory` command additionally discovers regular `l10n.yaml` and `.arb`

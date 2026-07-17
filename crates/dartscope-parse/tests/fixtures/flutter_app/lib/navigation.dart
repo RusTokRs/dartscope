@@ -39,7 +39,7 @@ class HomeScreen extends StatelessWidget {
             onPressed: () => context.go(settingsRoute),
             child: const Text('Settings'),
           ),
-          // Traditional Navigator push — not currently extracted by DartScope parser.
+          // Official named Navigator navigation is derived by dartscope-flutter.
           ElevatedButton(
             onPressed: () => Navigator.pushNamed(context, '/legacy'),
             child: const Text('Legacy'),

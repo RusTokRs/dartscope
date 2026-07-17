@@ -46,7 +46,11 @@ pub fn derive_flutter_file_hints(file: &DartFileAnalysis) -> FlutterFileHints {
         if let Some(localization) = localization_hint(invocation) {
             hints.localizations.push(localization);
         }
-        hints.routes.extend(route_hints(invocation, &constants));
+        hints.routes.extend(route_hints(
+            invocation,
+            &constants,
+            imports_official_flutter(file),
+        ));
     }
 
     sort_and_deduplicate(&mut hints);
@@ -147,12 +151,20 @@ fn localization_hint(invocation: &DartInvocation) -> Option<FlutterLocalizationH
 fn route_hints(
     invocation: &DartInvocation,
     constants: &HashMap<&str, &str>,
+    imports_official_flutter: bool,
 ) -> Vec<FlutterRouteHint> {
-    match invocation.target.as_str() {
-        "GoRoute" => go_route_hint(invocation, constants).into_iter().collect(),
-        "MaterialApp" => material_routes(invocation),
-        _ => Vec::new(),
+    if invocation.target == "GoRoute" {
+        return go_route_hint(invocation, constants).into_iter().collect();
     }
+    if !imports_official_flutter {
+        return Vec::new();
+    }
+    if let Some(application) = official_application(&invocation.target) {
+        return application_route_hints(invocation, constants, application);
+    }
+    navigator_route_hint(invocation, constants)
+        .into_iter()
+        .collect()
 }
 
 fn go_route_hint(
@@ -172,7 +184,49 @@ fn go_route_hint(
     })
 }
 
-fn material_routes(invocation: &DartInvocation) -> Vec<FlutterRouteHint> {
+fn official_application(target: &str) -> Option<&'static str> {
+    match target.rsplit('.').next()? {
+        "MaterialApp" => Some("MaterialApp"),
+        "WidgetsApp" => Some("WidgetsApp"),
+        "Navigator" => Some("Navigator"),
+        _ => None,
+    }
+}
+
+fn application_route_hints(
+    invocation: &DartInvocation,
+    constants: &HashMap<&str, &str>,
+    application: &str,
+) -> Vec<FlutterRouteHint> {
+    let mut hints = if application == "Navigator" {
+        Vec::new()
+    } else {
+        route_table_hints(invocation, application)
+    };
+    if application != "Navigator"
+        && let Some(home) = named_argument(invocation, "home")
+    {
+        hints.push(FlutterRouteHint {
+            constructor: format!("{application}.home"),
+            path: "/".to_string(),
+            path_kind: FlutterRoutePathKind::Literal,
+            resolved_path: Some("/".to_string()),
+            name: None,
+            confidence: Confidence::High,
+            span: home.span.clone(),
+        });
+    }
+    if let Some(initial_route) = named_argument(invocation, "initialRoute") {
+        hints.push(route_hint_from_argument(
+            format!("{application}.initialRoute"),
+            initial_route,
+            constants,
+        ));
+    }
+    hints
+}
+
+fn route_table_hints(invocation: &DartInvocation, application: &str) -> Vec<FlutterRouteHint> {
     let Some(routes) = named_argument(invocation, "routes") else {
         return Vec::new();
     };
@@ -182,7 +236,7 @@ fn material_routes(invocation: &DartInvocation) -> Vec<FlutterRouteHint> {
         .filter_map(|entry| {
             let path = entry.string_key.clone()?;
             Some(FlutterRouteHint {
-                constructor: "MaterialApp.routes".to_string(),
+                constructor: format!("{application}.routes"),
                 path: path.clone(),
                 path_kind: FlutterRoutePathKind::Literal,
                 resolved_path: Some(path),
@@ -192,6 +246,69 @@ fn material_routes(invocation: &DartInvocation) -> Vec<FlutterRouteHint> {
             })
         })
         .collect()
+}
+
+fn navigator_route_hint(
+    invocation: &DartInvocation,
+    constants: &HashMap<&str, &str>,
+) -> Option<FlutterRouteHint> {
+    let route_argument_index = navigator_route_argument_index(&invocation.target)?;
+    let route = positional_argument(invocation, route_argument_index)?;
+    Some(route_hint_from_argument(
+        canonical_navigator_constructor(&invocation.target),
+        route,
+        constants,
+    ))
+}
+
+fn navigator_route_argument_index(target: &str) -> Option<usize> {
+    let method = target.rsplit('.').next()?;
+    if !matches!(
+        method,
+        "pushNamed"
+            | "pushReplacementNamed"
+            | "pushNamedAndRemoveUntil"
+            | "popAndPushNamed"
+            | "restorablePushNamed"
+            | "restorablePushReplacementNamed"
+            | "restorablePushNamedAndRemoveUntil"
+            | "restorablePopAndPushNamed"
+    ) {
+        return None;
+    }
+    let parts: Vec<_> = target.split('.').collect();
+    let navigator = parts.iter().rposition(|part| *part == "Navigator")?;
+    match parts.get(navigator + 1..) {
+        Some([_, _]) if parts[navigator + 1] == "of" => Some(0),
+        Some([_]) => Some(1),
+        _ => None,
+    }
+}
+
+fn canonical_navigator_constructor(target: &str) -> String {
+    let method = target.rsplit('.').next().unwrap_or(target);
+    if target.split('.').any(|part| part == "of") {
+        format!("Navigator.of.{method}")
+    } else {
+        format!("Navigator.{method}")
+    }
+}
+
+fn route_hint_from_argument(
+    constructor: String,
+    argument: &DartInvocationArgument,
+    constants: &HashMap<&str, &str>,
+) -> FlutterRouteHint {
+    let route_path = route_path_value(argument, constants);
+    FlutterRouteHint {
+        constructor,
+        path: route_path.value,
+        path_kind: route_path.kind,
+        resolved_path: route_path.resolved,
+        name: None,
+        confidence: route_path.confidence,
+        span: argument.span.clone(),
+    }
 }
 
 struct RoutePathValue {
@@ -311,8 +428,18 @@ fn is_flutter_base(base: &str) -> bool {
     )
 }
 
+fn imports_official_flutter(file: &DartFileAnalysis) -> bool {
+    file.imports
+        .iter()
+        .any(|import| is_official_flutter_import(&import.uri))
+}
+
+fn is_official_flutter_import(uri: &str) -> bool {
+    uri.starts_with("package:flutter/")
+}
+
 fn is_flutter_import(uri: &str) -> bool {
-    uri.starts_with("package:flutter/") || uri.starts_with("package:flutter_riverpod/")
+    is_official_flutter_import(uri) || uri.starts_with("package:flutter_riverpod/")
 }
 
 fn sort_and_deduplicate(hints: &mut FlutterFileHints) {
