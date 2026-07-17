@@ -80,8 +80,11 @@ def validate_metadata(order: list[str], version: str) -> None:
         failed = [field for field, valid in checks.items() if not valid]
         if failed:
             raise SystemExit(f"{name} has incomplete release metadata: {failed}")
-        if not Path(package["readme"]).is_file():
-            raise SystemExit(f"{name} readme does not exist: {package['readme']}")
+        readme = Path(package["readme"])
+        if not readme.is_absolute():
+            readme = Path(package["manifest_path"]).parent / readme
+        if not readme.is_file():
+            raise SystemExit(f"{name} readme does not exist: {readme}")
 
         for dependency in package["dependencies"]:
             dependency_name = dependency["name"]
