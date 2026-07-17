@@ -28,6 +28,11 @@ pre-1.0.
   snapshots, deterministic reverse invalidation evidence, per-source URI/reference caches, and operation
   counters.
 
+### Fixed
+
+- Incremental reference caches now invalidate same-name `NotVisible` evidence and sibling-part
+  visibility changes without leaking non-Dart metadata paths into `affected_paths`.
+
 ### Compatibility
 
 - Minimum supported Rust version: 1.95.

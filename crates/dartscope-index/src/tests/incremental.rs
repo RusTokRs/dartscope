@@ -332,6 +332,161 @@ fn adding_a_missing_target_rebuilds_only_the_target_and_direct_uri_sources() {
 }
 
 #[test]
+fn same_name_not_visible_evidence_rebuilds_without_an_import_edge() {
+    let analysis = reference_project(&[
+        (
+            "lib/use.dart",
+            "void useHidden() { Hidden(); }
+",
+        ),
+        (
+            "lib/hidden.dart",
+            "class Hidden {}
+",
+        ),
+        (
+            "lib/other.dart",
+            "class Other {}
+",
+        ),
+    ]);
+    let mut index = DartWorkspaceIndex::from_reference_project(analysis);
+    let before = index.counters();
+    let initial_snapshot = index.snapshot();
+    let initial = &initial_snapshot
+        .identifier_reference_resolutions()
+        .resolutions[0];
+    assert_eq!(initial.status, DartSymbolResolutionStatus::NotVisible);
+    assert_eq!(initial.candidates.len(), 1);
+
+    let update =
+        index.upsert_file_with_references(analyze_file_with_references(DartFileInput::new(
+            "lib/hidden.dart",
+            "class Renamed {}
+",
+        )));
+
+    assert_eq!(
+        update.affected_paths,
+        vec!["lib/hidden.dart".to_string(), "lib/use.dart".to_string()]
+    );
+    assert_eq!(
+        index.counters().reference_files_rebuilt,
+        before.reference_files_rebuilt + 1
+    );
+    let baseline = reference_project(&[
+        (
+            "lib/use.dart",
+            "void useHidden() { Hidden(); }
+",
+        ),
+        (
+            "lib/hidden.dart",
+            "class Renamed {}
+",
+        ),
+        (
+            "lib/other.dart",
+            "class Other {}
+",
+        ),
+    ]);
+    assert_snapshot_matches(&index, &baseline, &DartIndexOptions::default());
+    let updated_snapshot = index.snapshot();
+    let resolution = &updated_snapshot
+        .identifier_reference_resolutions()
+        .resolutions[0];
+    assert_eq!(resolution.status, DartSymbolResolutionStatus::Missing);
+    assert!(resolution.candidates.is_empty());
+}
+
+#[test]
+fn part_membership_changes_rebuild_sibling_reference_sources() {
+    let analysis = reference_project(&[
+        (
+            "lib/owner.dart",
+            "part 'left.dart';
+part 'right.dart';
+class Owner {}
+",
+        ),
+        (
+            "lib/left.dart",
+            "part of 'owner.dart';
+class Shared {}
+",
+        ),
+        (
+            "lib/right.dart",
+            "part of 'owner.dart';
+void useShared() { Shared(); }
+",
+        ),
+    ]);
+    let mut index = DartWorkspaceIndex::from_reference_project(analysis);
+    let before = index.counters();
+    assert_eq!(
+        index
+            .snapshot()
+            .identifier_reference_resolutions()
+            .resolutions[0]
+            .status,
+        DartSymbolResolutionStatus::Resolved
+    );
+
+    let update =
+        index.upsert_file_with_references(analyze_file_with_references(DartFileInput::new(
+            "lib/left.dart",
+            "part of 'different.dart';
+class Shared {}
+",
+        )));
+
+    assert_eq!(
+        update.affected_paths,
+        vec![
+            "lib/left.dart".to_string(),
+            "lib/owner.dart".to_string(),
+            "lib/right.dart".to_string(),
+        ]
+    );
+    assert_eq!(
+        index.counters().reference_files_rebuilt,
+        before.reference_files_rebuilt + 1
+    );
+    let baseline = reference_project(&[
+        (
+            "lib/owner.dart",
+            "part 'left.dart';
+part 'right.dart';
+class Owner {}
+",
+        ),
+        (
+            "lib/left.dart",
+            "part of 'different.dart';
+class Shared {}
+",
+        ),
+        (
+            "lib/right.dart",
+            "part of 'owner.dart';
+void useShared() { Shared(); }
+",
+        ),
+    ]);
+    assert_snapshot_matches(&index, &baseline, &DartIndexOptions::default());
+    assert_eq!(
+        index
+            .snapshot()
+            .identifier_reference_resolutions()
+            .resolutions[0]
+            .status,
+        DartSymbolResolutionStatus::NotVisible
+    );
+}
+
+#[test]
 fn deterministic_randomized_update_sequences_match_clean_rebuilds() {
     use std::collections::BTreeMap;
 

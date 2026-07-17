@@ -885,6 +885,13 @@ Foundation implemented (2026-07-17):
    deterministic 64-step mixed update equivalence test.
 8. **P1 fixed:** replacing parser reference facts without changing a file namespace previously
    invalidated every transitive importer; it now invalidates only that source path.
+9. **P1 fixed:** reverse URI edges alone missed `NotVisible` candidate evidence from unrelated
+   same-name top-level declarations. Declaration changes now invalidate every reference source using an
+   affected name.
+10. **P1 fixed:** changing `part of` membership could change sibling-part visibility without a direct
+    reverse URI edge to that sibling. Old/new matched part components now extend reference invalidation.
+11. **P1 fixed:** the first part-component helper echoed a changed metadata path into public
+    `affected_paths`; it now returns only newly reached Dart owner/part paths.
 
 Remaining work:
 

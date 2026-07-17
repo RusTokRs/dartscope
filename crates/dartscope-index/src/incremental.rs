@@ -4,9 +4,9 @@ use std::sync::Arc;
 use dartscope_core::{
     DartDiagnostic, DartFileAnalysis, DartFileReferenceAnalysis, DartGraphqlContractAnalysis,
     DartIdentifierReference, DartIdentifierReferenceResolution,
-    DartIdentifierReferenceResolutionAnalysis, DartPartLinkAnalysis, DartProjectAnalysis,
-    DartProjectReferenceAnalysis, DartProjectSummary, DartUriGraph, DartUriReference,
-    PackageConfigAnalysis, PubspecAnalysis, normalize_path,
+    DartIdentifierReferenceResolutionAnalysis, DartPartLinkAnalysis, DartPartLinkStatus,
+    DartProjectAnalysis, DartProjectReferenceAnalysis, DartProjectSummary, DartUriGraph,
+    DartUriReference, PackageConfigAnalysis, PubspecAnalysis, normalize_path,
 };
 
 use crate::graphql::analyze_graphql_contracts_with_options;
@@ -282,23 +282,38 @@ impl DartWorkspaceIndex {
             Some(old) => file_rebuild_plan(old, &file, references_changed),
             None => RebuildPlan::all(),
         };
+        let changed_declaration_names =
+            changed_top_level_declaration_names(old_file.as_ref(), Some(&file));
         self.files.insert(path.clone(), file);
         if new_references.is_empty() {
             self.references_by_path.remove(&path);
         } else {
             self.references_by_path.insert(path.clone(), new_references);
         }
-        self.rebuild(plan, BTreeSet::from([path]), false, old_file.is_none())
+        self.rebuild(
+            plan,
+            BTreeSet::from([path]),
+            false,
+            old_file.is_none(),
+            changed_declaration_names,
+        )
     }
 
     /// Removes a file and its opt-in reference facts.
     pub fn remove_file(&mut self, path: &str) -> DartWorkspaceUpdate {
         let path = normalize_path(path.to_string());
-        if self.files.remove(&path).is_none() {
+        let Some(removed) = self.files.remove(&path) else {
             return self.no_op_update();
-        }
+        };
+        let changed_declaration_names = changed_top_level_declaration_names(Some(&removed), None);
         self.references_by_path.remove(&path);
-        self.rebuild(RebuildPlan::all(), BTreeSet::from([path]), false, true)
+        self.rebuild(
+            RebuildPlan::all(),
+            BTreeSet::from([path]),
+            false,
+            true,
+            changed_declaration_names,
+        )
     }
 
     /// Inserts or replaces one pubspec analysis.
@@ -319,6 +334,7 @@ impl DartWorkspaceIndex {
             BTreeSet::from([path]),
             resolution_changed,
             false,
+            BTreeSet::new(),
         )
     }
 
@@ -333,6 +349,7 @@ impl DartWorkspaceIndex {
             BTreeSet::from([path]),
             true,
             false,
+            BTreeSet::new(),
         )
     }
 
@@ -349,6 +366,7 @@ impl DartWorkspaceIndex {
             BTreeSet::from([path]),
             true,
             false,
+            BTreeSet::new(),
         )
     }
 
@@ -363,6 +381,7 @@ impl DartWorkspaceIndex {
             BTreeSet::from([path]),
             true,
             false,
+            BTreeSet::new(),
         )
     }
 
@@ -372,7 +391,13 @@ impl DartWorkspaceIndex {
             return self.no_op_update();
         }
         self.options = options;
-        self.rebuild(RebuildPlan::options(), BTreeSet::new(), true, false)
+        self.rebuild(
+            RebuildPlan::options(),
+            BTreeSet::new(),
+            true,
+            false,
+            BTreeSet::new(),
+        )
     }
 
     /// Changes only the informational project root retained in snapshots.
@@ -382,7 +407,13 @@ impl DartWorkspaceIndex {
             return self.no_op_update();
         }
         self.root = root;
-        self.rebuild(RebuildPlan::project_only(), BTreeSet::new(), false, false)
+        self.rebuild(
+            RebuildPlan::project_only(),
+            BTreeSet::new(),
+            false,
+            false,
+            BTreeSet::new(),
+        )
     }
 
     fn no_op_update(&mut self) -> DartWorkspaceUpdate {
@@ -401,6 +432,7 @@ impl DartWorkspaceIndex {
         changed_paths: BTreeSet<String>,
         global_invalidation: bool,
         file_set_changed: bool,
+        changed_declaration_names: BTreeSet<String>,
     ) -> DartWorkspaceUpdate {
         debug_assert!(plan.public().any());
         let old = Arc::clone(&self.snapshot);
@@ -459,20 +491,34 @@ impl DartWorkspaceIndex {
             Arc::clone(&old.uri_graph)
         };
 
-        let affected_paths = affected_paths(
-            &changed_paths,
-            &old.uri_graph,
-            &uri_graph,
-            &project,
-            global_invalidation,
-            plan.propagate_dependents,
-        );
         let part_links = if plan.part_links {
             self.counters.part_link_rebuilds += 1;
             Arc::new(analyze_part_links_with_graph(&project, &uri_graph))
         } else {
             Arc::clone(&old.part_links)
         };
+        let mut affected_paths: BTreeSet<_> = affected_paths(
+            &changed_paths,
+            &old.uri_graph,
+            &uri_graph,
+            &project,
+            global_invalidation,
+            plan.propagate_dependents,
+        )
+        .into_iter()
+        .collect();
+        if plan.part_links {
+            affected_paths.extend(library_related_paths(
+                &changed_paths,
+                old.part_links.as_ref(),
+                part_links.as_ref(),
+            ));
+        }
+        affected_paths.extend(reference_sources_for_declaration_names(
+            &self.references_by_path,
+            &changed_declaration_names,
+        ));
+        let affected_paths: Vec<_> = affected_paths.into_iter().collect();
         let graphql_contracts = if plan.graphql_contracts {
             self.counters.graphql_rebuilds += 1;
             Arc::new(analyze_graphql_contracts_with_options(
@@ -624,7 +670,8 @@ fn file_rebuild_plan(
     let library_membership_changed = old.library != new.library || old.part_of != new.part_of;
     let namespace_changed =
         import_export_changed || part_directives_changed || library_membership_changed;
-    let declarations_changed = old.declarations != new.declarations;
+    let top_level_declarations_changed =
+        top_level_declaration_facts(old) != top_level_declaration_facts(new);
     let graphql_operations_changed = old.graphql_operations != new.graphql_operations;
 
     RebuildPlan {
@@ -634,11 +681,123 @@ fn file_rebuild_plan(
         graphql_contracts: namespace_changed
             || graphql_operations_changed
             || old.graphql_operation_uses != new.graphql_operation_uses,
-        identifier_references: namespace_changed || declarations_changed || references_changed,
+        identifier_references: namespace_changed
+            || top_level_declarations_changed
+            || references_changed,
         propagate_dependents: namespace_changed
-            || declarations_changed
+            || top_level_declarations_changed
             || graphql_operations_changed,
     }
+}
+
+fn top_level_declaration_facts(
+    file: &DartFileAnalysis,
+) -> Vec<(
+    &str,
+    dartscope_core::DartDeclarationKind,
+    Option<&str>,
+    &dartscope_core::SourceSpan,
+)> {
+    file.declarations
+        .iter()
+        .filter(|declaration| declaration.parent_symbol_id.is_none())
+        .map(|declaration| {
+            (
+                declaration.name.as_str(),
+                declaration.kind,
+                declaration.symbol_id.as_deref(),
+                &declaration.span,
+            )
+        })
+        .collect()
+}
+
+fn changed_top_level_declaration_names(
+    old: Option<&DartFileAnalysis>,
+    new: Option<&DartFileAnalysis>,
+) -> BTreeSet<String> {
+    let old_facts = old.map(top_level_declaration_facts).unwrap_or_default();
+    let new_facts = new.map(top_level_declaration_facts).unwrap_or_default();
+    if old_facts == new_facts {
+        return BTreeSet::new();
+    }
+
+    let mut names = BTreeSet::new();
+    if let Some(file) = old {
+        names.extend(
+            file.declarations
+                .iter()
+                .filter(|declaration| declaration.parent_symbol_id.is_none())
+                .map(|declaration| declaration.name.clone()),
+        );
+    }
+    if let Some(file) = new {
+        names.extend(
+            file.declarations
+                .iter()
+                .filter(|declaration| declaration.parent_symbol_id.is_none())
+                .map(|declaration| declaration.name.clone()),
+        );
+    }
+    names
+}
+
+fn reference_sources_for_declaration_names(
+    references_by_path: &BTreeMap<String, Vec<DartIdentifierReference>>,
+    names: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    if names.is_empty() {
+        return BTreeSet::new();
+    }
+    references_by_path
+        .iter()
+        .filter(|(_, references)| {
+            references
+                .iter()
+                .any(|reference| names.contains(&reference.name))
+        })
+        .map(|(path, _)| path.clone())
+        .collect()
+}
+
+fn library_related_paths(
+    changed_paths: &BTreeSet<String>,
+    old_links: &DartPartLinkAnalysis,
+    new_links: &DartPartLinkAnalysis,
+) -> BTreeSet<String> {
+    let mut adjacency: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for link in old_links.links.iter().chain(&new_links.links) {
+        if link.status != DartPartLinkStatus::Matched {
+            continue;
+        }
+        let Some(part_path) = link.part_path.as_ref() else {
+            continue;
+        };
+        adjacency
+            .entry(link.owner_path.clone())
+            .or_default()
+            .insert(part_path.clone());
+        adjacency
+            .entry(part_path.clone())
+            .or_default()
+            .insert(link.owner_path.clone());
+    }
+
+    let mut visited = changed_paths.clone();
+    let mut related = BTreeSet::new();
+    let mut queue: VecDeque<_> = changed_paths.iter().cloned().collect();
+    while let Some(path) = queue.pop_front() {
+        let Some(neighbors) = adjacency.get(&path) else {
+            continue;
+        };
+        for neighbor in neighbors {
+            if visited.insert(neighbor.clone()) {
+                related.insert(neighbor.clone());
+                queue.push_back(neighbor.clone());
+            }
+        }
+    }
+    related
 }
 
 fn build_uri_reference_cache(

@@ -89,8 +89,12 @@ shared internally. These are semantic operation counters rather than elapsed-tim
 are deterministic across Linux, Windows, and differently loaded runners.
 
 A local reference-fact replacement invalidates only its source path. File insertion/removal recomputes
-that path plus direct URI sources whose previous target resolution may change. Namespace/declaration
-changes still report the transitive reverse closure and recompute reference sources in that closure.
+that path plus direct URI sources whose previous target resolution may change. Namespace changes report
+the transitive reverse closure. Top-level declaration changes additionally invalidate every reference
+source using an affected name because retained `NotVisible` evidence can change without an import edge.
+Changes to part membership also traverse old and new matched owner/part components so sibling-part
+visibility stays equivalent to a clean rebuild. Metadata paths themselves are not emitted as Dart
+`affected_paths` by this component traversal.
 
 Run the synthetic 1k/10k-file operation baseline with:
 
@@ -103,7 +107,8 @@ cargo run -p dartscope-index --example incremental_workspace_baseline --release
 After every mutation, the snapshot project and derived outputs must equal a clean stateless rebuild over
 the same normalized inputs and `DartIndexOptions`. Tests cover replacement, removal, package metadata,
 conditional environments, paths with Windows separators, retained snapshots, no-op updates, reverse
-closure ordering, and a deterministic 64-step mixed update sequence.
+closure ordering, same-name `NotVisible` evidence outside the URI graph, sibling-part visibility,
+and a deterministic 64-step mixed update sequence.
 
 ## Current Boundary
 
