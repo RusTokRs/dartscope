@@ -62,6 +62,13 @@ or tracked issue before the roadmap item can stay verified.
 The repository audit observed one transient Windows failure that did not reproduce on the clean audit
 head. It is classified as an infrastructure flake, not evidence that Windows coverage can be removed.
 
+Temporary verification workflows that produce source files before a failing gate must not rely on
+`git reset --hard` alone: Git leaves untracked generated files in the worktree. Failure handlers must
+run `bash tools/reset-verification-worktree.sh`, then selectively remove tracked staging files and write
+the failure report. The helper performs fetch, hard reset, and `git clean -fdx`; repository consistency
+guards all three commands. This rule was added after the first DS-INDEX-005 failure accidentally
+retained untracked foundation files even though its report claimed that no implementation was committed.
+
 ## Maintenance Limits
 
 Action release reviews and SHA updates are currently manual. Mutable major tags and automated
