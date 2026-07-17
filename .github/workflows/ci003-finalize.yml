@@ -1,0 +1,70 @@
+name: Finalize DS-CI-003
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ci003-finalize.yml"
+      - "tools/ci003_apply.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci003-finalize-main
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    name: Apply, verify, and commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Apply audited supply-chain changes
+        run: python3 tools/ci003_apply.py
+      - name: Remove staging infrastructure
+        run: rm .github/workflows/ci003-finalize.yml tools/ci003_apply.py
+      - name: Install actionlint 1.7.12
+        env:
+          GOBIN: ${{ runner.temp }}/actionlint-bin
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$GOBIN" >> "$GITHUB_PATH"
+      - name: Lint permanent workflows
+        run: actionlint -color
+      - name: Test workflow policy
+        run: python3 -m unittest discover -s tools/tests -p 'test_*.py' -v
+      - name: Enforce workflow policy
+        run: python3 tools/check-workflow-policy.py
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Build documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --locked
+      - name: Run workspace tests
+        run: cargo test --workspace --locked --quiet
+      - name: Test umbrella all features
+        run: cargo test -p dartscope --all-features --locked --quiet
+      - name: Validate repository consistency
+        run: python3 tools/check-repository-consistency.py
+      - name: Validate release packages
+        run: python3 tools/check-release-packages.py
+      - name: Validate publishing script
+        run: bash -n tools/publish-crates.sh
+      - name: Commit verified DS-CI-003 implementation
+        run: |
+          git config user.name "dartscope-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "ci: harden immutable workflow supply chain"
+          git push origin HEAD:main
