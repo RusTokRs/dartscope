@@ -1,0 +1,123 @@
+name: Observable Repository Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/repository-audit-observable.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: observable-repository-audit-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AUDIT_CONTEXT: dartscope/observable-repository-audit
+    steps:
+      - name: Publish pending status
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=pending \
+            -f context="${AUDIT_CONTEXT}" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+      - name: Package and metadata gate
+        run: python3 tools/check-release-packages.py
+      - name: Consistency findings
+        id: consistency
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import subprocess
+          import tomllib
+
+          findings = []
+          metadata = json.loads(subprocess.check_output([
+              'cargo', 'metadata', '--locked', '--no-deps', '--format-version', '1'
+          ], text=True))
+          packages = {p['name']: p for p in metadata['packages']}
+          order = [line.strip() for line in Path('tools/release-crates.txt').read_text().splitlines()
+                   if line.strip() and not line.lstrip().startswith('#')]
+          if len(packages) != 9:
+              findings.append(f'workspace package count is {len(packages)}, expected 9')
+          if set(packages) != set(order):
+              findings.append('release order and workspace package sets differ')
+
+          plan = Path('docs/development/dartscope-library-plan.md').read_text(encoding='utf-8')
+          for text, reason in [
+              ('Rust workspace and eight crates', 'workspace now has nine crates'),
+              ('Lint/rule engine | planned | crate not created', 'lint engine is verified'),
+              ('Baseline reviewed on 2026-07-16.', 'baseline date predates completed 0.1 work'),
+          ]:
+              if text in plan:
+                  findings.append(f'stale roadmap text: {text!r}: {reason}')
+
+          root = tomllib.loads(Path('Cargo.toml').read_text(encoding='utf-8'))
+          version = str(root['workspace']['package']['version'])
+          tag = f'v{version}'
+          released = f'## [{version}] - ' in Path('CHANGELOG.md').read_text(encoding='utf-8')
+          tag_exists = subprocess.run(['git', 'rev-parse', '--verify', '--quiet', f'refs/tags/{tag}']).returncode == 0
+          if released and not tag_exists:
+              findings.append(f'CHANGELOG marks {version} released but {tag} is absent')
+
+          mutable = []
+          for workflow in sorted(Path('.github/workflows').glob('*.*ml')):
+              if workflow.name in {'full-repository-audit.yml', 'repository-audit-observable.yml'}:
+                  continue
+              for line_no, line in enumerate(workflow.read_text(encoding='utf-8').splitlines(), 1):
+                  text = line.strip()
+                  if text.startswith('uses:') and '@' in text:
+                      ref = text.rsplit('@', 1)[1]
+                      if len(ref) != 40 or any(c not in '0123456789abcdefABCDEF' for c in ref):
+                          mutable.append(f'{workflow}:{line_no}: {text}')
+          if mutable:
+              findings.append(f'{len(mutable)} permanent Action references use mutable tags/branches')
+              print('PERMANENT_MUTABLE_ACTIONS_BEGIN')
+              print('\n'.join(mutable))
+              print('PERMANENT_MUTABLE_ACTIONS_END')
+
+          print('CONSISTENCY_FINDINGS_BEGIN')
+          for finding in findings or ['none']:
+              print(f'- {finding}')
+          print('CONSISTENCY_FINDINGS_END')
+          if findings:
+              raise SystemExit(1)
+          PY
+      - name: Duplicate dependency report
+        continue-on-error: true
+        run: cargo tree --workspace --all-features --duplicates
+      - name: Install cargo-audit
+        continue-on-error: true
+        run: cargo install cargo-audit --locked
+      - name: RustSec audit
+        continue-on-error: true
+        run: cargo audit
+      - name: Install cargo-machete
+        continue-on-error: true
+        run: cargo install cargo-machete --locked
+      - name: Unused dependency audit
+        continue-on-error: true
+        run: cargo machete
+      - name: Publish completed status
+        if: always()
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=success \
+            -f context="${AUDIT_CONTEXT}" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
