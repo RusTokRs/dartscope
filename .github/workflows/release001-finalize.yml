@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - ".dartscope-release001/trigger.txt"
+      - ".github/workflows/release001-finalize.yml"
 
 permissions:
   contents: write
