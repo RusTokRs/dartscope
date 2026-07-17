@@ -1,0 +1,128 @@
+name: Finalize DS-INDEX-004 GraphQL namespace migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .dartscope-index004-graphql.py
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out staging commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify staging head
+        run: |
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+
+      - name: Publish pending finalization status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          target_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          payload=$(jq -n \
+            --arg state pending \
+            --arg context dartscope/index004-graphql-finalization \
+            --arg description "Rust 1.95 shared namespace gate running" \
+            --arg target_url "$target_url" \
+            '{state:$state,context:$context,description:$description,target_url:$target_url}')
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -d "$payload"
+
+      - name: Apply shared namespace migration
+        run: python .dartscope-index004-graphql.py
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Normalize formatting
+        run: cargo fmt --all
+
+      - name: Check patch whitespace
+        run: git diff --check
+
+      - name: Run focused index tests
+        run: cargo test -p dartscope-index --locked --quiet
+
+      - name: Run workspace Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Build documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --locked
+
+      - name: Run workspace tests
+        run: cargo test --workspace --locked --quiet
+
+      - name: Test umbrella composition
+        run: cargo test -p dartscope --all-features --locked --quiet
+
+      - name: Commit verified GraphQL namespace migration
+        run: |
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          rm -rf .dartscope-index004-graphql .dartscope-index004-graphql.py
+          rm -f .github/workflows/index004-graphql-finalize.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor: share Dart namespace resolution with GraphQL"
+          git push origin HEAD:main
+          echo "FINAL_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Publish finalization status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          target_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          payload=$(jq -n \
+            --arg state success \
+            --arg context dartscope/index004-graphql-finalization \
+            --arg description "Rust 1.95 shared namespace gate passed" \
+            --arg target_url "$target_url" \
+            '{state:$state,context:$context,description:$description,target_url:$target_url}')
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${FINAL_SHA}" \
+            -d "$payload"
+
+      - name: Publish failure status
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          target_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          payload=$(jq -n \
+            --arg state failure \
+            --arg context dartscope/index004-graphql-finalization \
+            --arg description "Shared namespace gate failed" \
+            --arg target_url "$target_url" \
+            '{state:$state,context:$context,description:$description,target_url:$target_url}')
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -d "$payload"
