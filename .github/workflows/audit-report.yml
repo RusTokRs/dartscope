@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: one-shot-audit-report
+  group: one-shot-audit-report-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
