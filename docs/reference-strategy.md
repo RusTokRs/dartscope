@@ -157,3 +157,11 @@ the loaded index is unresolved, not proven missing.
 Downstream tools can request specific output shapes, but they should not define Dart or
 Flutter semantics for DartScope. Consumer-specific mapping belongs in the consuming
 project.
+
+## Official Flutter Theme Facts
+
+Theme construction and application support is normative and follows the official `ThemeData`,
+`MaterialApp`, `Theme`, and `AnimatedTheme` API documentation. The supported subset and explicit
+non-evaluation boundary are recorded in `docs/development/flutter-themes.md`. Ecosystem theme
+packages are not implied by this official support.
+

@@ -21,6 +21,7 @@
 
 mod catalogs;
 mod conventions;
+mod themes;
 
 pub use catalogs::{
     FlutterArbCatalog, FlutterArbInput, FlutterArbMessage, FlutterAssetDeclarationEntry,
@@ -29,6 +30,11 @@ pub use catalogs::{
 };
 pub use conventions::{
     derive_flutter_file_hints, populate_flutter_file_hints, populate_flutter_project_analysis,
+};
+pub use themes::{
+    FlutterThemeApplication, FlutterThemeApplicationKind, FlutterThemeConstruction,
+    FlutterThemeConstructor, FlutterThemeFacts, derive_flutter_theme_facts,
+    extract_flutter_theme_facts,
 };
 
 use dartscope_core::{

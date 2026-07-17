@@ -600,7 +600,8 @@ Progress (2026-07-17):
   `initialRoute` facts, plus `Navigator.initialRoute`.
 - [x] Derive official static and `Navigator.of(context)` named-route navigation calls, including
   restorable variants, with constant resolution and source spans.
-- [ ] Normalize supported theme construction and application facts.
+- [x] Normalize official `ThemeData` construction and `MaterialApp`/`Theme`/`AnimatedTheme`
+  application facts through a deterministic parser-independent API with source spans.
 - [ ] Define versioned opt-in `go_router` and state-management support metadata and fixtures.
 
 Acceptance:
