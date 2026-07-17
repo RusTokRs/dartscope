@@ -23,6 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          show-progress: false
 
       - name: Apply official navigation slice
         run: python .github/scripts/apply_flutter004_navigation.py
@@ -34,7 +35,20 @@ jobs:
         run: cargo fmt --all
 
       - name: Run focused Flutter tests
-        run: cargo test -p dartscope-flutter --locked --quiet
+        run: |
+          set +e
+          cargo test -p dartscope-flutter --locked --quiet -- --nocapture > flutter004-test.log 2>&1
+          status=$?
+          cat flutter004-test.log
+          exit $status
+
+      - name: Upload focused test log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter004-focused-test-log
+          path: flutter004-test.log
+          if-no-files-found: error
 
       - name: Run workspace Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
