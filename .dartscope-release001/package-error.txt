@@ -1,1 +1,4 @@
-dartscope-core readme does not exist: ../../README.md
+[1m[92m   Packaging[0m dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+[1m[92m    Updating[0m crates.io index
+[1m[92m    Packaged[0m 11 files, 67.9KiB (16.0KiB compressed)
+dartscope-core packaged manifest still contains a path dependency
