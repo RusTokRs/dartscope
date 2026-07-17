@@ -134,10 +134,26 @@ def package_archives(order: list[str], version: str) -> None:
             if normalized is None:
                 raise SystemExit(f"{name} archive has no normalized Cargo.toml")
             manifest_text = normalized.read().decode("utf-8")
-            if "path =" in manifest_text:
-                raise SystemExit(
-                    f"{name} packaged manifest still contains a path dependency"
+            manifest = tomllib.loads(manifest_text)
+            dependency_tables = [
+                manifest.get("dependencies", {}),
+                manifest.get("dev-dependencies", {}),
+                manifest.get("build-dependencies", {}),
+            ]
+            for target in manifest.get("target", {}).values():
+                dependency_tables.extend(
+                    [
+                        target.get("dependencies", {}),
+                        target.get("dev-dependencies", {}),
+                        target.get("build-dependencies", {}),
+                    ]
                 )
+            for dependencies in dependency_tables:
+                for dependency_name, dependency in dependencies.items():
+                    if isinstance(dependency, dict) and "path" in dependency:
+                        raise SystemExit(
+                            f"{name} packaged dependency {dependency_name} still has a path"
+                        )
 
 
 def main() -> None:
