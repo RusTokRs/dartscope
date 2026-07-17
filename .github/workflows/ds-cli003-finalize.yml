@@ -89,3 +89,5 @@ jobs:
           git commit -m "ci: diagnose DS-CLI-003 applier anchor"
           git push origin HEAD:main
           exit "$status"
+
+# trigger revision 2
