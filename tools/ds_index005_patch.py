@@ -11,3 +11,5 @@ if source.count(old) != 1:
     raise SystemExit(f"expected one diagnostic comparison anchor, found {source.count(old)}")
 APPLIER.write_text(source.replace(old, new), encoding="utf-8")
 print("DS-INDEX-005 diagnostic comparison patched")
+
+# trigger revision 2
