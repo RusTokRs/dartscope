@@ -131,3 +131,5 @@ jobs:
             -f context="${STATUS_CONTEXT}" \
             -f description="DS-RELEASE-001 finalization failed" \
             -f target_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+# workspace-package activation
