@@ -1,0 +1,169 @@
+name: Full Repository Audit
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/full-repository-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-repository-audit-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  rust-matrix:
+    name: Rust 1.95 audit (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+      - name: Toolchain identity
+        shell: bash
+        run: |
+          rustc --version
+          cargo --version
+      - name: Formatting
+        if: runner.os == 'Linux'
+        run: cargo fmt --all -- --check
+      - name: Workspace check
+        run: cargo check --workspace --all-targets --locked
+      - name: Workspace all-features check
+        run: cargo check --workspace --all-targets --all-features --locked
+      - name: Umbrella feature isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check -p dartscope --no-default-features --locked
+          for feature in parse resolve index lints json flutter; do
+            echo "checking isolated feature: ${feature}"
+            cargo check -p dartscope --no-default-features --features "${feature}" --locked
+          done
+      - name: Workspace all-features tests
+        run: cargo test --workspace --all-features --all-targets --locked --quiet
+      - name: Workspace all-features Clippy
+        if: runner.os == 'Linux'
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Rustdoc all features
+        if: runner.os == 'Linux'
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --all-features --no-deps --locked
+
+  repository-audit:
+    name: Repository and release audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+      - name: Release package archives
+        run: python3 tools/check-release-packages.py
+      - name: Script syntax
+        run: |
+          python3 -m py_compile tools/check-release-packages.py
+          bash -n tools/publish-crates.sh
+      - name: Metadata and documentation consistency
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import subprocess
+          import tomllib
+
+          root = Path('.')
+          findings = []
+          metadata = json.loads(subprocess.check_output([
+              'cargo', 'metadata', '--locked', '--no-deps', '--format-version', '1'
+          ], text=True))
+          packages = {package['name']: package for package in metadata['packages']}
+          release_order = [
+              line.strip() for line in Path('tools/release-crates.txt').read_text().splitlines()
+              if line.strip() and not line.lstrip().startswith('#')
+          ]
+          if len(packages) != 9:
+              findings.append(f'expected 9 workspace packages, found {len(packages)}')
+          if set(packages) != set(release_order):
+              findings.append('workspace packages and release order differ')
+
+          plan_path = Path('docs/development/dartscope-library-plan.md')
+          plan = plan_path.read_text(encoding='utf-8')
+          stale_fragments = {
+              'Rust workspace and eight crates': 'workspace now has nine crates',
+              'Lint/rule engine | planned | crate not created': 'lint engine is verified',
+          }
+          for fragment, reason in stale_fragments.items():
+              if fragment in plan:
+                  findings.append(f'stale roadmap text: {fragment!r} ({reason})')
+
+          changelog = Path('CHANGELOG.md').read_text(encoding='utf-8')
+          version = tomllib.loads(Path('Cargo.toml').read_text(encoding='utf-8'))['workspace']['package']['version']
+          tag = f'v{version}'
+          tag_exists = subprocess.run(
+              ['git', 'rev-parse', '--verify', '--quiet', f'refs/tags/{tag}'],
+              check=False,
+          ).returncode == 0
+          if f'## [{version}] - ' in changelog and not tag_exists:
+              findings.append(f'CHANGELOG marks {version} released but tag {tag} does not exist')
+
+          workflows = sorted(Path('.github/workflows').glob('*.yml')) + sorted(Path('.github/workflows').glob('*.yaml'))
+          mutable_actions = []
+          for workflow in workflows:
+              for number, line in enumerate(workflow.read_text(encoding='utf-8').splitlines(), 1):
+                  stripped = line.strip()
+                  if stripped.startswith('uses:') and '@' in stripped:
+                      ref = stripped.rsplit('@', 1)[1]
+                      if len(ref) != 40 or any(ch not in '0123456789abcdefABCDEF' for ch in ref):
+                          mutable_actions.append(f'{workflow}:{number}: {stripped}')
+          if mutable_actions:
+              findings.append(
+                  f'{len(mutable_actions)} GitHub Action references are not pinned to immutable commit SHAs'
+              )
+              print('MUTABLE_ACTION_REFERENCES')
+              print('\n'.join(mutable_actions))
+
+          baseline = 'Baseline reviewed on 2026-07-16.'
+          if baseline in plan:
+              findings.append('roadmap baseline review date predates the completed 0.1 audit')
+
+          print('AUDIT_FINDINGS_BEGIN')
+          if findings:
+              for finding in findings:
+                  print(f'- {finding}')
+          else:
+              print('- none')
+          print('AUDIT_FINDINGS_END')
+          if findings:
+              raise SystemExit(1)
+          PY
+      - name: Duplicate dependency versions
+        continue-on-error: true
+        run: cargo tree --workspace --all-features --duplicates
+      - name: Install advisory scanner
+        continue-on-error: true
+        run: cargo install cargo-audit --locked
+      - name: RustSec advisory audit
+        continue-on-error: true
+        run: cargo audit
+      - name: Install unused dependency scanner
+        continue-on-error: true
+        run: cargo install cargo-machete --locked
+      - name: Unused dependency audit
+        continue-on-error: true
+        run: cargo machete
