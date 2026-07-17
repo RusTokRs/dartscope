@@ -27,14 +27,18 @@ replacements = [
         """replace_once('crates/dartscope/src/lib.rs', '\\nDartIndexOptions, analyze_graphql_contracts, analyze_graphql_contracts_with_options,\\nanalyze_part_links, build_uri_graph, build_uri_graph_with_options,\\n', '\\nDartIndexOptions, analyze_graphql_contracts, analyze_graphql_contracts_with_options,\\nanalyze_part_links, build_uri_graph, build_uri_graph_with_options,\\nresolve_identifier_references, resolve_identifier_references_with_options,\\nresolve_project_identifier_references, resolve_project_identifier_references_with_options,\\nresolve_symbol, resolve_symbol_with_options,\\n')""",
         """replace_once('crates/dartscope/src/lib.rs', '\\n    DartIndexOptions, analyze_graphql_contracts, analyze_graphql_contracts_with_options,\\n    analyze_part_links, build_uri_graph, build_uri_graph_with_options,\\n', '\\n    DartIndexOptions, analyze_graphql_contracts, analyze_graphql_contracts_with_options,\\n    analyze_part_links, build_uri_graph, build_uri_graph_with_options,\\n    resolve_identifier_references, resolve_identifier_references_with_options,\\n    resolve_project_identifier_references, resolve_project_identifier_references_with_options,\\n    resolve_symbol, resolve_symbol_with_options,\\n')""",
     ),
+    (
+        """replace_once('README.md', '\\n- `dartscope-index` performs project-level linking over normalized analysis results. It resolves\\n  top-level Dart declarations through library namespaces and links GraphQL operation uses\\n  conservatively while comparing operation, client-call, and variable contracts without depending\\n  on parser internals.\\n', '\\n- `dartscope-index` performs project-level linking over normalized analysis results. It resolves\\n  top-level Dart declarations through library namespaces, batch-resolves opt-in conservative\\n  invocation-target references, and links GraphQL operation uses while comparing operation,\\n  client-call, and variable contracts without depending on parser internals.\\n')""",
+        """replace_once('README.md', '\\n- `dartscope-index` performs project-level linking over normalized analysis results. A shared\\n  namespace engine resolves top-level Dart declarations and GraphQL operation constants through\\n  same-library, import, re-export, combinator, privacy, part, and conditional-environment semantics;\\n  GraphQL linking also compares operation, client-call, and variable contracts without parser internals.\\n', '\\n- `dartscope-index` performs project-level linking over normalized analysis results. A shared\\n  namespace engine resolves top-level Dart declarations, batch-resolves opt-in conservative\\n  invocation-target references, and links GraphQL operation constants through same-library, import,\\n  re-export, combinator, privacy, part, and conditional-environment semantics; GraphQL linking also\\n  compares operation, client-call, and variable contracts without parser internals.\\n')""",
+    ),
 ]
 for old, new in replacements:
     if text.count(old) != 1:
-        raise SystemExit('expected one umbrella anchor repair')
+        raise SystemExit('expected one anchor repair')
     text = text.replace(old, new)
 
 fixed = text.encode('utf-8')
-if hashlib.sha256(fixed).hexdigest() != 'd8a3d1cff2bc58a95415f91a705a3000f942ef88a7246f72e4e89839aae982ca':
+if hashlib.sha256(fixed).hexdigest() != 'cc6deac3f6ca725e9741e15bcae311224239b8df9705c85dec61dc79d389163d':
     raise SystemExit('fixed patch checksum mismatch')
 
 exec(compile(fixed, '.dartscope-index004-references-payload.py', 'exec'))
