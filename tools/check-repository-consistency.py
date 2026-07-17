@@ -7,14 +7,17 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_PACKAGES = 9
+EXPECTED_WORKFLOWS = {"ci.yml", "release.yml"}
 STALE_PLAN_FRAGMENTS = (
     "Baseline reviewed on 2026-07-16.",
     "Rust workspace and eight crates",
     "Lint/rule engine | planned | crate not created",
+    "### DS-CI-003: Immutable Actions And CI Supply Chain\n\nStatus: ready.",
 )
 
 
@@ -24,7 +27,6 @@ def run(*args: str) -> str:
 
 def main() -> None:
     failures: list[str] = []
-    warnings: list[str] = []
 
     metadata = json.loads(
         run("cargo", "metadata", "--locked", "--no-deps", "--format-version", "1")
@@ -50,9 +52,39 @@ def main() -> None:
         if fragment in plan:
             failures.append(f"roadmap contains stale text: {fragment!r}")
 
+    workflows = {
+        path.name
+        for path in (ROOT / ".github/workflows").iterdir()
+        if path.suffix in {".yml", ".yaml"}
+    }
+    if workflows != EXPECTED_WORKFLOWS:
+        failures.append(
+            f"permanent workflow inventory changed: actual={sorted(workflows)}, "
+            f"expected={sorted(EXPECTED_WORKFLOWS)}"
+        )
+
     release_workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     if "run: bash tools/publish-crates.sh" not in release_workflow:
         failures.append("release workflow must invoke publish-crates.sh through Bash")
+    for workflow_name in EXPECTED_WORKFLOWS:
+        workflow = (ROOT / ".github/workflows" / workflow_name).read_text(encoding="utf-8")
+        if "python3 tools/check-workflow-policy.py" not in workflow:
+            failures.append(f"{workflow_name} must enforce the workflow policy")
+        if "github.com/rhysd/actionlint/cmd/actionlint@v1.7.12" not in workflow:
+            failures.append(f"{workflow_name} must run pinned actionlint v1.7.12")
+
+    policy = subprocess.run(
+        [sys.executable, "tools/check-workflow-policy.py"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if policy.returncode != 0:
+        failures.append(
+            "workflow policy failed:\n"
+            + (policy.stdout + policy.stderr).strip()
+        )
 
     publish_mode = run("git", "ls-files", "--stage", "tools/publish-crates.sh").split()[0]
     if publish_mode != "100755":
@@ -74,37 +106,6 @@ def main() -> None:
                 f"release-state mismatch for {version}: heading={released_heading}, tag={tag_exists}"
             )
 
-    mutable_actions: list[str] = []
-    ignored_workflows = {
-        "audit-report.yml",
-        "audit-roadmap-finalize.yml",
-        "full-repository-audit.yml",
-        "publish-mode-probe.yml",
-        "repository-audit-observable.yml",
-    }
-    for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
-        if workflow.name in ignored_workflows:
-            continue
-        for line_number, line in enumerate(workflow.read_text(encoding="utf-8").splitlines(), 1):
-            text = line.strip()
-            normalized = text[2:].strip() if text.startswith("- ") else text
-            if not normalized.startswith("uses:") or "@" not in normalized:
-                continue
-            reference = normalized.rsplit("@", 1)[1].split()[0]
-            if len(reference) != 40 or any(
-                character not in "0123456789abcdefABCDEF" for character in reference
-            ):
-                mutable_actions.append(f"{workflow.relative_to(ROOT)}:{line_number}: {text}")
-    if mutable_actions:
-        warnings.append(
-            "mutable third-party Action references remain for DS-CI-003:\n  "
-            + "\n  ".join(mutable_actions)
-        )
-        if os.environ.get("DARTSCOPE_REQUIRE_PINNED_ACTIONS") == "1":
-            failures.append("permanent workflows contain mutable Action references")
-
-    for warning in warnings:
-        print(f"warning: {warning}")
     if failures:
         raise SystemExit("repository consistency failed:\n- " + "\n- ".join(failures))
     print("repository consistency passed")
