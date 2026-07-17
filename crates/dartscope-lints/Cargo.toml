@@ -1,0 +1,17 @@
+[package]
+name = "dartscope-lints"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Optional deterministic lint rules for normalized DartScope analysis"
+
+[dependencies]
+dartscope-core.workspace = true
+dartscope-index.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+dartscope-parse.workspace = true
+serde_json.workspace = true

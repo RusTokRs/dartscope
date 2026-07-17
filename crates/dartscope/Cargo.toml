@@ -12,6 +12,7 @@ default = ["parse", "resolve", "index", "json"]
 parse = ["dep:dartscope-parse"]
 resolve = ["dep:dartscope-resolve"]
 index = ["dep:dartscope-index"]
+lints = ["dep:dartscope-lints"]
 json = ["dep:dartscope-json"]
 flutter = ["dep:dartscope-flutter"]
 
@@ -20,5 +21,6 @@ dartscope-core.workspace = true
 dartscope-parse = { workspace = true, optional = true }
 dartscope-resolve = { workspace = true, optional = true }
 dartscope-index = { workspace = true, optional = true }
+dartscope-lints = { workspace = true, optional = true }
 dartscope-flutter = { workspace = true, optional = true }
 dartscope-json = { workspace = true, optional = true }

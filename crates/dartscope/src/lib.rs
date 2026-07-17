@@ -25,6 +25,9 @@ pub use dartscope_index::{
     resolve_symbol, resolve_symbol_with_options,
 };
 
+#[cfg(feature = "lints")]
+pub use dartscope_lints::*;
+
 #[cfg(feature = "json")]
 pub use dartscope_json::{
     JsonContract, VersionedJsonEnvelope, to_json, to_json_contract, to_json_contract_pretty,

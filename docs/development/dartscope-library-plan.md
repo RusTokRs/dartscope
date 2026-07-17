@@ -638,12 +638,26 @@ See `docs/development/symbol-resolution.md`.
 
 ### DS-LINT-001: Optional Rule Engine
 
-Status: planned. Priority: P3. Prerequisite: DS-INDEX-004.
+Status: verified. Priority: P3. Prerequisite: DS-INDEX-004.
 
-Create `dartscope-lints` with rule IDs, severity, configuration, deterministic execution,
-and diagnostics over normalized project analysis. First rules: forbidden imports,
-package/layer boundaries, naming, unresolved parts, and orphan files. Rules must not
-parse source directly.
+Implemented (2026-07-17):
+
+1. Added optional `dartscope-lints` with stable serialized rule IDs, explicit enablement,
+   severity overrides, deterministic execution, summaries, spans, and related-path evidence.
+2. Added configured exact/prefix forbidden-import rules and resolved internal layer-boundary rules.
+3. Added conservative file/top-level declaration naming rules over normalized paths and declarations.
+4. Added unresolved-part diagnostics backed by `dartscope-index` part-link outcomes.
+5. Added explicit-entry-point orphan detection over resolved import/export/part reachability.
+6. Kept all rules source-free and filesystem-free; existing seven CLI JSON v1 contracts are unchanged.
+
+Verification:
+
+- focused fixtures cover disabled defaults, severity overrides, forbidden imports, resolved layer
+  targets, naming, unresolved parts, explicit orphan roots, deterministic ordering, and stable IDs;
+- exact Rust 1.95 formatting, focused tests, workspace Clippy, rustdoc, workspace tests, and umbrella
+  feature composition pass before finalization.
+
+See `docs/development/lint-rules.md`.
 
 ### DS-RELEASE-001: Publishable 0.1 Release
 
@@ -683,7 +697,7 @@ Research exit:
 
 Status: verified.
 
-Eight crates, MIT license, root README, fixtures, formatting, tests, clippy, lockfile,
+Nine crates, MIT license, root README, fixtures, formatting, tests, clippy, lockfile,
 Linux quality CI, Linux/Windows test CI, contribution guide, agent entrypoint, and
 reference strategy exist. The repository builds independently and has no Athanor
 dependency. The workspace MSRV is Rust 1.95, the exact Rust 1.95.0 toolchain is pinned,

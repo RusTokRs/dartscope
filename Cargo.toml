@@ -5,6 +5,7 @@ members = [
     "crates/dartscope-core",
     "crates/dartscope-parse",
     "crates/dartscope-index",
+    "crates/dartscope-lints",
     "crates/dartscope-resolve",
     "crates/dartscope-flutter",
     "crates/dartscope-json",
@@ -23,6 +24,7 @@ description = "Rust toolkit for Dart and Flutter code intelligence"
 dartscope-core = { path = "crates/dartscope-core" }
 dartscope-parse = { path = "crates/dartscope-parse" }
 dartscope-index = { path = "crates/dartscope-index" }
+dartscope-lints = { path = "crates/dartscope-lints" }
 dartscope-resolve = { path = "crates/dartscope-resolve" }
 dartscope-flutter = { path = "crates/dartscope-flutter" }
 dartscope-json = { path = "crates/dartscope-json" }

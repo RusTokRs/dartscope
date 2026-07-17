@@ -21,6 +21,9 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
   invocation-target references, and links GraphQL operation constants through same-library, import,
   re-export, combinator, privacy, part, and conditional-environment semantics; GraphQL linking also
   compares operation, client-call, and variable contracts without parser internals.
+- `dartscope-lints` is an optional deterministic rule engine over normalized project and index facts.
+  It provides stable rule IDs, explicit configuration, severity overrides, and evidence-bearing
+  diagnostics without reading source files or invoking Dart tooling.
 - `dartscope-resolve` parses official package configuration v2 inputs and owns package
   and URI resolution primitives without performing filesystem I/O.
 - `dartscope-flutter` derives widget, official application-route, named-navigation, theme, asset,
@@ -85,7 +88,9 @@ See [`docs/development/flutter-boundary.md`](docs/development/flutter-boundary.m
 [`docs/development/flutter-themes.md`](docs/development/flutter-themes.md), and
 [`docs/development/flutter-ecosystem-conventions.md`](docs/development/flutter-ecosystem-conventions.md).
 General declaration queries are documented in
-[`docs/development/symbol-resolution.md`](docs/development/symbol-resolution.md).
+[`docs/development/symbol-resolution.md`](docs/development/symbol-resolution.md). Optional lint
+configuration and built-in rules are documented in
+[`docs/development/lint-rules.md`](docs/development/lint-rules.md).
 
 ## Rust Toolchain
 

@@ -16,6 +16,7 @@ dependencies = [
  "dartscope-flutter",
  "dartscope-index",
  "dartscope-json",
+ "dartscope-lints",
  "dartscope-parse",
  "dartscope-resolve",
 ]
@@ -54,6 +55,17 @@ dependencies = [
  "dartscope-core",
  "dartscope-parse",
  "dartscope-resolve",
+ "serde_json",
+]
+
+[[package]]
+name = "dartscope-lints"
+version = "0.1.0"
+dependencies = [
+ "dartscope-core",
+ "dartscope-index",
+ "dartscope-parse",
+ "serde",
  "serde_json",
 ]
 
