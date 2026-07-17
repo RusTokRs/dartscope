@@ -87,7 +87,6 @@ jobs:
           import subprocess
           import tomllib
 
-          root = Path('.')
           findings = []
           metadata = json.loads(subprocess.check_output([
               'cargo', 'metadata', '--locked', '--no-deps', '--format-version', '1'
@@ -102,8 +101,7 @@ jobs:
           if set(packages) != set(release_order):
               findings.append('workspace packages and release order differ')
 
-          plan_path = Path('docs/development/dartscope-library-plan.md')
-          plan = plan_path.read_text(encoding='utf-8')
+          plan = Path('docs/development/dartscope-library-plan.md').read_text(encoding='utf-8')
           stale_fragments = {
               'Rust workspace and eight crates': 'workspace now has nine crates',
               'Lint/rule engine | planned | crate not created': 'lint engine is verified',
@@ -138,8 +136,7 @@ jobs:
               print('MUTABLE_ACTION_REFERENCES')
               print('\n'.join(mutable_actions))
 
-          baseline = 'Baseline reviewed on 2026-07-16.'
-          if baseline in plan:
+          if 'Baseline reviewed on 2026-07-16.' in plan:
               findings.append('roadmap baseline review date predates the completed 0.1 audit')
 
           print('AUDIT_FINDINGS_BEGIN')
@@ -167,3 +164,5 @@ jobs:
       - name: Unused dependency audit
         continue-on-error: true
         run: cargo machete
+
+# audit trigger 1
