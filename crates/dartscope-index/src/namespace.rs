@@ -335,6 +335,15 @@ pub fn resolve_symbol_with_options(
     query: DartSymbolQuery,
     options: &DartIndexOptions,
 ) -> DartSymbolResolution {
+    let resolver = NamespaceResolver::new(project, options);
+    resolve_symbol_with_resolver(project, query, &resolver)
+}
+
+pub(crate) fn resolve_symbol_with_resolver(
+    project: &DartProjectAnalysis,
+    query: DartSymbolQuery,
+    resolver: &NamespaceResolver<'_, '_>,
+) -> DartSymbolResolution {
     let declarations = collect_declarations(project, query.name.as_str());
     let candidates: Vec<_> = declarations
         .iter()
@@ -343,7 +352,6 @@ pub fn resolve_symbol_with_options(
             byte_start: location.declaration.span.byte_start,
         })
         .collect();
-    let resolver = NamespaceResolver::new(project, options);
     let resolution = resolver.resolve(
         query.source_path.as_str(),
         query.name.as_str(),

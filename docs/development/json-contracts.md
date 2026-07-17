@@ -90,3 +90,10 @@ empty or absent.
 `DartDiagnostic` also accepts an optional confidence value. Existing diagnostics omit it; new
 Flutter catalog diagnostics use it to distinguish exact literal mismatches from partial-input or
 dynamic-use uncertainty. No existing field was removed, renamed, or assigned new span semantics.
+
+## Opt-in reference analysis outside command v1 payloads
+
+Identifier-reference wrappers and batch namespace-resolution results are library APIs rather than new
+fields on `dartscope.file-analysis` v1 or `dartscope.project-analysis` v1. Existing CLI envelopes and
+golden fixtures therefore remain unchanged. A future command-facing reference contract must receive
+its own registered schema name and golden fixture before release.

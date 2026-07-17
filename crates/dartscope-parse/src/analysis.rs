@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use dartscope_core::{
-    DartDiagnostic, DartFileAnalysis, DartFileInput, DartLibraryDirective, DartPart, DartPartOf,
-    DartProjectAnalysis, DartProjectInput, DartProjectSummary, SourceSpan, normalize_path,
+    DartDiagnostic, DartFileAnalysis, DartFileInput, DartFileReferenceAnalysis,
+    DartLibraryDirective, DartPart, DartPartOf, DartProjectAnalysis, DartProjectInput,
+    DartProjectReferenceAnalysis, DartProjectSummary, SourceSpan, normalize_path,
 };
 use dartscope_resolve::parse_package_config;
 
@@ -11,6 +14,7 @@ use crate::declarations::{
     string_constant_from_line,
 };
 use crate::graphql::{extract_graphql_operation_uses, extract_graphql_operations};
+use crate::identifier_references::{collect_identifier_references, sort_identifier_references};
 use crate::invocations::collect_invocations;
 use crate::lexical::mask_non_code;
 use crate::namespace::{directive_uri, extract_namespace_directives};
@@ -244,4 +248,36 @@ pub fn analyze_file(input: DartFileInput) -> DartFileAnalysis {
 
 pub fn analyze_project(input: DartProjectInput) -> DartProjectAnalysis {
     analyze_project_with_backend(&HeuristicDartParser, input)
+}
+
+/// Analyzes one file and opt-in conservative invocation-target references.
+pub fn analyze_file_with_references(input: DartFileInput) -> DartFileReferenceAnalysis {
+    let source = input.source.clone();
+    let file = analyze_file(input);
+    let lexical = mask_non_code(&source);
+    let references = collect_identifier_references(&source, &lexical.code, &file);
+    DartFileReferenceAnalysis { file, references }
+}
+
+/// Analyzes a project and opt-in conservative invocation-target references.
+pub fn analyze_project_with_references(input: DartProjectInput) -> DartProjectReferenceAnalysis {
+    let sources: HashMap<_, _> = input
+        .files
+        .iter()
+        .map(|file| (normalize_path(file.path.clone()), file.source.clone()))
+        .collect();
+    let project = analyze_project(input);
+    let mut references = Vec::new();
+    for file in &project.files {
+        let Some(source) = sources.get(&file.path) else {
+            continue;
+        };
+        let lexical = mask_non_code(source);
+        references.extend(collect_identifier_references(source, &lexical.code, file));
+    }
+    sort_identifier_references(&mut references);
+    DartProjectReferenceAnalysis {
+        project,
+        references,
+    }
 }

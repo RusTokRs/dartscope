@@ -5,6 +5,7 @@ mod backend;
 mod declaration_inventory;
 mod declarations;
 mod graphql;
+mod identifier_references;
 mod invocations;
 mod lexical;
 mod namespace;
@@ -26,7 +27,9 @@ mod pubspec_yaml_marked_dependencies;
 mod pubspec_yaml_subset;
 mod source_lines;
 
-pub use analysis::{analyze_file, analyze_project};
+pub use analysis::{
+    analyze_file, analyze_file_with_references, analyze_project, analyze_project_with_references,
+};
 pub use backend::{
     DartLanguageVersionCoverage, DartParser, DartParserCapability, DartParserCapabilityStatus,
     DartParserCapabilitySupport, DartParserMetadata, HeuristicDartParser,

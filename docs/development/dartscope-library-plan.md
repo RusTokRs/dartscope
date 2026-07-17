@@ -616,7 +616,7 @@ See `docs/development/flutter-ecosystem-conventions.md`.
 
 ### DS-INDEX-004: General Symbol And Namespace Resolution
 
-Status: in_progress. Priority: P2. Prerequisite: DS-PARSE-006.
+Status: verified. Priority: P2. Prerequisite: DS-PARSE-006.
 
 Generalize the proven import/export/part visibility machinery beyond GraphQL constants.
 Resolve declarations with prefixes, combinators, privacy, re-exports, parts, and
@@ -630,8 +630,9 @@ Progress (2026-07-17):
 - [x] Move GraphQL constant visibility onto the shared namespace engine without changing its public
   contract or fixtures; conditional-environment characterization now covers both public symbol queries
   and GraphQL operation linking.
-- [ ] Add batch/reference-oriented consumers once identifier-use facts are available without raw
-  source parsing in the index crate.
+- [x] Add opt-in conservative invocation-target reference facts with exact spans and confidence,
+  plus deterministic batch resolution that reuses one namespace context without raw source parsing
+  in the index crate.
 
 See `docs/development/symbol-resolution.md`.
 

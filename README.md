@@ -17,9 +17,10 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
   scalar, SDK, path, git, hosted, and workspace sources, and embeds Flutter assets, flavors,
   platforms, ordered asset transformers, fonts, and localization-generation settings.
 - `dartscope-index` performs project-level linking over normalized analysis results. A shared
-  namespace engine resolves top-level Dart declarations and GraphQL operation constants through
-  same-library, import, re-export, combinator, privacy, part, and conditional-environment semantics;
-  GraphQL linking also compares operation, client-call, and variable contracts without parser internals.
+  namespace engine resolves top-level Dart declarations, batch-resolves opt-in conservative
+  invocation-target references, and links GraphQL operation constants through same-library, import,
+  re-export, combinator, privacy, part, and conditional-environment semantics; GraphQL linking also
+  compares operation, client-call, and variable contracts without parser internals.
 - `dartscope-resolve` parses official package configuration v2 inputs and owns package
   and URI resolution primitives without performing filesystem I/O.
 - `dartscope-flutter` derives widget, official application-route, named-navigation, theme, asset,

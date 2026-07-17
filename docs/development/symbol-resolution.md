@@ -8,11 +8,10 @@ status: active
 
 # General Symbol And Namespace Resolution
 
-`dartscope-index` exposes a query API for resolving top-level Dart declarations through normalized
-library namespaces. The resolver consumes `DartProjectAnalysis`; it performs no source parsing and no
-filesystem I/O.
+`dartscope-index` resolves top-level Dart declarations through normalized library namespaces. The
+resolver consumes `DartProjectAnalysis`; it performs no source parsing and no filesystem I/O.
 
-## Public API
+## Public Query API
 
 - `resolve_symbol(&DartProjectAnalysis, DartSymbolQuery)` uses the default index options.
 - `resolve_symbol_with_options(...)` accepts a `DartIndexOptions` compilation environment for
@@ -21,6 +20,29 @@ filesystem I/O.
 
 Each result has an explicit status and retains deterministic declaration candidates with source path,
 complete declaration span when available, declaration kind, symbol ID, and resolution basis.
+
+## Opt-In Reference Analysis
+
+`dartscope-parse` also exposes `analyze_file_with_references` and
+`analyze_project_with_references`. These return the normal analysis plus conservative
+`DartIdentifierReference` facts. The first bounded model records invocation-target roots only:
+
+- an exact import prefix plus invoked declaration name, with high confidence;
+- an unqualified invocation root, with medium confidence;
+- exact identifier span and optional enclosing symbol ID.
+
+Comments, strings, declaration-header calls, member tails, and duplicate roots from a chained
+invocation are not emitted. The model intentionally does not claim every identifier token is a
+semantic reference.
+
+`dartscope-index` resolves these facts in one reusable namespace context through:
+
+- `resolve_identifier_references`;
+- `resolve_identifier_references_with_options`;
+- `resolve_project_identifier_references`;
+- `resolve_project_identifier_references_with_options`.
+
+The batch API consumes normalized facts and never reads source text.
 
 ## Resolution Order
 
@@ -36,7 +58,7 @@ Matched part files share their owner's import namespace.
 
 ## Explicit Outcomes
 
-The first slice distinguishes:
+The resolver distinguishes:
 
 - `resolved`;
 - `missing`;
@@ -52,12 +74,19 @@ The GraphQL contract analyzer uses the same internal namespace engine for operat
 visibility while retaining its existing public binding, unresolved-reason, candidate-path, and
 ordering contracts.
 
+## JSON Compatibility
+
+Reference wrappers and batch-resolution models are opt-in library APIs. The seven command-facing v1
+JSON payloads continue to serialize the existing `DartFileAnalysis` and `DartProjectAnalysis`
+models, so this slice does not add fields to their stable envelopes or require golden changes.
+
 ## Current Boundary
 
-The API resolves top-level declarations already present in `DartFileAnalysis`. It does not yet:
+The current reference producer does not yet:
 
-- discover identifier-use sites from arbitrary expressions;
-- resolve members, constructors, extension lookup, types, or overload-like language behavior;
-- resolve declarations from external packages that are absent from the loaded project index.
+- discover arbitrary variable reads, assignments, type annotations, or pattern references;
+- resolve members, constructors as members, extension lookup, types, or overload-like behavior;
+- resolve declarations from external packages absent from the loaded project index;
+- model lexical shadowing beyond the conservative invocation-target confidence boundary.
 
-These limits keep the first public contract deterministic and evidence-based.
+These limits keep the first batch contract deterministic and evidence-based.

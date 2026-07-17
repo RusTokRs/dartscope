@@ -8,9 +8,9 @@ pub use dartscope_parse::{
     PubspecConfigurationAnalysis, PubspecDependencySource, PubspecDependencySourceExt,
     PubspecDependencySourceField, PubspecEnvironmentConstraint, PubspecFlutterAsset,
     PubspecFlutterAssetConfiguration, PubspecFlutterAssetTransformer, PubspecFlutterConfiguration,
-    PubspecFlutterFont, PubspecFlutterFontFamily, analyze_file, analyze_project,
-    analyze_project_with_parser, parse_normalized_dependency_source, parse_pubspec,
-    parse_pubspec_configuration,
+    PubspecFlutterFont, PubspecFlutterFontFamily, analyze_file, analyze_file_with_references,
+    analyze_project, analyze_project_with_parser, analyze_project_with_references,
+    parse_normalized_dependency_source, parse_pubspec, parse_pubspec_configuration,
 };
 
 #[cfg(feature = "resolve")]
@@ -20,6 +20,9 @@ pub use dartscope_resolve::{PackageUriResolutionError, parse_package_config, res
 pub use dartscope_index::{
     DartIndexOptions, analyze_graphql_contracts, analyze_graphql_contracts_with_options,
     analyze_part_links, build_uri_graph, build_uri_graph_with_options,
+    resolve_identifier_references, resolve_identifier_references_with_options,
+    resolve_project_identifier_references, resolve_project_identifier_references_with_options,
+    resolve_symbol, resolve_symbol_with_options,
 };
 
 #[cfg(feature = "json")]

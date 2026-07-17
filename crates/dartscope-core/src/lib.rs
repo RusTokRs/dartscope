@@ -132,6 +132,40 @@ pub struct DartProjectAnalysis {
     pub diagnostics: Vec<DartDiagnostic>,
 }
 
+/// Opt-in file analysis paired with conservative identifier-reference facts.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartFileReferenceAnalysis {
+    pub file: DartFileAnalysis,
+    pub references: Vec<DartIdentifierReference>,
+}
+
+/// Opt-in project analysis paired with conservative identifier-reference facts.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartProjectReferenceAnalysis {
+    pub project: DartProjectAnalysis,
+    pub references: Vec<DartIdentifierReference>,
+}
+
+/// One syntactically bounded identifier reference discovered by a parser backend.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartIdentifierReference {
+    pub source_path: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<String>,
+    pub kind: DartIdentifierReferenceKind,
+    pub confidence: Confidence,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enclosing_symbol_id: Option<String>,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartIdentifierReferenceKind {
+    InvocationTarget,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub struct DartProjectSummary {
     pub dart_files: usize,
@@ -507,6 +541,20 @@ pub enum DartSymbolResolutionBasis {
     DirectImport,
     ReExport,
     NotVisible,
+}
+
+/// Batch result for conservative identifier references.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
+pub struct DartIdentifierReferenceResolutionAnalysis {
+    pub resolutions: Vec<DartIdentifierReferenceResolution>,
+}
+
+/// Namespace-resolution result for one parser-produced identifier reference.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartIdentifierReferenceResolution {
+    pub reference: DartIdentifierReference,
+    pub status: DartSymbolResolutionStatus,
+    pub candidates: Vec<DartSymbolCandidate>,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
