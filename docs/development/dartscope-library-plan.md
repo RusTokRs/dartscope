@@ -581,7 +581,7 @@ See `docs/development/flutter-catalogs.md`.
 
 ### DS-FLUTTER-004: Routes, Themes, And State Conventions
 
-Status: in_progress. Priority: P2. Prerequisite: DS-FLUTTER-002.
+Status: verified. Priority: P2. Prerequisite: DS-FLUTTER-002.
 
 Required work:
 
@@ -602,7 +602,8 @@ Progress (2026-07-17):
   restorable variants, with constant resolution and source spans.
 - [x] Normalize official `ThemeData` construction and `MaterialApp`/`Theme`/`AnimatedTheme`
   application facts through a deterministic parser-independent API with source spans.
-- [ ] Define versioned opt-in `go_router` and state-management support metadata and fixtures.
+- [x] Define versioned opt-in `go_router`, `provider`, `flutter_riverpod`, and `flutter_bloc`
+  support metadata, package/version evidence, activation statuses, and positive/negative fixtures.
 
 Acceptance:
 
@@ -610,6 +611,8 @@ Acceptance:
 - ecosystem conventions expose support-version metadata and confidence;
 - disabling the Flutter feature removes all new convention code;
 - existing inventory ordering and JSON compatibility remain stable.
+
+See `docs/development/flutter-ecosystem-conventions.md`.
 
 ### DS-INDEX-004: General Symbol And Namespace Resolution
 

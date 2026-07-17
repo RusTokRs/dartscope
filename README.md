@@ -22,7 +22,8 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
 - `dartscope-resolve` parses official package configuration v2 inputs and owns package
   and URI resolution primitives without performing filesystem I/O.
 - `dartscope-flutter` derives widget, official application-route, named-navigation, theme, asset,
-  and localization conventions from generic imports, declarations, and invocations, aggregates
+  localization, and version-gated opt-in ecosystem conventions from generic imports, declarations,
+  invocations, and pubspec dependency evidence, and aggregates
   project-level inventory, links direct asset
   uses to pubspec declarations, and validates generated-localization uses against explicit
   `l10n.yaml` and ARB inputs. It is optional for pure Dart consumers and performs no I/O.
@@ -75,9 +76,12 @@ straight from a pure project analysis. `extract_flutter_inventory_with_catalogs`
 `l10n.yaml` and ARB inputs and adds package-aware declaration/catalog links plus confidence-bearing
 diagnostics. `derive_flutter_theme_facts` and `extract_flutter_theme_facts` expose official
 Material theme construction and application facts without changing the v1 inventory JSON shape.
+`flutter_ecosystem_support_table` and `analyze_flutter_ecosystem` expose explicit package/version
+evidence and opt-in conventions for the supported `go_router`, Provider, Riverpod, and BLoC ranges.
 See [`docs/development/flutter-boundary.md`](docs/development/flutter-boundary.md),
-[`docs/development/flutter-catalogs.md`](docs/development/flutter-catalogs.md), and
-[`docs/development/flutter-themes.md`](docs/development/flutter-themes.md).
+[`docs/development/flutter-catalogs.md`](docs/development/flutter-catalogs.md),
+[`docs/development/flutter-themes.md`](docs/development/flutter-themes.md), and
+[`docs/development/flutter-ecosystem-conventions.md`](docs/development/flutter-ecosystem-conventions.md).
 
 ## Rust Toolchain
 

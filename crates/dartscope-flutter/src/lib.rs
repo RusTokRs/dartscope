@@ -21,6 +21,7 @@
 
 mod catalogs;
 mod conventions;
+mod ecosystem;
 mod themes;
 
 pub use catalogs::{
@@ -30,6 +31,13 @@ pub use catalogs::{
 };
 pub use conventions::{
     derive_flutter_file_hints, populate_flutter_file_hints, populate_flutter_project_analysis,
+};
+pub use ecosystem::{
+    FlutterEcosystemAnalysis, FlutterEcosystemConvention, FlutterEcosystemConventionAnalysis,
+    FlutterEcosystemConventionStatus, FlutterEcosystemFinding, FlutterEcosystemFindingKind,
+    FlutterEcosystemSupportEntry, FlutterEcosystemSupportTable,
+    FlutterEcosystemSupportTableVersion, FlutterPackageEvidence, analyze_flutter_ecosystem,
+    flutter_ecosystem_support_table,
 };
 pub use themes::{
     FlutterThemeApplication, FlutterThemeApplicationKind, FlutterThemeConstruction,
