@@ -3,11 +3,11 @@ import base64
 import gzip
 import hashlib
 
-parts = sorted(Path(".dartscope-lint001").glob("part-*.txt"))
-if len(parts) != 6:
-    raise SystemExit(f"expected 6 payload parts, found {len(parts)}")
+chunks = sorted(Path(".dartscope-lint001").glob("chunk-*.txt"))
+if len(chunks) != 20:
+    raise SystemExit(f"expected 20 payload chunks, found {len(chunks)}")
 
-encoded = "".join(part.read_text(encoding="utf-8").strip() for part in parts)
+encoded = "".join(chunk.read_text(encoding="utf-8").strip() for chunk in chunks)
 if len(encoded) != 14000:
     raise SystemExit(f"unexpected encoded payload length: {len(encoded)}")
 if hashlib.sha256(encoded.encode("ascii")).hexdigest() != "2f993dedb36f21262973dba5f61187fb41533f8364cd18d528051ffe930965e3":
