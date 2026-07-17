@@ -1,0 +1,84 @@
+name: Flutter 004 ecosystem conventions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/flutter004-ecosystem.yml
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: flutter004-ecosystem-conventions
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply ecosystem convention slice
+        run: python .github/scripts/apply_flutter004_ecosystem.py
+
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+
+      - name: Normalize formatting
+        run: cargo fmt --all
+
+      - name: Run focused ecosystem tests
+        run: cargo test -p dartscope-flutter --test ecosystem_conventions --locked --quiet
+
+      - name: Run Flutter crate tests
+        run: cargo test -p dartscope-flutter --locked --quiet
+
+      - name: Run workspace Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Build documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --locked
+
+      - name: Run workspace tests
+        run: cargo test --workspace --locked --quiet
+
+      - name: Test umbrella composition
+        run: cargo test -p dartscope --all-features --locked --quiet
+
+      - name: Commit verified ecosystem support
+        run: |
+          rm .github/scripts/apply_flutter004_ecosystem.py
+          rm .github/workflows/flutter004-ecosystem.yml
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat: add versioned Flutter ecosystem conventions"
+          git push origin HEAD:main
+          echo "FINAL_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Publish finalization status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
+            const sha = process.env.FINAL_SHA || context.sha;
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha,
+              state,
+              context: 'dartscope/flutter004-ecosystem-finalization',
+              description: `Flutter 004 ecosystem finalization: ${{ job.status }}`,
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
