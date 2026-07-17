@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: full-repository-audit-${{ github.ref }}
@@ -64,7 +65,16 @@ jobs:
   repository-audit:
     name: Repository and release audit
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AUDIT_CONTEXT: dartscope/full-repository-audit
     steps:
+      - name: Publish pending audit status
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=pending \
+            -f context="${AUDIT_CONTEXT}" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -164,5 +174,12 @@ jobs:
       - name: Unused dependency audit
         continue-on-error: true
         run: cargo machete
+      - name: Publish completed audit status
+        if: always()
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=success \
+            -f context="${AUDIT_CONTEXT}" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
-# audit trigger 1
+# audit trigger 2
