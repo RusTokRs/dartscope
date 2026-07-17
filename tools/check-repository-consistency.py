@@ -86,6 +86,17 @@ def main() -> None:
             + (policy.stdout + policy.stderr).strip()
         )
 
+    tracked_python_artifacts = [
+        path
+        for path in run("git", "ls-files").splitlines()
+        if "__pycache__/" in path or path.endswith((".pyc", ".pyo", ".pyd"))
+    ]
+    if tracked_python_artifacts:
+        failures.append(
+            "generated Python artifacts are tracked: "
+            + ", ".join(tracked_python_artifacts)
+        )
+
     publish_mode = run("git", "ls-files", "--stage", "tools/publish-crates.sh").split()[0]
     if publish_mode != "100755":
         failures.append(f"tools/publish-crates.sh Git mode is {publish_mode}, expected 100755")
