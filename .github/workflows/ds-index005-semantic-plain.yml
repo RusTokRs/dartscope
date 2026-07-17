@@ -50,6 +50,7 @@ jobs:
             rm -f .github/workflows/ds-index005-semantic-plain.yml tools/ds_index005_semantic_fix.py
             rm -f docs/development/ds-index005-symbol-fix-failure.md
             rm -f docs/development/ds-index005-semantic-fix-failure.md
+            rm -f docs/development/ds-index005-semantic-plain-failure.md
             run_stage "install actionlint" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 || true
           fi
           if [ -z "$FAILED_STAGE" ]; then run_stage "actionlint" "$GOBIN/actionlint" -color || true; fi
@@ -104,3 +105,5 @@ jobs:
           git diff --cached --check
           git commit -m "fix: complete incremental reference invalidation"
           git push origin HEAD:main
+
+# trigger revision 2
