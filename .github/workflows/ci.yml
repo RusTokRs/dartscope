@@ -8,18 +8,44 @@ on:
 
 permissions:
   contents: read
-  statuses: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  workflow_policy:
+    name: Workflow policy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install actionlint 1.7.12
+        env:
+          GOBIN: ${{ runner.temp }}/actionlint-bin
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$GOBIN" >> "$GITHUB_PATH"
+      - name: Lint workflows
+        run: actionlint -color
+      - name: Test workflow policy
+        run: python3 -m unittest discover -s tools/tests -p 'test_*.py' -v
+      - name: Enforce workflow policy
+        run: python3 tools/check-workflow-policy.py
+
   quality:
     name: Quality gates
+    needs: workflow_policy
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
       - name: Check formatting
@@ -32,51 +58,29 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --no-deps --locked
-      - name: Publish quality status
-        if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
-        with:
-          script: |
-            const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.sha,
-              state,
-              context: 'dartscope/quality',
-              description: `Quality gates: ${{ job.status }}`,
-            });
 
   test:
     name: Tests (${{ matrix.os }})
+    needs: workflow_policy
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal
       - name: Run workspace tests
         run: cargo test --workspace --locked --quiet
-      - name: Publish test status
-        if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
-        with:
-          script: |
-            const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.sha,
-              state,
-              context: 'dartscope/tests-${{ matrix.os }}',
-              description: `Workspace tests (${{ matrix.os }}): ${{ job.status }}`,
-            });
 
   edition_2024:
     name: Edition 2024 (${{ matrix.os }} / ${{ matrix.check.name }})
+    needs: workflow_policy
     strategy:
       fail-fast: false
       matrix:
@@ -89,8 +93,12 @@ jobs:
           - name: umbrella-all-features
             command: cargo check -p dartscope --all-features --locked
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal
       - name: Verify workspace edition settings
@@ -100,37 +108,28 @@ jobs:
           grep -Fx 'edition = "2024"' Cargo.toml
       - name: Run edition check
         run: ${{ matrix.check.command }}
-      - name: Publish edition status
-        if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
-        with:
-          script: |
-            const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.sha,
-              state,
-              context: 'dartscope/edition-${{ matrix.os }}-${{ matrix.check.name }}',
-              description: `Edition check (${{ matrix.os }} / ${{ matrix.check.name }}): ${{ job.status }}`,
-            });
 
   report:
     name: Publish aggregate status
-    needs: [quality, test, edition_2024]
-    if: always()
+    needs: [workflow_policy, quality, test, edition_2024]
+    if: always() && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      statuses: write
     steps:
       - name: Publish commit status
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const results = [
+              '${{ needs.workflow_policy.result }}',
               '${{ needs.quality.result }}',
               '${{ needs.test.result }}',
               '${{ needs.edition_2024.result }}',
             ];
+            const attempt = Number('${{ github.run_attempt }}');
             const passed = results.every((result) => result === 'success');
+            const retry = attempt > 1 ? ` on retry attempt ${attempt}` : '';
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -138,6 +137,6 @@ jobs:
               state: passed ? 'success' : 'failure',
               context: 'dartscope/ci',
               description: passed
-                ? 'Rust 1.95 Linux/Windows matrix passed'
-                : `CI jobs finished: ${results.join(', ')}`,
+                ? `Rust 1.95 Linux/Windows matrix passed${retry}`
+                : `CI jobs: ${results.join(', ')}; attempt ${attempt}`,
             });
