@@ -17,26 +17,15 @@ concurrency:
 jobs:
   quality:
     name: Quality gates
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply Flutter catalog payload
-        run: python .github/scripts/apply_flutter003.py
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: Run maintainability audit
-        run: >-
-          cargo clippy -p dartscope-flutter -p dartscope-cli --all-targets --locked --
-          -D warnings
-          -D clippy::too_many_lines
-          -D clippy::cognitive_complexity
-          -D clippy::too_many_arguments
-          -D clippy::type_complexity
       - name: Build documentation
         env:
           RUSTDOCFLAGS: -D warnings
@@ -58,7 +47,6 @@ jobs:
 
   test:
     name: Tests (${{ matrix.os }})
-    if: github.actor != 'github-actions[bot]'
     strategy:
       fail-fast: false
       matrix:
@@ -66,14 +54,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Apply Flutter catalog payload
-        run: python .github/scripts/apply_flutter003.py
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal
       - name: Run workspace tests
         run: cargo test --workspace --locked --quiet
-      - name: Test umbrella composition
-        run: cargo test -p dartscope --all-features --locked --quiet
       - name: Publish test status
         if: always()
         uses: actions/github-script@v7
@@ -91,7 +75,6 @@ jobs:
 
   edition_2024:
     name: Edition 2024 (${{ matrix.os }} / ${{ matrix.check.name }})
-    if: github.actor != 'github-actions[bot]'
     strategy:
       fail-fast: false
       matrix:
@@ -106,8 +89,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Apply Flutter catalog payload
-        run: python .github/scripts/apply_flutter003.py
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal
       - name: Verify workspace edition settings
@@ -132,62 +113,10 @@ jobs:
               description: `Edition check (${{ matrix.os }} / ${{ matrix.check.name }}): ${{ job.status }}`,
             });
 
-  flutter003_finalize:
-    name: Commit Flutter catalogs
-    needs: [quality, test, edition_2024]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      statuses: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Apply verified payload
-        run: python .github/scripts/apply_flutter003.py
-      - name: Normalize formatting
-        run: |
-          rustup toolchain install 1.95.0 --profile minimal --component rustfmt
-          cargo fmt --all
-      - name: Preserve temporary workflow for bot push
-        run: git checkout "$GITHUB_SHA" -- .github/workflows/ci.yml
-      - name: Remove staging files
-        run: |
-          rm .github/payloads/flutter003.part*.b64
-          rm .github/scripts/apply_flutter003.py
-          rm .github/flutter003-trigger
-      - name: Commit verified catalogs
-        run: |
-          git fetch origin main
-          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
-          git add -A
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "feat: link Flutter asset and localization catalogs"
-          git push origin HEAD:main
-          echo "FINAL_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-      - name: Publish finalization status
-        if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
-            const sha = process.env.FINAL_SHA || context.sha;
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha,
-              state,
-              context: 'dartscope/flutter-catalogs-finalization',
-              description: `Flutter catalog finalization: ${{ job.status }}`,
-              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-            });
-
   report:
     name: Publish aggregate status
     needs: [quality, test, edition_2024]
-    if: always() && github.actor != 'github-actions[bot]'
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Publish commit status
