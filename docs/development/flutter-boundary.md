@@ -26,11 +26,17 @@ leave `DartFileAnalysis.flutter` empty and report zero Flutter summary counts.
 - `populate_flutter_project_analysis` writes all file projections and recomputes project summary
   counts;
 - `extract_flutter_inventory` derives a sorted inventory directly from either pure generic facts
-  or an older payload containing only legacy Flutter hints.
+  or an older payload containing only legacy Flutter hints;
+- `extract_flutter_inventory_with_catalogs` additionally links direct asset uses to pubspec
+  declarations and validates generated-localization uses against explicit `l10n.yaml` and ARB
+  inputs.
 
 The umbrella crate exposes `analyze_file_with_flutter` and `analyze_project_with_flutter` when both
 `parse` and `flutter` features are enabled. The CLI intentionally uses these composition APIs for
-`analyze-file` and `analyze-project` so its v1 payload behavior remains compatible.
+`analyze-file` and `analyze-project` so its v1 payload behavior remains compatible. Its
+`flutter-inventory` command also supplies discovered `l10n.yaml` and ARB text to the catalog API.
+The library itself never discovers or reads those files, and non-catalog CLI commands do not
+read them.
 
 ## Compatibility policy
 
@@ -47,3 +53,9 @@ fixtures; this task does not perform that breaking change.
 Disabling the umbrella `flutter` feature removes `dartscope-flutter` and all convention extraction
 code. `dartscope-index` consumes generic analysis only and remains independent from Flutter
 internals. No normal analysis path invokes `dart` or `flutter` processes.
+
+## Catalog boundary
+
+Asset and localization catalogs remain optional Flutter-layer analysis. `dartscope-core` owns the
+shared diagnostic and compatibility types, while YAML/JSON parsing and Flutter semantics stay in
+`dartscope-flutter`. See [`flutter-catalogs.md`](flutter-catalogs.md).

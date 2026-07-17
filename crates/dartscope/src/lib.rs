@@ -30,8 +30,11 @@ pub use dartscope_json::{
 
 #[cfg(feature = "flutter")]
 pub use dartscope_flutter::{
-    FlutterAssetEntry, FlutterInventory, FlutterInventorySummary, FlutterLocalizationEntry,
-    FlutterRouteEntry, FlutterWidgetEntry, extract_flutter_inventory,
+    FlutterArbCatalog, FlutterArbInput, FlutterArbMessage, FlutterAssetDeclarationEntry,
+    FlutterAssetDeclarationKind, FlutterAssetDeclarationRef, FlutterAssetEntry,
+    FlutterCatalogInput, FlutterInventory, FlutterInventorySummary, FlutterL10nConfiguration,
+    FlutterL10nInput, FlutterLocalizationEntry, FlutterRouteEntry, FlutterWidgetEntry,
+    extract_flutter_inventory, extract_flutter_inventory_with_catalogs,
 };
 
 /// Parses one Dart file and explicitly applies optional Flutter convention extraction.

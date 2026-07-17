@@ -22,8 +22,9 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
 - `dartscope-resolve` parses official package configuration v2 inputs and owns package
   and URI resolution primitives without performing filesystem I/O.
 - `dartscope-flutter` derives widget, route, asset, and localization conventions from generic
-  imports, declarations, and invocations, and aggregates project-level inventory. It is optional
-  for pure Dart consumers and does not parse source directly.
+  imports, declarations, and invocations, aggregates project-level inventory, links direct asset
+  uses to pubspec declarations, and validates generated-localization uses against explicit
+  `l10n.yaml` and ARB inputs. It is optional for pure Dart consumers and performs no I/O.
 - `dartscope-json` owns named versioned JSON envelopes and checked-in golden contracts;
   low-level generic Serde helpers remain available but are not stable command schemas.
 - `dartscope-cli` exposes the stable process boundary with help, version output, documented exit
@@ -69,8 +70,10 @@ legacy `DartFileAnalysis.flutter` compatibility projection empty. Applications t
 optional Flutter feature can call `dartscope::analyze_file_with_flutter` or
 `dartscope::analyze_project_with_flutter`; the CLI uses those explicit composition APIs for its
 file/project commands. `dartscope_flutter::extract_flutter_inventory` can also derive inventory
-straight from a pure project analysis. See
-[`docs/development/flutter-boundary.md`](docs/development/flutter-boundary.md).
+straight from a pure project analysis. `extract_flutter_inventory_with_catalogs` accepts in-memory
+`l10n.yaml` and ARB inputs and adds package-aware declaration/catalog links plus confidence-bearing
+diagnostics. See [`docs/development/flutter-boundary.md`](docs/development/flutter-boundary.md) and
+[`docs/development/flutter-catalogs.md`](docs/development/flutter-catalogs.md).
 
 ## Rust Toolchain
 
@@ -112,6 +115,12 @@ widget hints, `GoRoute` hints with `resolved_path` when a route path can be reso
 from same-file string constants, and high-confidence direct Flutter asset/localization
 references such as `Image.asset(...)`, `AssetImage(...)`, `rootBundle.loadString(...)`,
 `DefaultAssetBundle.of(...).loadString(...)`, and `AppLocalizations.of(context)!.key`.
+Only the `flutter-inventory` command additionally discovers regular `l10n.yaml` and `.arb`
+files; other project commands retain their Dart/pubspec-only traversal. The catalog command links
+literal local asset uses to the nearest package pubspec and reports undeclared/unused assets,
+missing localization keys, malformed catalogs, and unresolved generated localization classes.
+Directory asset declarations cover direct children only; dynamic paths remain outside exact
+high-confidence linking.
 Use it as the first real-project feedback loop before adding broader parser or Flutter
 convention support. CLI success writes only JSON to stdout; argument and filesystem errors
 write only to stderr with stable exit codes. See

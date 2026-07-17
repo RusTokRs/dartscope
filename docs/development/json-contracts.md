@@ -65,7 +65,6 @@ Golden tests run on the standard Linux and Windows matrix.
 - Initial release: `dartscope.uri-graph` v1.
 - Initial release: `dartscope.flutter-inventory` v1.
 
-
 ## Additive v1 migration: generic invocations and optional Flutter composition
 
 `dartscope.file-analysis` v1 and `dartscope.project-analysis` v1 now include an optional
@@ -78,3 +77,16 @@ The existing `flutter` field remains in `DartFileAnalysis` for v1 compatibility.
 the CLI populate it from generic facts, so existing CLI consumers retain widget, route, asset, and
 localization output without a schema-major change. `dartscope-flutter` also accepts older payloads
 that contain legacy Flutter hints but no invocation facts.
+
+## Additive v1 migration: Flutter asset and localization catalogs
+
+`dartscope.flutter-inventory` v1 can now include optional `asset_declarations`,
+`l10n_configurations`, `arb_catalogs`, and `diagnostics` lists. Asset entries can include an
+optional literal package, unresolved package expression, and declaration link. Localization
+entries can include the generated
+class and ARB catalog paths. Empty additions are omitted and older payloads deserialize them as
+empty or absent.
+
+`DartDiagnostic` also accepts an optional confidence value. Existing diagnostics omit it; new
+Flutter catalog diagnostics use it to distinguish exact literal mismatches from partial-input or
+dynamic-use uncertainty. No existing field was removed, renamed, or assigned new span semantics.

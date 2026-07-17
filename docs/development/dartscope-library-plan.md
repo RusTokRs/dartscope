@@ -536,21 +536,70 @@ Acceptance:
 
 ### DS-FLUTTER-003: Declared Assets And Localization Catalogs
 
-Status: ready. Priority: P2. Prerequisites: DS-PUB-002, DS-FLUTTER-002.
+Status: verified. Priority: P2. Prerequisites: DS-PUB-002, DS-FLUTTER-002.
 
-Link direct asset uses to `flutter.assets` declarations. Parse `l10n.yaml` and ARB keys
-through explicit input types. Report used-but-undeclared assets, declared-but-unused
-assets, referenced-but-missing localization keys, and unresolved generated-localization
-classes as diagnostics with confidence.
+Implemented slices:
+
+1. Added explicit in-memory `FlutterL10nInput`, `FlutterArbInput`, and `FlutterCatalogInput`
+   contracts; library analysis performs no filesystem I/O or Flutter process execution.
+2. Linked direct literal `Image.asset`, `AssetImage`, and bundle-string uses to the nearest
+   package pubspec. Exact file declarations and documented direct-child directory declarations are
+   distinguished; package arguments naming external packages are not misreported as local misses,
+   and non-literal package expressions remain explicit medium-confidence unresolved cases.
+3. Preserved asset flavors and platforms in declaration links and reported high-confidence
+   used-but-undeclared plus medium-confidence declared-but-unused diagnostics.
+4. Parsed documented `l10n.yaml` paths, template file, output file, output class, output directory,
+   and defaults. Duplicate, malformed, and missing-template states remain explicit.
+5. Parsed ARB top-level message keys while excluding `@message` and `@@locale` metadata, linked
+   generated localization getters and placeholder methods to catalogs, and diagnosed missing keys or unresolved output
+   classes with confidence.
+6. Extended `flutter-inventory` discovery to regular `l10n.yaml` and `.arb` files during the same
+   deterministic, no-symlink project traversal. Added an additive v1 migration note and catalog
+   boundary documentation.
+
+Verification:
+
+- focused fixtures cover exact files, direct directories, nested negative cases, unused
+  declarations, external and dynamic package arguments, custom output classes, documented
+  defaults, missing
+  keys, and malformed YAML/JSON;
+- CLI integration verifies catalog discovery and diagnostic JSON;
+- older diagnostics deserialize without confidence and existing empty v1 golden output remains
+  unchanged because new fields are optional and omitted when empty;
+- exact Rust 1.95 workspace, feature, formatting, Clippy, rustdoc, and Linux/Windows checks pass.
+
+Acceptance:
+
+- library catalog analysis takes explicit source inputs and performs no I/O;
+- asset links are package-aware and preserve declaration evidence;
+- directory declarations do not recursively claim nested files;
+- ARB metadata is not emitted as message keys;
+- diagnostics carry deterministic paths, codes, spans when available, and confidence;
+- malformed supplemental inputs never panic.
+
+See `docs/development/flutter-catalogs.md`.
 
 ### DS-FLUTTER-004: Routes, Themes, And State Conventions
 
-Status: planned. Priority: P2. Prerequisite: DS-FLUTTER-002.
+Status: ready. Priority: P2. Prerequisite: DS-FLUTTER-002.
 
-Add official `MaterialApp`, `WidgetsApp`, and `Navigator` patterns first. Maintain a
-versioned support table for `go_router` and selected state-management packages. Keep
-package conventions opt-in and never reinterpret application-specific manifests as
-Flutter semantics.
+Required work:
+
+1. Add official `MaterialApp`, `WidgetsApp`, and `Navigator` route/navigation patterns before
+   ecosystem-specific conventions.
+2. Normalize supported theme construction and application facts without attempting full widget
+   evaluation.
+3. Define a versioned, opt-in support table for `go_router` and selected state-management
+   packages, including package/version evidence and nearby negative fixtures.
+4. Keep package conventions in `dartscope-flutter`; do not reinterpret application-specific
+   manifests or move framework semantics into the pure parser.
+
+Acceptance:
+
+- official framework patterns have normative fixtures and source spans;
+- ecosystem conventions expose support-version metadata and confidence;
+- disabling the Flutter feature removes all new convention code;
+- existing inventory ordering and JSON compatibility remain stable.
 
 ### DS-INDEX-004: General Symbol And Namespace Resolution
 
@@ -698,6 +747,14 @@ Pure parsing now emits generic invocation facts and no Flutter findings. The opt
 owns convention interpretation, supports older legacy-hint payloads, and provides explicit file and
 project composition APIs. CLI v1 behavior remains compatible through explicit composition.
 
+### DS-FLUTTER-003: Asset And Localization Catalogs
+
+Status: verified.
+
+Direct literal asset uses now link to package pubspec declarations with official file/directory
+semantics. Explicit `l10n.yaml` and ARB inputs produce generated-class/key links and
+confidence-bearing catalog diagnostics without filesystem or Flutter process execution.
+
 ## Calibration Protocol
 
 Use a real Flutter repository only after focused tests pass:
@@ -780,7 +837,7 @@ Do not resolve these conditions by silently expanding scope.
 
 ## Current Recommended Next Step
 
-Implement `DS-FLUTTER-003` next. Convention extraction now lives behind the optional Flutter
-boundary; the next ready slice links generic asset/localization uses to pubspec declarations,
-`l10n.yaml`, and ARB catalogs with explicit inputs and diagnostics. `DS-COMPAT-001` remains recorded
-as research and is intentionally deferred until the current implementation queue is complete.
+Implement `DS-FLUTTER-004` next. Asset and localization catalogs now have explicit, package-aware
+contracts; the next ready slice expands official framework navigation/theme facts and adds a
+versioned opt-in ledger for selected ecosystem conventions. `DS-COMPAT-001` remains recorded as
+research and is intentionally deferred until the current implementation queue is complete.

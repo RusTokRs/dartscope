@@ -115,9 +115,14 @@ fn asset_hint(invocation: &DartInvocation) -> Option<FlutterAssetHint> {
         _ => return None,
     };
     let path = positional_argument(invocation, 0)?.string_value.clone()?;
+    let package_argument = named_argument(invocation, "package");
     Some(FlutterAssetHint {
         path,
         source,
+        package: package_argument.and_then(|argument| argument.string_value.clone()),
+        package_expression: package_argument
+            .filter(|argument| argument.string_value.is_none())
+            .map(|argument| argument.expression.clone()),
         confidence: Confidence::High,
         span: invocation.source_line_span.clone(),
     })

@@ -55,7 +55,7 @@ Flutter framework:
 - [Flutter assets and images](https://docs.flutter.dev/ui/assets/assets-and-images)
 - [Flutter pubspec asset options](https://docs.flutter.dev/tools/pubspec)
 - [Flutter asset transformation](https://docs.flutter.dev/ui/assets/asset-transformation)
-- [Internationalizing Flutter apps](https://docs.flutter.dev/ui/accessibility-and-internationalization/internationalization)
+- [Internationalizing Flutter apps](https://docs.flutter.dev/ui/internationalization)
 - [MaterialApp API](https://api.flutter.dev/flutter/material/MaterialApp-class.html)
 - [WidgetsApp API](https://api.flutter.dev/flutter/widgets/WidgetsApp-class.html)
 - [Navigator API](https://api.flutter.dev/flutter/widgets/Navigator-class.html)
@@ -68,7 +68,10 @@ diagnoses platform values outside the documented set. The asset-transformation
 documentation defines ordered transformer packages with optional scalar arguments;
 DartScope preserves transformer order because Flutter applies transformations
 sequentially. The pubspec localization switch is `flutter.generate`; richer localization
-configuration belongs to a separate future `l10n.yaml` input rather than the pubspec model.
+configuration is read from explicit `l10n.yaml` inputs in the optional Flutter layer. DartScope
+follows the documented `arb-dir`, template file, generated output file, output class, and
+output-directory defaults. ARB
+message keys exclude `@message` metadata and `@@locale` metadata.
 
 ## Implementation References
 
@@ -119,7 +122,8 @@ heuristic fixture needs both a positive case and a nearby negative case.
 | conditional URI selection | normative | implemented | caller must provide environment |
 | GraphQL documents in Dart strings | ecosystem heuristic | implemented | not Dart or Flutter language semantics |
 | `GoRoute` and Riverpod widget bases | ecosystem convention | implemented heuristic | package/version matrix not yet explicit |
-| Flutter widget, route, asset, and localization conventions | official API plus ecosystem convention | derived in optional `dartscope-flutter` from generic facts | declarations, `l10n.yaml`, and ARB files not linked |
+| Flutter widget, route, asset, and localization conventions | official API plus ecosystem convention | derived in optional `dartscope-flutter` from generic facts | complex/dynamic expressions remain heuristic |
+| Flutter asset declarations and localization catalogs | normative Flutter docs plus explicit-input analysis | direct literal uses linked to nearest pubspec; `l10n.yaml` defaults and ARB keys parsed | directory declarations cover direct children; dynamic package expressions remain unresolved; no filesystem existence check or generated-code execution |
 
 ## Real-Project Feedback Loop
 

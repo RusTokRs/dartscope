@@ -5,11 +5,12 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use dartscope::{
-    DartCompilationEnvironment, DartFileInput, DartIndexOptions, DartProjectInput, JsonContract,
-    PackageConfigInput, PubspecInput, analyze_file_with_flutter,
-    analyze_graphql_contracts_with_options, analyze_project, analyze_project_with_flutter,
-    build_uri_graph_with_options, extract_flutter_inventory, parse_pubspec,
-    parse_pubspec_configuration, to_json_contract_pretty,
+    DartCompilationEnvironment, DartFileInput, DartIndexOptions, DartProjectInput, FlutterArbInput,
+    FlutterCatalogInput, FlutterL10nInput, JsonContract, PackageConfigInput, PubspecInput,
+    analyze_file_with_flutter, analyze_graphql_contracts_with_options, analyze_project,
+    analyze_project_with_flutter, build_uri_graph_with_options,
+    extract_flutter_inventory_with_catalogs, parse_pubspec, parse_pubspec_configuration,
+    to_json_contract_pretty,
 };
 
 const EXIT_INTERNAL: u8 = 1;
@@ -133,9 +134,9 @@ fn execute(command: CliCommand, path: &str, extra_args: &[String]) -> Result<Str
         }
         CliCommand::FlutterInventory => {
             reject_extra_args(extra_args, command)?;
-            let input = collect_project_input(path)?;
-            let project = analyze_project(input);
-            let inventory = extract_flutter_inventory(&project);
+            let input = collect_flutter_project_sources(path)?;
+            let project = analyze_project(input.dart);
+            let inventory = extract_flutter_inventory_with_catalogs(&project, &input.flutter);
             serialize_contract!(JsonContract::FlutterInventory, &inventory)
         }
     }
@@ -214,28 +215,68 @@ fn read_source(path: &str) -> Result<String, CliError> {
         .map_err(|error| CliError::input(format!("failed to read {path}: {error}")))
 }
 
+struct CollectedProjectSources {
+    dart: DartProjectInput,
+    flutter: FlutterCatalogInput,
+}
+
+#[derive(Default)]
+struct ProjectSourceAccumulator {
+    files: Vec<DartFileInput>,
+    pubspecs: Vec<PubspecInput>,
+    package_configs: Vec<PackageConfigInput>,
+    l10n_files: Vec<FlutterL10nInput>,
+    arb_files: Vec<FlutterArbInput>,
+    collect_flutter_catalogs: bool,
+}
+
+impl ProjectSourceAccumulator {
+    fn new(collect_flutter_catalogs: bool) -> Self {
+        Self {
+            collect_flutter_catalogs,
+            ..Self::default()
+        }
+    }
+
+    fn finish(mut self, root_path: &Path) -> CollectedProjectSources {
+        self.files.sort_by(|left, right| left.path.cmp(&right.path));
+        self.pubspecs
+            .sort_by(|left, right| left.path.cmp(&right.path));
+        self.package_configs
+            .sort_by(|left, right| left.path.cmp(&right.path));
+        self.l10n_files
+            .sort_by(|left, right| left.path.cmp(&right.path));
+        self.arb_files
+            .sort_by(|left, right| left.path.cmp(&right.path));
+
+        CollectedProjectSources {
+            dart: DartProjectInput::new(
+                root_path.to_string_lossy().into_owned(),
+                self.files,
+                self.pubspecs,
+            )
+            .with_package_configs(self.package_configs),
+            flutter: FlutterCatalogInput::new(self.l10n_files, self.arb_files),
+        }
+    }
+}
+
 fn collect_project_input(root: &str) -> Result<DartProjectInput, CliError> {
+    Ok(collect_project_sources(root, false)?.dart)
+}
+
+fn collect_flutter_project_sources(root: &str) -> Result<CollectedProjectSources, CliError> {
+    collect_project_sources(root, true)
+}
+
+fn collect_project_sources(
+    root: &str,
+    collect_flutter_catalogs: bool,
+) -> Result<CollectedProjectSources, CliError> {
     let root_path = resolve_project_root(root)?;
-    let mut files = Vec::new();
-    let mut pubspecs = Vec::new();
-    let mut package_configs = Vec::new();
-
-    collect_sources(
-        &root_path,
-        &root_path,
-        &mut files,
-        &mut pubspecs,
-        &mut package_configs,
-    )?;
-
-    files.sort_by(|left, right| left.path.cmp(&right.path));
-    pubspecs.sort_by(|left, right| left.path.cmp(&right.path));
-    package_configs.sort_by(|left, right| left.path.cmp(&right.path));
-
-    Ok(
-        DartProjectInput::new(root_path.to_string_lossy().into_owned(), files, pubspecs)
-            .with_package_configs(package_configs),
-    )
+    let mut sources = ProjectSourceAccumulator::new(collect_flutter_catalogs);
+    collect_sources(&root_path, &root_path, &mut sources)?;
+    Ok(sources.finish(&root_path))
 }
 
 fn resolve_project_root(root: &str) -> Result<PathBuf, CliError> {
@@ -267,9 +308,7 @@ fn resolve_project_root(root: &str) -> Result<PathBuf, CliError> {
 fn collect_sources(
     root: &Path,
     directory: &Path,
-    files: &mut Vec<DartFileInput>,
-    pubspecs: &mut Vec<PubspecInput>,
-    package_configs: &mut Vec<PackageConfigInput>,
+    sources: &mut ProjectSourceAccumulator,
 ) -> Result<(), CliError> {
     let entries = fs::read_dir(directory).map_err(|error| {
         CliError::input(format!(
@@ -295,7 +334,7 @@ fn collect_sources(
         }
         if file_type.is_dir() {
             if !is_skipped_directory(&path) {
-                collect_sources(root, &path, files, pubspecs, package_configs)?;
+                collect_sources(root, &path, sources)?;
             }
             continue;
         }
@@ -308,23 +347,43 @@ fn collect_sources(
         };
 
         match path.file_name().and_then(|name| name.to_str()) {
+            Some("l10n.yaml") if sources.collect_flutter_catalogs => {
+                let source = read_path(&path)?;
+                sources
+                    .l10n_files
+                    .push(FlutterL10nInput::new(source_relative_path, source));
+            }
             Some("pubspec.yaml") => {
                 let source = read_path(&path)?;
-                pubspecs.push(PubspecInput::new(source_relative_path, source));
+                sources
+                    .pubspecs
+                    .push(PubspecInput::new(source_relative_path, source));
                 if let Some(package_root) = path.parent() {
                     let package_config_path =
                         package_root.join(".dart_tool").join("package_config.json");
                     if is_regular_file(&package_config_path) {
                         let source = read_path(&package_config_path)?;
                         if let Some(relative_path) = relative_path(root, &package_config_path) {
-                            package_configs.push(PackageConfigInput::new(relative_path, source));
+                            sources
+                                .package_configs
+                                .push(PackageConfigInput::new(relative_path, source));
                         }
                     }
                 }
             }
             _ if path.extension().and_then(|extension| extension.to_str()) == Some("dart") => {
                 let source = read_path(&path)?;
-                files.push(DartFileInput::new(source_relative_path, source));
+                sources
+                    .files
+                    .push(DartFileInput::new(source_relative_path, source));
+            }
+            _ if sources.collect_flutter_catalogs
+                && path.extension().and_then(|extension| extension.to_str()) == Some("arb") =>
+            {
+                let source = read_path(&path)?;
+                sources
+                    .arb_files
+                    .push(FlutterArbInput::new(source_relative_path, source));
             }
             _ => {}
         }

@@ -19,15 +19,22 @@
 //! println!("{} widgets found", inventory.widgets.len());
 //! ```
 
+mod catalogs;
 mod conventions;
 
+pub use catalogs::{
+    FlutterArbCatalog, FlutterArbInput, FlutterArbMessage, FlutterAssetDeclarationEntry,
+    FlutterAssetDeclarationKind, FlutterAssetDeclarationRef, FlutterCatalogInput,
+    FlutterL10nConfiguration, FlutterL10nInput, extract_flutter_inventory_with_catalogs,
+};
 pub use conventions::{
     derive_flutter_file_hints, populate_flutter_file_hints, populate_flutter_project_analysis,
 };
 
 use dartscope_core::{
-    Confidence, DartProjectAnalysis, FlutterAssetHint, FlutterLocalizationHint, FlutterRouteHint,
-    FlutterRoutePathKind, FlutterWidgetHint, SourceSpan,
+    Confidence, DartDiagnostic, DartProjectAnalysis, FlutterAssetHint, FlutterLocalizationHint,
+    FlutterLocalizationSource, FlutterRouteHint, FlutterRoutePathKind, FlutterWidgetHint,
+    SourceSpan,
 };
 
 use crate::conventions::effective_flutter_file_hints;
@@ -53,6 +60,18 @@ pub struct FlutterInventory {
     pub flutter_file_paths: Vec<String>,
     /// Summary counts for quick inspection.
     pub summary: FlutterInventorySummary,
+    /// Pubspec asset declarations linked to direct literal uses when catalog inputs are requested.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asset_declarations: Vec<FlutterAssetDeclarationEntry>,
+    /// Effective explicit or default `gen-l10n` configurations.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub l10n_configurations: Vec<FlutterL10nConfiguration>,
+    /// Parsed ARB message catalogs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub arb_catalogs: Vec<FlutterArbCatalog>,
+    /// Asset and localization catalog diagnostics.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub diagnostics: Vec<DartDiagnostic>,
 }
 
 /// A widget class finding with its source location.
@@ -100,6 +119,15 @@ pub struct FlutterAssetEntry {
     pub asset_path: String,
     /// The call site kind (e.g. `Image.asset`, `AssetImage`).
     pub source: dartscope_core::FlutterAssetSource,
+    /// Optional package argument supplied to `Image.asset` or `AssetImage`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<String>,
+    /// Non-literal package expression that prevented exact local/external resolution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_expression: Option<String>,
+    /// Matching pubspec declaration, when catalog linking was requested.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declaration: Option<FlutterAssetDeclarationRef>,
     /// Parser confidence for this finding.
     pub confidence: Confidence,
     /// Source location.
@@ -115,6 +143,12 @@ pub struct FlutterLocalizationEntry {
     pub key: String,
     /// The call site kind (e.g. `AppLocalizations.of`).
     pub source: dartscope_core::FlutterLocalizationSource,
+    /// Generated localization class used at the call site.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generated_class: Option<String>,
+    /// ARB files that declare this key.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub catalog_paths: Vec<String>,
     /// Parser confidence for this finding.
     pub confidence: Confidence,
     /// Source location.
@@ -226,6 +260,10 @@ pub fn extract_flutter_inventory(project: &DartProjectAnalysis) -> FlutterInvent
         localizations,
         flutter_file_paths,
         summary,
+        asset_declarations: Vec::new(),
+        l10n_configurations: Vec::new(),
+        arb_catalogs: Vec::new(),
+        diagnostics: Vec::new(),
     }
 }
 
@@ -257,6 +295,9 @@ fn flutter_asset_entry(file_path: &str, hint: &FlutterAssetHint) -> FlutterAsset
         file_path: file_path.to_string(),
         asset_path: hint.path.clone(),
         source: hint.source,
+        package: hint.package.clone(),
+        package_expression: hint.package_expression.clone(),
+        declaration: None,
         confidence: hint.confidence,
         span: hint.span.clone(),
     }
@@ -270,6 +311,9 @@ fn flutter_localization_entry(
         file_path: file_path.to_string(),
         key: hint.key.clone(),
         source: hint.source,
+        generated_class: matches!(hint.source, FlutterLocalizationSource::AppLocalizationsOf)
+            .then(|| "AppLocalizations".to_string()),
+        catalog_paths: Vec::new(),
         confidence: hint.confidence,
         span: hint.span.clone(),
     }
@@ -365,6 +409,8 @@ mod tests {
         file.flutter.assets.push(FlutterAssetHint {
             path: "assets/logo.png".to_string(),
             source: FlutterAssetSource::ImageAsset,
+            package: None,
+            package_expression: None,
             confidence: Confidence::High,
             span: dummy_span(),
         });
@@ -383,6 +429,24 @@ mod tests {
         assert_eq!(inventory.localizations[0].key, "appTitle");
         assert_eq!(inventory.summary.assets, 1);
         assert_eq!(inventory.summary.localizations, 1);
+    }
+
+    #[test]
+    fn generic_localization_hints_do_not_invent_a_generated_class() {
+        let mut project = empty_project();
+        let mut file = DartFileAnalysis::empty("lib/main.dart");
+        file.flutter.localizations.push(FlutterLocalizationHint {
+            key: "title".to_string(),
+            source: FlutterLocalizationSource::GeneratedLocalizationsOf,
+            confidence: Confidence::High,
+            span: dummy_span(),
+        });
+        project.files = vec![file];
+
+        let inventory = extract_flutter_inventory(&project);
+
+        assert_eq!(inventory.localizations.len(), 1);
+        assert_eq!(inventory.localizations[0].generated_class, None);
     }
 
     #[test]
@@ -435,6 +499,63 @@ mod tests {
         assert_eq!(inventory.flutter_file_paths, ["lib/a.dart", "lib/z.dart"]);
         assert_eq!(inventory.widgets[0].class_name, "AWidget");
         assert_eq!(inventory.widgets[1].class_name, "ZWidget");
+    }
+
+    #[test]
+    fn older_inventory_entries_deserialize_without_catalog_fields() {
+        let inventory: FlutterInventory = serde_json::from_str(
+            r#"{
+                "widgets": [],
+                "routes": [],
+                "assets": [{
+                    "file_path": "lib/main.dart",
+                    "asset_path": "assets/logo.png",
+                    "source": "image_asset",
+                    "confidence": "high",
+                    "span": {
+                        "byte_start": 0,
+                        "byte_end": 10,
+                        "start_line": 1,
+                        "start_column": 1,
+                        "end_line": 1,
+                        "end_column": 11
+                    }
+                }],
+                "localizations": [{
+                    "file_path": "lib/main.dart",
+                    "key": "title",
+                    "source": "app_localizations_of",
+                    "confidence": "high",
+                    "span": {
+                        "byte_start": 0,
+                        "byte_end": 10,
+                        "start_line": 1,
+                        "start_column": 1,
+                        "end_line": 1,
+                        "end_column": 11
+                    }
+                }],
+                "flutter_file_paths": ["lib/main.dart"],
+                "summary": {
+                    "flutter_files": 1,
+                    "widgets": 0,
+                    "routes": 0,
+                    "assets": 1,
+                    "localizations": 1
+                }
+            }"#,
+        )
+        .expect("legacy inventory");
+
+        assert_eq!(inventory.assets[0].package, None);
+        assert_eq!(inventory.assets[0].package_expression, None);
+        assert_eq!(inventory.assets[0].declaration, None);
+        assert_eq!(inventory.localizations[0].generated_class, None);
+        assert!(inventory.localizations[0].catalog_paths.is_empty());
+        assert!(inventory.asset_declarations.is_empty());
+        assert!(inventory.l10n_configurations.is_empty());
+        assert!(inventory.arb_catalogs.is_empty());
+        assert!(inventory.diagnostics.is_empty());
     }
 
     #[test]

@@ -202,6 +202,92 @@ fn malformed_inputs_never_panic() {
 }
 
 #[test]
+fn flutter_inventory_reads_l10n_and_arb_catalogs() {
+    let project = TempDirectory::new("flutter catalogs");
+    write_file(
+        &project.path().join("pubspec.yaml"),
+        concat!(
+            "name: catalog_demo\n",
+            "flutter:\n",
+            "  generate: true\n",
+            "  assets:\n",
+            "    - assets/logo.png\n",
+            "    - assets/unused.png\n",
+        ),
+    );
+    write_file(
+        &project.path().join("l10n.yaml"),
+        concat!(
+            "arb-dir: lib/l10n\n",
+            "template-arb-file: app_en.arb\n",
+            "output-localization-file: app_localizations.dart\n",
+        ),
+    );
+    write_file(
+        &project.path().join("lib/l10n/app_en.arb"),
+        r#"{"title":"Title"}"#,
+    );
+    write_file(
+        &project.path().join("lib/main.dart"),
+        concat!(
+            "void build(context) {\n",
+            "  Image.asset('assets/logo.png');\n",
+            "  Image.asset('assets/missing.png');\n",
+            "  AppLocalizations.of(context).title;\n",
+            "  AppLocalizations.of(context).missing;\n",
+            "}\n",
+        ),
+    );
+
+    let output = run_os([
+        OsString::from("flutter-inventory"),
+        project.path().as_os_str().to_owned(),
+    ]);
+    assert_json_success(&output, "dartscope.flutter-inventory");
+    let json = stdout(&output);
+
+    assert!(json.contains("\"asset_declarations\""), "stdout: {json}");
+    assert!(json.contains("\"arb_catalogs\""), "stdout: {json}");
+    assert!(
+        json.contains("flutter_asset_used_but_undeclared"),
+        "stdout: {json}"
+    );
+    assert!(
+        json.contains("flutter_asset_declared_but_unused"),
+        "stdout: {json}"
+    );
+    assert!(
+        json.contains("flutter_localization_key_missing"),
+        "stdout: {json}"
+    );
+    assert!(json.contains("lib/l10n/app_en.arb"), "stdout: {json}");
+}
+
+#[test]
+fn non_catalog_commands_ignore_invalid_arb_bytes() {
+    let project = sample_project("invalid arb is catalog only");
+    let arb = project.path().join("lib/l10n/app_en.arb");
+    fs::create_dir_all(arb.parent().expect("ARB parent")).expect("create ARB directory");
+    fs::write(&arb, [0xff, 0xfe]).expect("write invalid UTF-8 ARB");
+
+    assert_json_success(
+        &run_os([
+            OsString::from("analyze-project"),
+            project.path().as_os_str().to_owned(),
+        ]),
+        "dartscope.project-analysis",
+    );
+    assert_error(
+        run_os([
+            OsString::from("flutter-inventory"),
+            project.path().as_os_str().to_owned(),
+        ]),
+        3,
+        "failed to read",
+    );
+}
+
+#[test]
 fn project_discovery_handles_nested_packages_and_generated_directories() {
     let project = TempDirectory::new("nested project with spaces");
     write_package(project.path(), "root_package", "lib/root.dart");

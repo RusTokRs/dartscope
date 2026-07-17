@@ -43,6 +43,8 @@ dependencies = [
  "dartscope-core",
  "dartscope-parse",
  "serde",
+ "serde_json",
+ "yaml-rust2",
 ]
 
 [[package]]

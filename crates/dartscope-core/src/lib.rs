@@ -579,6 +579,11 @@ pub struct FlutterRouteHint {
 pub struct FlutterAssetHint {
     pub path: String,
     pub source: FlutterAssetSource,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<String>,
+    /// Non-literal `package:` expression when exact package identity is unavailable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_expression: Option<String>,
     pub confidence: Confidence,
     pub span: SourceSpan,
 }
@@ -604,6 +609,7 @@ pub struct FlutterLocalizationHint {
 #[serde(rename_all = "snake_case")]
 pub enum FlutterLocalizationSource {
     AppLocalizationsOf,
+    GeneratedLocalizationsOf,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -629,6 +635,8 @@ pub struct DartDiagnostic {
     pub severity: DiagnosticSeverity,
     pub message: String,
     pub span: Option<SourceSpan>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<Confidence>,
 }
 
 impl DartDiagnostic {
@@ -643,6 +651,7 @@ impl DartDiagnostic {
             severity: DiagnosticSeverity::Warning,
             message: message.into(),
             span,
+            confidence: None,
         }
     }
 
@@ -657,11 +666,17 @@ impl DartDiagnostic {
             severity: DiagnosticSeverity::Error,
             message: message.into(),
             span,
+            confidence: None,
         }
     }
 
     pub fn with_path(mut self, path: impl Into<String>) -> Self {
         self.path = Some(normalize_path(path.into()));
+        self
+    }
+
+    pub fn with_confidence(mut self, confidence: Confidence) -> Self {
+        self.confidence = Some(confidence);
         self
     }
 }
@@ -742,4 +757,47 @@ pub enum DartScopeError {
 
 pub fn normalize_path(path: String) -> String {
     path.replace('\\', "/")
+}
+
+#[cfg(test)]
+mod compatibility_tests {
+    use super::*;
+
+    #[test]
+    fn older_flutter_asset_hints_deserialize_without_package_metadata() {
+        let hint: FlutterAssetHint = serde_json::from_str(
+            r#"{
+                "path": "assets/logo.png",
+                "source": "image_asset",
+                "confidence": "high",
+                "span": {
+                    "byte_start": 0,
+                    "byte_end": 10,
+                    "start_line": 1,
+                    "start_column": 1,
+                    "end_line": 1,
+                    "end_column": 11
+                }
+            }"#,
+        )
+        .expect("legacy Flutter asset hint");
+
+        assert_eq!(hint.package, None);
+        assert_eq!(hint.package_expression, None);
+    }
+
+    #[test]
+    fn older_diagnostics_deserialize_without_confidence() {
+        let diagnostic: DartDiagnostic = serde_json::from_str(
+            r#"{"path":"lib/main.dart","code":"example","severity":"warning","message":"example","span":null}"#,
+        )
+        .expect("legacy diagnostic");
+
+        assert_eq!(diagnostic.confidence, None);
+        assert!(
+            !serde_json::to_string(&diagnostic)
+                .expect("serialize diagnostic")
+                .contains("confidence")
+        );
+    }
 }
