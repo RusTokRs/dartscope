@@ -26,7 +26,9 @@ jobs:
           show-progress: false
 
       - name: Apply official navigation slice
-        run: python .github/scripts/apply_flutter004_navigation.py
+        run: |
+          python .github/scripts/apply_flutter004_navigation.py
+          python .github/scripts/apply_flutter004_navigation_adjustments.py
 
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
@@ -67,6 +69,7 @@ jobs:
       - name: Commit verified navigation support
         run: |
           rm .github/scripts/apply_flutter004_navigation.py
+          rm .github/scripts/apply_flutter004_navigation_adjustments.py
           rm .github/workflows/flutter004-navigation.yml
           git fetch origin main
           test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
