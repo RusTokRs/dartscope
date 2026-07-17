@@ -1,20 +1,21 @@
 name: Finalize DS-INDEX-005 Semantic Invalidation
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
+  issues:
+    types: [opened]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ds-index005-scheduled-finalize
+  group: ds-index005-issue-finalize
   cancel-in-progress: false
 
 jobs:
   quality:
     name: Rust 1.95 semantic and release gate
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == '[internal] DS-INDEX-005 semantic finalizer'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -75,6 +76,7 @@ jobs:
 
   matrix:
     name: Rust 1.95 (${{ matrix.os }})
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == '[internal] DS-INDEX-005 semantic finalizer'
     strategy:
       fail-fast: false
       matrix:
@@ -116,11 +118,13 @@ jobs:
 
   finalize:
     name: Commit verified semantic correction
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == '[internal] DS-INDEX-005 semantic finalizer'
     needs: [quality, matrix]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       statuses: write
+      issues: write
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -162,23 +166,32 @@ jobs:
               sha: '${{ steps.commit.outputs.sha }}',
               state: 'success',
               context: 'dartscope/ci',
-              description: 'Rust 1.95 Linux/Windows scheduled gate passed',
+              description: 'Rust 1.95 Linux/Windows issue gate passed',
             });
+            if (context.eventName === 'issues') {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                state: 'closed',
+              });
+            }
 
   record_failure:
-    name: Record scheduled verification failure
+    name: Record verification failure
     needs: [quality, matrix]
-    if: always() && (needs.quality.result != 'success' || needs.matrix.result != 'success')
+    if: always() && (github.event_name == 'workflow_dispatch' || github.event.issue.title == '[internal] DS-INDEX-005 semantic finalizer') && (needs.quality.result != 'success' || needs.matrix.result != 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
       statuses: write
+      issues: write
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: main
           fetch-depth: 0
-      - name: Remove scheduler and record failing job
+      - name: Remove trigger and record failing job
         id: failure
         shell: bash
         run: |
@@ -193,9 +206,9 @@ jobs:
           status: active
           ---
 
-          # DS-INDEX-005 Scheduled Verification Failure
+          # DS-INDEX-005 Verification Failure
 
-          The scheduled worktree-only correction was not committed.
+          The worktree-only semantic correction was not committed.
 
           - quality job: `${{ needs.quality.result }}`
           - Linux/Windows matrix: `${{ needs.matrix.result }}`
@@ -207,10 +220,10 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add -A
           git diff --cached --check
-          git commit -m "ci: record DS-INDEX-005 scheduled gate failure"
+          git commit -m "ci: record DS-INDEX-005 verification failure"
           git push origin HEAD:main
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - name: Publish failure status
+      - name: Publish failure status and close trigger issue
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
@@ -220,5 +233,13 @@ jobs:
               sha: '${{ steps.failure.outputs.sha }}',
               state: 'failure',
               context: 'dartscope/ci',
-              description: 'DS-INDEX-005 scheduled verification failed',
+              description: 'DS-INDEX-005 verification failed',
             });
+            if (context.eventName === 'issues') {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                state: 'closed',
+              });
+            }
