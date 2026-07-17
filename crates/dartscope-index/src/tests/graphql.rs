@@ -410,3 +410,78 @@ fn does_not_assign_a_named_part_claimed_by_multiple_libraries() {
         DartGraphqlUnresolvedReason::NotVisibleDeclaration
     );
 }
+
+#[test]
+fn graphql_and_symbol_queries_share_conditional_namespace_resolution() {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        vec![
+            DartFileInput::new(
+                "lib/documents_stub.dart",
+                "const viewerQuery = r'''query StubViewer { viewer { id } }''';\n",
+            ),
+            DartFileInput::new(
+                "lib/documents_io.dart",
+                "const viewerQuery = r'''query IoViewer { viewer { id } }''';\n",
+            ),
+            DartFileInput::new(
+                "lib/client.dart",
+                "import 'documents_stub.dart' if (dart.library.io) 'documents_io.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }",
+            ),
+        ],
+        vec![],
+    ));
+
+    let symbol = resolve_symbol(
+        &project,
+        DartSymbolQuery::new("lib/client.dart", "viewerQuery"),
+    );
+    assert_eq!(
+        symbol.status,
+        DartSymbolResolutionStatus::ConditionalEnvironmentRequired
+    );
+    assert_eq!(symbol.candidates.len(), 2);
+
+    let contracts = analyze_graphql_contracts(&project);
+    assert!(contracts.bindings.is_empty());
+    assert_eq!(contracts.unresolved_uses.len(), 1);
+    assert_eq!(
+        contracts.unresolved_uses[0].reason,
+        DartGraphqlUnresolvedReason::ConditionalEnvironmentRequired
+    );
+    assert_eq!(
+        contracts.unresolved_uses[0].candidate_paths,
+        ["lib/documents_io.dart", "lib/documents_stub.dart"]
+    );
+
+    let options = DartIndexOptions::default().with_compilation_environment(
+        DartCompilationEnvironment::from_pairs([("dart.library.io", "true")]),
+    );
+    let symbol = resolve_symbol_with_options(
+        &project,
+        DartSymbolQuery::new("lib/client.dart", "viewerQuery"),
+        &options,
+    );
+    assert_eq!(symbol.status, DartSymbolResolutionStatus::Resolved);
+    assert_eq!(symbol.candidates.len(), 1);
+    assert_eq!(
+        symbol.candidates[0].declaration_path,
+        "lib/documents_io.dart"
+    );
+
+    let contracts = analyze_graphql_contracts_with_options(&project, &options);
+    assert!(contracts.unresolved_uses.is_empty());
+    assert_eq!(contracts.bindings.len(), 1);
+    assert_eq!(
+        contracts.bindings[0].resolution_basis,
+        DartGraphqlBindingResolution::DirectImport
+    );
+    assert_eq!(
+        contracts.bindings[0].operation_path,
+        "lib/documents_io.dart"
+    );
+    assert_eq!(
+        contracts.bindings[0].operation_name.as_deref(),
+        Some("IoViewer")
+    );
+}

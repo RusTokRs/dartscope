@@ -627,8 +627,9 @@ Progress (2026-07-17):
 - [x] Add a deterministic query API for top-level declarations with same-file, same-library,
   direct-import, re-export, prefixed-import, combinator, privacy, part, and conditional-environment
   behavior plus explicit candidate evidence.
-- [ ] Move GraphQL constant visibility onto the shared namespace engine without changing its public
-  contract or fixtures.
+- [x] Move GraphQL constant visibility onto the shared namespace engine without changing its public
+  contract or fixtures; conditional-environment characterization now covers both public symbol queries
+  and GraphQL operation linking.
 - [ ] Add batch/reference-oriented consumers once identifier-use facts are available without raw
   source parsing in the index crate.
 

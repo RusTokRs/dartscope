@@ -15,13 +15,25 @@ struct DeclarationLocation<'a> {
     declaration: &'a DartDeclaration,
 }
 
-struct ImportedDeclarationCandidate<'candidate, 'source> {
-    location: &'candidate DeclarationLocation<'source>,
-    basis: DartSymbolResolutionBasis,
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct NamespaceCandidate<'source> {
+    pub(crate) path: &'source str,
+    pub(crate) byte_start: usize,
 }
 
-struct ImportedDeclarationResolution<'candidate, 'source> {
-    candidates: Vec<ImportedDeclarationCandidate<'candidate, 'source>>,
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct NamespaceCandidateMatch {
+    pub(crate) index: usize,
+    pub(crate) basis: DartSymbolResolutionBasis,
+}
+
+pub(crate) struct NamespaceResolution {
+    pub(crate) status: DartSymbolResolutionStatus,
+    pub(crate) candidates: Vec<NamespaceCandidateMatch>,
+}
+
+struct ImportedCandidateResolution {
+    candidates: Vec<NamespaceCandidateMatch>,
     conditional_environment_required: bool,
 }
 
@@ -30,13 +42,11 @@ struct LibraryMembership {
     owner_by_part: HashMap<String, String>,
 }
 
-struct ExportResolutionContext<'source, 'candidate, 'context> {
-    name: &'context str,
-    candidates: &'candidate [DeclarationLocation<'source>],
-    uri_graph: &'context DartUriGraph,
-    files_by_path: &'context HashMap<&'source str, &'source DartFileAnalysis>,
-    library_membership: &'context LibraryMembership,
-    options: &'context DartIndexOptions,
+pub(crate) struct NamespaceResolver<'source, 'options> {
+    uri_graph: DartUriGraph,
+    library_membership: LibraryMembership,
+    files_by_path: HashMap<&'source str, &'source DartFileAnalysis>,
+    options: &'options DartIndexOptions,
 }
 
 impl LibraryMembership {
@@ -85,6 +95,232 @@ impl LibraryMembership {
     }
 }
 
+impl<'source, 'options> NamespaceResolver<'source, 'options> {
+    pub(crate) fn new(
+        project: &'source DartProjectAnalysis,
+        options: &'options DartIndexOptions,
+    ) -> Self {
+        Self {
+            uri_graph: build_uri_graph_with_options(project, options),
+            library_membership: LibraryMembership::from_project(project),
+            files_by_path: project
+                .files
+                .iter()
+                .map(|file| (file.path.as_str(), file))
+                .collect(),
+            options,
+        }
+    }
+
+    pub(crate) fn resolve(
+        &self,
+        source_path: &str,
+        name: &str,
+        prefix: Option<&str>,
+        candidates: &[NamespaceCandidate<'source>],
+    ) -> NamespaceResolution {
+        let Some(source_file) = self.files_by_path.get(source_path).copied() else {
+            return NamespaceResolution {
+                status: DartSymbolResolutionStatus::SourceFileMissing,
+                candidates: Vec::new(),
+            };
+        };
+
+        if prefix.is_none() {
+            let same_file = candidates
+                .iter()
+                .enumerate()
+                .filter_map(|(index, candidate)| {
+                    (candidate.path == source_file.path.as_str()).then_some(index)
+                })
+                .collect();
+            if let Some(resolution) =
+                finish_local_resolution(candidates, same_file, DartSymbolResolutionBasis::SameFile)
+            {
+                return resolution;
+            }
+
+            let same_library = candidates
+                .iter()
+                .enumerate()
+                .filter_map(|(index, candidate)| {
+                    (candidate.path != source_file.path.as_str()
+                        && self
+                            .library_membership
+                            .same_library(candidate.path, &source_file.path))
+                    .then_some(index)
+                })
+                .collect();
+            if let Some(resolution) = finish_local_resolution(
+                candidates,
+                same_library,
+                DartSymbolResolutionBasis::SameLibrary,
+            ) {
+                return resolution;
+            }
+        }
+
+        let namespace_owner = self.library_membership.owner_of(&source_file.path);
+        let namespace_file = self
+            .files_by_path
+            .get(namespace_owner)
+            .copied()
+            .unwrap_or(source_file);
+        let imported = self.imported_candidates(namespace_file, name, prefix, candidates);
+
+        if imported.candidates.len() == 1 {
+            NamespaceResolution {
+                status: DartSymbolResolutionStatus::Resolved,
+                candidates: imported.candidates,
+            }
+        } else if !imported.candidates.is_empty() {
+            NamespaceResolution {
+                status: DartSymbolResolutionStatus::Ambiguous,
+                candidates: imported.candidates,
+            }
+        } else {
+            let status = if imported.conditional_environment_required {
+                DartSymbolResolutionStatus::ConditionalEnvironmentRequired
+            } else if candidates.is_empty() {
+                DartSymbolResolutionStatus::Missing
+            } else {
+                DartSymbolResolutionStatus::NotVisible
+            };
+            let mut matches: Vec<_> = (0..candidates.len())
+                .map(|index| NamespaceCandidateMatch {
+                    index,
+                    basis: DartSymbolResolutionBasis::NotVisible,
+                })
+                .collect();
+            sort_matches(candidates, &mut matches);
+            NamespaceResolution {
+                status,
+                candidates: matches,
+            }
+        }
+    }
+
+    fn imported_candidates(
+        &self,
+        file: &DartFileAnalysis,
+        name: &str,
+        prefix: Option<&str>,
+        candidates: &[NamespaceCandidate<'source>],
+    ) -> ImportedCandidateResolution {
+        if name.starts_with('_') {
+            return ImportedCandidateResolution {
+                candidates: Vec::new(),
+                conditional_environment_required: false,
+            };
+        }
+
+        let mut result = Vec::new();
+        let mut conditional_environment_required = false;
+        for import in &file.imports {
+            if !import_matches_prefix(import, prefix)
+                || !namespace_allows_name(&import.combinators, name)
+            {
+                continue;
+            }
+            if !import.configurations.is_empty() && self.options.compilation_environment.is_none() {
+                conditional_environment_required = true;
+                continue;
+            }
+            let Some(target_path) = resolved_namespace_target(
+                &self.uri_graph,
+                DartUriReferenceKind::Import,
+                &file.path,
+                &import.span,
+            ) else {
+                continue;
+            };
+            let mut exported = Vec::new();
+            self.collect_exported_candidates(
+                target_path,
+                name,
+                candidates,
+                &mut HashSet::new(),
+                &mut conditional_environment_required,
+                &mut exported,
+            );
+            result.extend(exported.into_iter().map(|index| {
+                let basis =
+                    if self.library_membership.owner_of(candidates[index].path) == target_path {
+                        DartSymbolResolutionBasis::DirectImport
+                    } else {
+                        DartSymbolResolutionBasis::ReExport
+                    };
+                NamespaceCandidateMatch { index, basis }
+            }));
+        }
+
+        sort_matches(candidates, &mut result);
+        result.dedup_by(|left, right| {
+            let left = candidates[left.index];
+            let right = candidates[right.index];
+            left.path == right.path && left.byte_start == right.byte_start
+        });
+        ImportedCandidateResolution {
+            candidates: result,
+            conditional_environment_required,
+        }
+    }
+
+    fn collect_exported_candidates(
+        &self,
+        library_path: &str,
+        name: &str,
+        candidates: &[NamespaceCandidate<'source>],
+        visited: &mut HashSet<String>,
+        conditional_environment_required: &mut bool,
+        result: &mut Vec<usize>,
+    ) {
+        if !visited.insert(library_path.to_string())
+            || self.library_membership.is_part(library_path)
+        {
+            return;
+        }
+
+        result.extend(
+            candidates
+                .iter()
+                .enumerate()
+                .filter_map(|(index, candidate)| {
+                    (self.library_membership.owner_of(candidate.path) == library_path)
+                        .then_some(index)
+                }),
+        );
+
+        let Some(file) = self.files_by_path.get(library_path) else {
+            return;
+        };
+        for export in &file.exports {
+            if !namespace_allows_name(&export.combinators, name) {
+                continue;
+            }
+            if !export.configurations.is_empty() && self.options.compilation_environment.is_none() {
+                *conditional_environment_required = true;
+                continue;
+            }
+            if let Some(target_path) = resolved_namespace_target(
+                &self.uri_graph,
+                DartUriReferenceKind::Export,
+                library_path,
+                &export.span,
+            ) {
+                self.collect_exported_candidates(
+                    target_path,
+                    name,
+                    candidates,
+                    visited,
+                    conditional_environment_required,
+                    result,
+                );
+            }
+        }
+    }
+}
+
 /// Resolves one top-level Dart declaration through the source library namespace.
 pub fn resolve_symbol(
     project: &DartProjectAnalysis,
@@ -99,133 +335,57 @@ pub fn resolve_symbol_with_options(
     query: DartSymbolQuery,
     options: &DartIndexOptions,
 ) -> DartSymbolResolution {
-    let files_by_path: HashMap<_, _> = project
-        .files
+    let declarations = collect_declarations(project, query.name.as_str());
+    let candidates: Vec<_> = declarations
         .iter()
-        .map(|file| (file.path.as_str(), file))
+        .map(|location| NamespaceCandidate {
+            path: location.path,
+            byte_start: location.declaration.span.byte_start,
+        })
         .collect();
-    let Some(source_file) = files_by_path.get(query.source_path.as_str()).copied() else {
-        return DartSymbolResolution {
-            query,
-            status: DartSymbolResolutionStatus::SourceFileMissing,
-            candidates: Vec::new(),
-        };
-    };
-
-    let candidates = collect_declarations(project, query.name.as_str());
-    let library_membership = LibraryMembership::from_project(project);
-    let uri_graph = build_uri_graph_with_options(project, options);
-
-    if query.prefix.is_none() {
-        let same_file: Vec<_> = candidates
-            .iter()
-            .filter(|candidate| candidate.path == source_file.path)
-            .collect();
-        if let Some(resolution) = finish_local_resolution(
-            query.clone(),
-            same_file,
-            DartSymbolResolutionBasis::SameFile,
-        ) {
-            return resolution;
-        }
-
-        let same_library: Vec<_> = candidates
-            .iter()
-            .filter(|candidate| {
-                candidate.path != source_file.path
-                    && library_membership.same_library(candidate.path, &source_file.path)
-            })
-            .collect();
-        if let Some(resolution) = finish_local_resolution(
-            query.clone(),
-            same_library,
-            DartSymbolResolutionBasis::SameLibrary,
-        ) {
-            return resolution;
-        }
-    }
-
-    let namespace_owner = library_membership.owner_of(&source_file.path);
-    let namespace_file = files_by_path
-        .get(namespace_owner)
-        .copied()
-        .unwrap_or(source_file);
-    let imported = imported_declaration_candidates(
-        namespace_file,
-        &query,
+    let resolver = NamespaceResolver::new(project, options);
+    let resolution = resolver.resolve(
+        query.source_path.as_str(),
+        query.name.as_str(),
+        query.prefix.as_deref(),
         &candidates,
-        &uri_graph,
-        &files_by_path,
-        &library_membership,
-        options,
     );
-    match imported.candidates.as_slice() {
-        [candidate] => {
-            return DartSymbolResolution {
-                query,
-                status: DartSymbolResolutionStatus::Resolved,
-                candidates: vec![candidate_output(candidate.location, candidate.basis)],
-            };
-        }
-        candidates if !candidates.is_empty() => {
-            let mut outputs: Vec<_> = candidates
-                .iter()
-                .map(|candidate| candidate_output(candidate.location, candidate.basis))
-                .collect();
-            sort_candidates(&mut outputs);
-            return DartSymbolResolution {
-                query,
-                status: DartSymbolResolutionStatus::Ambiguous,
-                candidates: outputs,
-            };
-        }
-        _ => {}
-    }
-
-    let status = if imported.conditional_environment_required {
-        DartSymbolResolutionStatus::ConditionalEnvironmentRequired
-    } else if candidates.is_empty() {
-        DartSymbolResolutionStatus::Missing
-    } else {
-        DartSymbolResolutionStatus::NotVisible
-    };
-    let mut outputs: Vec<_> = candidates
+    let mut outputs: Vec<_> = resolution
+        .candidates
         .iter()
-        .map(|candidate| candidate_output(candidate, DartSymbolResolutionBasis::NotVisible))
+        .map(|candidate| candidate_output(&declarations[candidate.index], candidate.basis))
         .collect();
     sort_candidates(&mut outputs);
     DartSymbolResolution {
         query,
-        status,
+        status: resolution.status,
         candidates: outputs,
     }
 }
 
 fn finish_local_resolution(
-    query: DartSymbolQuery,
-    candidates: Vec<&DeclarationLocation<'_>>,
+    candidates: &[NamespaceCandidate<'_>],
+    indices: Vec<usize>,
     basis: DartSymbolResolutionBasis,
-) -> Option<DartSymbolResolution> {
-    match candidates.as_slice() {
-        [] => None,
-        [candidate] => Some(DartSymbolResolution {
-            query,
-            status: DartSymbolResolutionStatus::Resolved,
-            candidates: vec![candidate_output(candidate, basis)],
-        }),
-        _ => {
-            let mut outputs: Vec<_> = candidates
-                .iter()
-                .map(|candidate| candidate_output(candidate, basis))
-                .collect();
-            sort_candidates(&mut outputs);
-            Some(DartSymbolResolution {
-                query,
-                status: DartSymbolResolutionStatus::Ambiguous,
-                candidates: outputs,
-            })
-        }
+) -> Option<NamespaceResolution> {
+    if indices.is_empty() {
+        return None;
     }
+
+    let status = if indices.len() == 1 {
+        DartSymbolResolutionStatus::Resolved
+    } else {
+        DartSymbolResolutionStatus::Ambiguous
+    };
+    let mut matches: Vec<_> = indices
+        .into_iter()
+        .map(|index| NamespaceCandidateMatch { index, basis })
+        .collect();
+    sort_matches(candidates, &mut matches);
+    Some(NamespaceResolution {
+        status,
+        candidates: matches,
+    })
 }
 
 fn collect_declarations<'a>(
@@ -253,141 +413,10 @@ fn collect_declarations<'a>(
     candidates
 }
 
-fn imported_declaration_candidates<'candidate, 'source>(
-    file: &DartFileAnalysis,
-    query: &DartSymbolQuery,
-    candidates: &'candidate [DeclarationLocation<'source>],
-    uri_graph: &DartUriGraph,
-    files_by_path: &HashMap<&'source str, &'source DartFileAnalysis>,
-    library_membership: &LibraryMembership,
-    options: &DartIndexOptions,
-) -> ImportedDeclarationResolution<'candidate, 'source> {
-    if query.name.starts_with('_') {
-        return ImportedDeclarationResolution {
-            candidates: Vec::new(),
-            conditional_environment_required: false,
-        };
-    }
-
-    let context = ExportResolutionContext {
-        name: query.name.as_str(),
-        candidates,
-        uri_graph,
-        files_by_path,
-        library_membership,
-        options,
-    };
-    let mut result = Vec::new();
-    let mut conditional_environment_required = false;
-    for import in &file.imports {
-        if !import_matches_prefix(import, query.prefix.as_deref())
-            || !namespace_allows_name(&import.combinators, query.name.as_str())
-        {
-            continue;
-        }
-        if !import.configurations.is_empty() && options.compilation_environment.is_none() {
-            conditional_environment_required = true;
-            continue;
-        }
-        let Some(target_path) = resolved_namespace_target(
-            uri_graph,
-            DartUriReferenceKind::Import,
-            &file.path,
-            &import.span,
-        ) else {
-            continue;
-        };
-        let mut exported = Vec::new();
-        collect_exported_declarations(
-            target_path,
-            &context,
-            &mut HashSet::new(),
-            &mut conditional_environment_required,
-            &mut exported,
-        );
-        result.extend(
-            exported
-                .into_iter()
-                .map(|location| ImportedDeclarationCandidate {
-                    basis: if library_membership.owner_of(location.path) == target_path {
-                        DartSymbolResolutionBasis::DirectImport
-                    } else {
-                        DartSymbolResolutionBasis::ReExport
-                    },
-                    location,
-                }),
-        );
-    }
-
-    result.sort_by_key(|candidate| {
-        (
-            candidate.location.path,
-            candidate.location.declaration.span.byte_start,
-            basis_order(candidate.basis),
-        )
-    });
-    result.dedup_by_key(|candidate| {
-        (
-            candidate.location.path,
-            candidate.location.declaration.span.byte_start,
-        )
-    });
-    ImportedDeclarationResolution {
-        candidates: result,
-        conditional_environment_required,
-    }
-}
-
 fn import_matches_prefix(import: &dartscope_core::DartImport, prefix: Option<&str>) -> bool {
     match prefix {
         Some(prefix) => import.prefix.as_deref() == Some(prefix),
         None => import.prefix.is_none() && !import.is_deferred,
-    }
-}
-
-fn collect_exported_declarations<'source, 'candidate>(
-    library_path: &str,
-    context: &ExportResolutionContext<'source, 'candidate, '_>,
-    visited: &mut HashSet<String>,
-    conditional_environment_required: &mut bool,
-    result: &mut Vec<&'candidate DeclarationLocation<'source>>,
-) {
-    if !visited.insert(library_path.to_string()) || context.library_membership.is_part(library_path)
-    {
-        return;
-    }
-
-    result.extend(
-        context.candidates.iter().filter(|candidate| {
-            context.library_membership.owner_of(candidate.path) == library_path
-        }),
-    );
-
-    let Some(file) = context.files_by_path.get(library_path) else {
-        return;
-    };
-    for export in &file.exports {
-        if !namespace_allows_name(&export.combinators, context.name) {
-            continue;
-        }
-        if !export.configurations.is_empty() && context.options.compilation_environment.is_none() {
-            *conditional_environment_required = true;
-            continue;
-        }
-        if let Some(target_path) = resolved_namespace_target(
-            context.uri_graph,
-            DartUriReferenceKind::Export,
-            library_path,
-            &export.span,
-        ) {
-            collect_exported_declarations(
-                target_path,
-                context,
-                visited,
-                conditional_environment_required,
-                result,
-            );
-        }
     }
 }
 
@@ -433,6 +462,25 @@ fn candidate_output(
             .unwrap_or_else(|| location.declaration.span.clone()),
         basis,
     }
+}
+
+fn sort_matches(candidates: &[NamespaceCandidate<'_>], matches: &mut [NamespaceCandidateMatch]) {
+    matches.sort_by(|left, right| {
+        let left_candidate = candidates[left.index];
+        let right_candidate = candidates[right.index];
+        (
+            left_candidate.path,
+            left_candidate.byte_start,
+            basis_order(left.basis),
+            left.index,
+        )
+            .cmp(&(
+                right_candidate.path,
+                right_candidate.byte_start,
+                basis_order(right.basis),
+                right.index,
+            ))
+    });
 }
 
 fn sort_candidates(candidates: &mut [DartSymbolCandidate]) {

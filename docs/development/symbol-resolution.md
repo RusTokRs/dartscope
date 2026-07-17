@@ -48,14 +48,16 @@ The first slice distinguishes:
 Ambiguous and non-visible outcomes retain candidates rather than choosing one. Conditional imports or
 exports require an explicit compilation environment before package semantics are selected.
 
+The GraphQL contract analyzer uses the same internal namespace engine for operation-constant
+visibility while retaining its existing public binding, unresolved-reason, candidate-path, and
+ordering contracts.
+
 ## Current Boundary
 
 The API resolves top-level declarations already present in `DartFileAnalysis`. It does not yet:
 
 - discover identifier-use sites from arbitrary expressions;
 - resolve members, constructors, extension lookup, types, or overload-like language behavior;
-- resolve declarations from external packages that are absent from the loaded project index;
-- replace the GraphQL-specific linker, which will migrate to the shared namespace engine in a
-  follow-up DS-INDEX-004 slice.
+- resolve declarations from external packages that are absent from the loaded project index.
 
 These limits keep the first public contract deterministic and evidence-based.
