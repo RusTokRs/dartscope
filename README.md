@@ -16,9 +16,10 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
   primary pubspec analysis preserves exact dependency-key and environment-key spans, normalizes
   scalar, SDK, path, git, hosted, and workspace sources, and embeds Flutter assets, flavors,
   platforms, ordered asset transformers, fonts, and localization-generation settings.
-- `dartscope-index` performs project-level linking over normalized analysis results. Its
-  first API resolves GraphQL operation uses conservatively and compares operation,
-  client-call, and variable contracts without depending on parser internals.
+- `dartscope-index` performs project-level linking over normalized analysis results. It resolves
+  top-level Dart declarations through library namespaces and links GraphQL operation uses
+  conservatively while comparing operation, client-call, and variable contracts without depending
+  on parser internals.
 - `dartscope-resolve` parses official package configuration v2 inputs and owns package
   and URI resolution primitives without performing filesystem I/O.
 - `dartscope-flutter` derives widget, official application-route, named-navigation, theme, asset,
@@ -82,6 +83,8 @@ See [`docs/development/flutter-boundary.md`](docs/development/flutter-boundary.m
 [`docs/development/flutter-catalogs.md`](docs/development/flutter-catalogs.md),
 [`docs/development/flutter-themes.md`](docs/development/flutter-themes.md), and
 [`docs/development/flutter-ecosystem-conventions.md`](docs/development/flutter-ecosystem-conventions.md).
+General declaration queries are documented in
+[`docs/development/symbol-resolution.md`](docs/development/symbol-resolution.md).
 
 ## Rust Toolchain
 
