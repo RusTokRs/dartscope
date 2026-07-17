@@ -88,21 +88,32 @@ consuming repository:
 
 ```yaml
 - name: Run DartScope lints
-  run: >-
-    cargo run --locked -p dartscope-cli --
-    lint . --config dartscope.toml --format sarif --deny-warnings
-    > dartscope.sarif
-  continue-on-error: true
+  id: dartscope_lint
+  shell: bash
+  run: |
+    set +e
+    cargo run --locked -p dartscope-cli -- \
+      lint . --config dartscope.toml --format sarif --deny-warnings \
+      > dartscope.sarif
+    status=$?
+    echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+    if [ "$status" -ne 0 ] && [ "$status" -ne 4 ]; then
+      exit "$status"
+    fi
 
 - name: Upload DartScope SARIF
   uses: github/codeql-action/upload-sarif@<reviewed-immutable-commit-sha>
   with:
     sarif_file: dartscope.sarif
+
+- name: Fail on DartScope findings
+  if: steps.dartscope_lint.outputs.exit_code == '4'
+  run: exit 4
 ```
 
-`continue-on-error` allows the upload step to run when DartScope exits `4`. Filesystem, configuration,
-and malformed-project exit codes should fail the job rather than upload incomplete results; production
-workflows can branch on the captured process status when they need that distinction.
+The lint step converts only exit code `4` into a temporary successful step so the SARIF upload can run,
+then the final step restores the finding failure. Filesystem, configuration, malformed-project, usage,
+and internal failures stop the job before upload instead of publishing incomplete results.
 
 ## Current Limits
 
