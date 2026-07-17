@@ -1,0 +1,116 @@
+name: Finalize DS-RELEASE-001
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".dartscope-release001/trigger.txt"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: dartscope-release001-finalization
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STATUS_CONTEXT: dartscope/release001-finalization
+    steps:
+      - name: Check out staging commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify staging head
+        run: |
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+
+      - name: Publish pending finalization status
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=pending \
+            -f context="${STATUS_CONTEXT}" \
+            -f description="Validating publishable 0.1 release hardening" \
+            -f target_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Verify and apply release hardening
+        run: |
+          echo "857b7d2ec71e1a3c4b55ae766c3fd08282e20766aee9263f638e2bfee7271a0c  .dartscope-release001/apply.py" | sha256sum -c -
+          echo "2fe063db52ed7fdb4f54b7b4961d0f09d082a2ee7f6c0fccc83cbfa56cd65739  .dartscope-release001/manifest.tsv" | sha256sum -c -
+          python3 .dartscope-release001/apply.py
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Normalize formatting
+        run: cargo fmt --all
+
+      - name: Check patch whitespace
+        run: git diff --check
+
+      - name: Validate release tooling syntax
+        run: |
+          python3 -m py_compile tools/check-release-packages.py
+          bash -n tools/publish-crates.sh
+
+      - name: Run workspace tests
+        run: cargo test --workspace --locked --quiet
+
+      - name: Test umbrella composition
+        run: cargo test -p dartscope --all-features --locked --quiet
+
+      - name: Run workspace Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Build documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --locked
+
+      - name: Build release package archives
+        run: python3 tools/check-release-packages.py
+
+      - name: Commit verified release hardening
+        id: commit
+        run: |
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          rm -rf .dartscope-release001
+          rm .github/workflows/release001-finalize.yml
+          rm -f .tmp_should_not_use
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "chore: harden 0.1 release pipeline"
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish finalization status
+        if: steps.commit.outcome == 'success'
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${{ steps.commit.outputs.sha }}" \
+            -f state=success \
+            -f context="${STATUS_CONTEXT}" \
+            -f description="Rust 1.95 release and package gates passed" \
+            -f target_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Publish failure status
+        if: failure()
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=failure \
+            -f context="${STATUS_CONTEXT}" \
+            -f description="DS-RELEASE-001 finalization failed" \
+            -f target_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"

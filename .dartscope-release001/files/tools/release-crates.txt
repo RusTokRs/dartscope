@@ -1,0 +1,9 @@
+dartscope-core
+dartscope-resolve
+dartscope-parse
+dartscope-index
+dartscope-lints
+dartscope-flutter
+dartscope-json
+dartscope
+dartscope-cli
