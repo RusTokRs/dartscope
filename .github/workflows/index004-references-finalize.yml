@@ -46,7 +46,22 @@ jobs:
             -d "$payload"
 
       - name: Apply reference analysis slice
-        run: python .dartscope-index004-references.py
+        run: |
+          set +e
+          python .dartscope-index004-references.py > .dartscope-index004-references-apply.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            tail -80 .dartscope-index004-references-apply.log > .dartscope-index004-references-error.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .dartscope-index004-references-error.txt
+            git commit -m "ci: capture DS-INDEX-004 reference apply failure"
+            git push origin HEAD:main
+            cat .dartscope-index004-references-error.txt
+            exit "$status"
+          fi
+          rm -f .dartscope-index004-references-apply.log
 
       - name: Install Rust 1.95
         uses: dtolnay/rust-toolchain@master
@@ -88,6 +103,7 @@ jobs:
           git fetch origin main
           test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
           rm -rf .dartscope-index004-references .dartscope-index004-references.py
+          rm -f .dartscope-index004-references-error.txt
           rm -f .github/workflows/index004-references-finalize.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
