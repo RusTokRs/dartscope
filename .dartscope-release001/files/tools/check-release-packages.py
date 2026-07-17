@@ -105,16 +105,16 @@ def package_archives(order: list[str], version: str) -> None:
     package_dir = ROOT / "target" / "package"
     shutil.rmtree(package_dir, ignore_errors=True)
 
+    run(
+        "cargo",
+        "package",
+        "--workspace",
+        "--locked",
+        "--allow-dirty",
+        "--no-verify",
+    )
+
     for name in order:
-        run(
-            "cargo",
-            "package",
-            "-p",
-            name,
-            "--locked",
-            "--allow-dirty",
-            "--no-verify",
-        )
         archive = package_dir / f"{name}-{version}.crate"
         if not archive.is_file():
             raise SystemExit(f"cargo package did not create {archive}")
