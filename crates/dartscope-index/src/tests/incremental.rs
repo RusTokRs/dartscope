@@ -1,0 +1,290 @@
+use crate::*;
+use dartscope_core::*;
+use dartscope_parse::{
+    analyze_file, analyze_file_with_references, analyze_project, analyze_project_with_references,
+    parse_pubspec,
+};
+
+#[test]
+fn incremental_snapshots_match_clean_rebuilds_after_update_and_remove() {
+    let initial_sources = vec![
+        (
+            "lib/api.dart",
+            "const viewerQuery = r'''query Viewer { viewer { id } }''';\n",
+        ),
+        (
+            "lib/client.dart",
+            "import 'api.dart';\nvoid load() { client.query(QueryOptions(document: gql(viewerQuery))); }\n",
+        ),
+        (
+            "lib/part_owner.dart",
+            "part 'src/part.dart';\nclass Owner {}\n",
+        ),
+        (
+            "lib/src/part.dart",
+            "part of '../part_owner.dart';\nclass PartThing {}\n",
+        ),
+    ];
+    let initial = reference_project(&initial_sources);
+    let mut index = DartWorkspaceIndex::from_reference_project(initial.clone());
+    assert_snapshot_matches(&index, &initial, &DartIndexOptions::default());
+
+    let updated_api = analyze_file_with_references(DartFileInput::new(
+        "lib/api.dart",
+        "const updatedQuery = r'''query Viewer { viewer { id name } }''';\n",
+    ));
+    let update = index.upsert_file_with_references(updated_api);
+    assert_eq!(update.generation, 1);
+    assert!(update.rebuilt.project);
+    assert!(!update.rebuilt.uri_graph);
+    assert!(!update.rebuilt.part_links);
+    assert!(update.rebuilt.graphql_contracts);
+    assert!(update.rebuilt.identifier_references);
+
+    let updated_sources = vec![
+        (
+            "lib/api.dart",
+            "const updatedQuery = r'''query Viewer { viewer { id name } }''';\n",
+        ),
+        initial_sources[1],
+        initial_sources[2],
+        initial_sources[3],
+    ];
+    let updated = reference_project(&updated_sources);
+    assert_snapshot_matches(&index, &updated, &DartIndexOptions::default());
+
+    let removal = index.remove_file("lib\\src\\part.dart");
+    assert_eq!(removal.generation, 2);
+    assert!(removal.rebuilt.uri_graph);
+    assert!(removal.rebuilt.part_links);
+    let without_part = reference_project(&updated_sources[..3]);
+    assert_snapshot_matches(&index, &without_part, &DartIndexOptions::default());
+}
+
+#[test]
+fn diagnostic_only_updates_rebuild_only_the_project_projection() {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        vec![DartFileInput::new("lib/a.dart", "class A {}\n")],
+        vec![],
+    ));
+    let mut index = DartWorkspaceIndex::from_project(project);
+    let retained = index.snapshot();
+    let before = index.counters();
+    let mut file = retained.project().files[0].clone();
+    file.diagnostics.push(
+        DartDiagnostic::warning("synthetic", "synthetic diagnostic", None).with_path("lib/a.dart"),
+    );
+
+    let update = index.upsert_file(file.clone());
+    assert_eq!(
+        update.rebuilt,
+        DartWorkspaceSubsystems {
+            project: true,
+            ..DartWorkspaceSubsystems::default()
+        }
+    );
+    assert_eq!(update.changed_paths, vec!["lib/a.dart".to_string()]);
+    assert_eq!(update.affected_paths, vec!["lib/a.dart".to_string()]);
+    assert_eq!(retained.generation(), 0);
+    assert!(retained.project().diagnostics.is_empty());
+    assert_eq!(index.snapshot().project().diagnostics.len(), 1);
+
+    let after = index.counters();
+    assert_eq!(after.project_rebuilds, before.project_rebuilds + 1);
+    assert_eq!(after.uri_graph_rebuilds, before.uri_graph_rebuilds);
+    assert_eq!(after.part_link_rebuilds, before.part_link_rebuilds);
+    assert_eq!(after.graphql_rebuilds, before.graphql_rebuilds);
+    assert_eq!(after.reference_rebuilds, before.reference_rebuilds);
+
+    let no_op = index.upsert_file(file);
+    assert!(no_op.is_no_op());
+    assert_eq!(no_op.generation, 1);
+    assert_eq!(index.counters().no_op_updates, 1);
+}
+
+#[test]
+fn declaration_changes_report_the_transitive_reverse_dependency_closure() {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        vec![
+            DartFileInput::new("lib/a.dart", "import 'b.dart';\nvoid a() { C(); }\n"),
+            DartFileInput::new("lib/b.dart", "export 'c.dart';\n"),
+            DartFileInput::new("lib/c.dart", "class C {}\n"),
+        ],
+        vec![],
+    ));
+    let mut index = DartWorkspaceIndex::from_project(project);
+    let replacement = analyze_file(DartFileInput::new("lib/c.dart", "class Changed {}\n"));
+
+    let update = index.upsert_file(replacement);
+
+    assert!(update.rebuilt.project);
+    assert!(!update.rebuilt.uri_graph);
+    assert!(!update.rebuilt.part_links);
+    assert!(!update.rebuilt.graphql_contracts);
+    assert!(update.rebuilt.identifier_references);
+    assert_eq!(
+        update.affected_paths,
+        vec![
+            "lib/a.dart".to_string(),
+            "lib/b.dart".to_string(),
+            "lib/c.dart".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn option_changes_reuse_project_and_part_products() {
+    let analysis = reference_project(&[
+        (
+            "lib/platform.dart",
+            "import 'stub.dart' if (dart.library.io) 'io.dart';\n",
+        ),
+        ("lib/stub.dart", "class PlatformApi {}\n"),
+        ("lib/io.dart", "class PlatformApi {}\n"),
+    ]);
+    let mut index = DartWorkspaceIndex::from_reference_project(analysis);
+    let before = index.counters();
+    let options = DartIndexOptions::default().with_compilation_environment(
+        DartCompilationEnvironment::from_pairs([("dart.library.io", "true")]),
+    );
+
+    let update = index.update_options(options.clone());
+
+    assert_eq!(
+        update.rebuilt,
+        DartWorkspaceSubsystems {
+            project: false,
+            uri_graph: true,
+            part_links: false,
+            graphql_contracts: true,
+            identifier_references: true,
+        }
+    );
+    assert_eq!(update.affected_paths.len(), 3);
+    assert_eq!(index.snapshot().uri_graph().references.len(), 1);
+    assert_eq!(index.snapshot().uri_graph().references[0].uri, "io.dart");
+    assert_eq!(index.counters().project_rebuilds, before.project_rebuilds);
+    assert_eq!(
+        index.counters().part_link_rebuilds,
+        before.part_link_rebuilds
+    );
+    assert_snapshot_matches_project_only(&index, &options);
+}
+
+#[test]
+fn pubspec_updates_refresh_package_resolution_without_reparsing_files() {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        vec![
+            DartFileInput::new(
+                "apps/app/lib/client.dart",
+                "import 'package:shared/api.dart';\n",
+            ),
+            DartFileInput::new("packages/shared/lib/api.dart", "class Api {}\n"),
+        ],
+        vec![],
+    ));
+    let mut index = DartWorkspaceIndex::from_project(project);
+    assert_eq!(
+        index.snapshot().uri_graph().references[0].resolution,
+        DartUriResolution::UnindexedPackage
+    );
+
+    let update = index.upsert_pubspec(parse_pubspec(PubspecInput::new(
+        "packages/shared/pubspec.yaml",
+        "name: shared\n",
+    )));
+
+    assert!(update.rebuilt.uri_graph);
+    assert_eq!(update.affected_paths.len(), 2);
+    assert_eq!(
+        index.snapshot().uri_graph().references[0].resolution,
+        DartUriResolution::Resolved
+    );
+    assert_eq!(
+        index.snapshot().uri_graph().references[0]
+            .target_path
+            .as_deref(),
+        Some("packages/shared/lib/api.dart")
+    );
+
+    let baseline = analyze_project(DartProjectInput::new(
+        ".",
+        vec![
+            DartFileInput::new(
+                "apps/app/lib/client.dart",
+                "import 'package:shared/api.dart';\n",
+            ),
+            DartFileInput::new("packages/shared/lib/api.dart", "class Api {}\n"),
+        ],
+        vec![PubspecInput::new(
+            "packages/shared/pubspec.yaml",
+            "name: shared\n",
+        )],
+    ));
+    assert_eq!(index.snapshot().project(), &baseline);
+    assert_eq!(index.snapshot().uri_graph(), &build_uri_graph(&baseline));
+}
+
+#[test]
+fn workspace_state_and_snapshots_are_send_and_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+
+    assert_send_sync::<DartWorkspaceIndex>();
+    assert_send_sync::<DartWorkspaceSnapshot>();
+    assert_send_sync::<std::sync::Arc<DartWorkspaceSnapshot>>();
+}
+
+fn reference_project(sources: &[(&str, &str)]) -> DartProjectReferenceAnalysis {
+    analyze_project_with_references(DartProjectInput::new(
+        ".",
+        sources
+            .iter()
+            .map(|(path, source)| DartFileInput::new(*path, *source))
+            .collect(),
+        vec![],
+    ))
+}
+
+fn assert_snapshot_matches(
+    index: &DartWorkspaceIndex,
+    baseline: &DartProjectReferenceAnalysis,
+    options: &DartIndexOptions,
+) {
+    let snapshot = index.snapshot();
+    assert_eq!(snapshot.project(), &baseline.project);
+    assert_eq!(
+        snapshot.uri_graph(),
+        &build_uri_graph_with_options(&baseline.project, options)
+    );
+    assert_eq!(
+        snapshot.part_links(),
+        &analyze_part_links(&baseline.project)
+    );
+    assert_eq!(
+        snapshot.graphql_contracts(),
+        &analyze_graphql_contracts_with_options(&baseline.project, options)
+    );
+    assert_eq!(
+        snapshot.identifier_reference_resolutions(),
+        &resolve_project_identifier_references_with_options(baseline, options)
+    );
+}
+
+fn assert_snapshot_matches_project_only(index: &DartWorkspaceIndex, options: &DartIndexOptions) {
+    let snapshot = index.snapshot();
+    assert_eq!(
+        snapshot.uri_graph(),
+        &build_uri_graph_with_options(snapshot.project(), options)
+    );
+    assert_eq!(
+        snapshot.part_links(),
+        &analyze_part_links(snapshot.project())
+    );
+    assert_eq!(
+        snapshot.graphql_contracts(),
+        &analyze_graphql_contracts_with_options(snapshot.project(), options)
+    );
+}
