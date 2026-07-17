@@ -14,28 +14,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  migrate_ci003:
-    name: Finalize DS-CI-003 migration
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: main
-          fetch-depth: 0
-      - name: Apply and commit audited migration
-        run: |
-          python3 tools/ci003_apply.py
-          rm -f .github/workflows/ci003-finalize.yml tools/ci003_apply.py
-          git config user.name "dartscope-ci"
-          git config user.email "actions@users.noreply.github.com"
-          git add -A
-          git diff --cached --check
-          git commit -m "ci: harden immutable workflow supply chain"
-          git push origin HEAD:main
-
   workflow_policy:
     name: Workflow policy
     runs-on: ubuntu-latest
