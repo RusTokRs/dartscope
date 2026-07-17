@@ -828,6 +828,8 @@ Implemented (2026-07-17):
    surface, warning thresholds, `--deny-warnings`, malformed configuration, malformed project input,
    deterministic SARIF, stdout/stderr separation, and command help.
 7. Documented direct GitHub Code Scanning upload without a custom converter.
+8. Removed Python bytecode accidentally captured by the verification runner, added repository ignore
+   rules, and made repository consistency reject tracked `__pycache__` and compiled Python artifacts.
 
 Findings and limits:
 
@@ -840,6 +842,9 @@ Findings and limits:
   keep their existing diagnostic-bearing success behavior.
 - The `toml` parser is a direct CLI dependency pinned by `Cargo.lock`; its public types do not cross the
   DartScope API boundary.
+- **P1 fixed:** the first successful finalization staged Python bytecode created by policy-test imports.
+  Generated Python artifacts are now ignored and a permanent repository-consistency check rejects any
+  tracked recurrence.
 
 Acceptance:
 
