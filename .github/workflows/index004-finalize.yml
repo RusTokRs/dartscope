@@ -45,7 +45,21 @@ jobs:
             -d "$payload"
 
       - name: Apply general namespace resolution slice
-        run: python .dartscope-index004-slice.py
+        run: |
+          set +e
+          python .dartscope-index004-slice.py > /tmp/index004-apply.log 2>&1
+          code=$?
+          set -e
+          cat /tmp/index004-apply.log
+          if [ "$code" -ne 0 ]; then
+            tail -n 8 /tmp/index004-apply.log > .dartscope-index004-error.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .dartscope-index004-error.txt
+            git commit -m "ci: capture DS-INDEX-004 apply failure"
+            git push origin HEAD:main
+            exit "$code"
+          fi
 
       - name: Install Rust 1.95
         uses: dtolnay/rust-toolchain@master
@@ -75,7 +89,7 @@ jobs:
 
       - name: Commit verified namespace resolution
         run: |
-          rm -f .dartscope-index004-slice.py .github/workflows/index004-finalize.yml
+          rm -f .dartscope-index004-slice.py .dartscope-index004-error.txt .github/workflows/index004-finalize.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
