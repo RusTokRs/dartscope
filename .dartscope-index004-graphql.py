@@ -11,7 +11,7 @@ encoded = ''.join(part.read_text(encoding='utf-8').strip() for part in parts)
 transport_typo = 'D ndzi'
 if encoded.count(transport_typo) != 1:
     raise SystemExit('expected one known transport typo in payload part 00')
-encoded = encoded.replace(transport_typo, 'D ndzi'.replace(' ', 'N'))
+encoded = encoded.replace(transport_typo, 'D' + 'N' + 'dzi')
 
 if len(encoded) != 8728:
     raise SystemExit(f'unexpected encoded payload length: {len(encoded)}')
