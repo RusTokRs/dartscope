@@ -18,3 +18,4 @@ if hashlib.sha256(script).hexdigest() != "2ce3e8bd797b71025872d7899bd1022402fa4b
     raise SystemExit("decoded payload checksum mismatch")
 
 exec(compile(script, ".dartscope-lint001-payload.py", "exec"))
+# trigger finalization after workflow registration
