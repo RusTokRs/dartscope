@@ -1,0 +1,150 @@
+name: Finalize DS-CLI-003
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ds-cli003-finalize.yml"
+      - "tools/ds_cli003_patch_applier.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ds-cli003-finalize-main
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    name: Apply, verify, and commit lint CLI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Run observable finalization
+        env:
+          GOBIN: ${{ runner.temp }}/actionlint-bin
+        shell: bash
+        run: |
+          set +e
+          LOG="$RUNNER_TEMP/ds-cli003-finalization.log"
+          : > "$LOG"
+          FAILED_STAGE=""
+
+          run_stage() {
+            local name="$1"
+            shift
+            echo "===== $name =====" | tee -a "$LOG"
+            "$@" > >(tee -a "$LOG") 2> >(tee -a "$LOG" >&2)
+            local status=$?
+            if [ "$status" -ne 0 ]; then
+              FAILED_STAGE="$name (exit $status)"
+              return "$status"
+            fi
+          }
+
+          run_stage "recover implementation" bash -c \
+            'git show 8158723bda807a7f5801506dd8e37c35fe612551:tools/ds_cli003_apply.py.gz.b64 | base64 --decode | gzip --decompress > tools/ds_cli003_apply.py' || true
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "patch applier" python3 tools/ds_cli003_patch_applier.py || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "apply implementation" python3 tools/ds_cli003_apply.py || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            rm -f .github/workflows/ds-cli003-finalize.yml
+            rm -f tools/ds_cli003_apply.py tools/ds_cli003_patch_applier.py
+            rm -f docs/development/ds-cli003-finalization-failure.md
+            run_stage "install actionlint" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "actionlint" "$GOBIN/actionlint" -color || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "workflow policy tests" python3 -m unittest discover -s tools/tests -p 'test_*.py' -v || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "workflow policy" python3 tools/check-workflow-policy.py || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "install Rust 1.95" rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "generate lock graph" cargo check -p dartscope-cli || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "verify toml dependency" bash -c \
+              "cargo tree -p dartscope-cli --locked | grep -F 'toml v1.1.3'" || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "rustfmt" cargo fmt --all || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "focused CLI tests" cargo test -p dartscope-cli --locked --quiet || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "focused JSON and lint tests" cargo test -p dartscope-json -p dartscope-lints --locked --quiet || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "Clippy" cargo clippy --workspace --all-targets --locked -- -D warnings || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "rustdoc" env RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "workspace tests" cargo test --workspace --locked --quiet || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "umbrella all-features" cargo test -p dartscope --all-features --locked --quiet || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "repository consistency" python3 tools/check-repository-consistency.py || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "release packages" python3 tools/check-release-packages.py || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then
+            run_stage "publish script syntax" bash -n tools/publish-crates.sh || true
+          fi
+
+          git config user.name "dartscope-ci"
+          git config user.email "actions@users.noreply.github.com"
+
+          if [ -n "$FAILED_STAGE" ]; then
+            git fetch origin main
+            git reset --hard origin/main
+            rm -f .github/workflows/ds-cli003-finalize.yml
+            rm -f tools/ds_cli003_apply.py tools/ds_cli003_patch_applier.py
+            mkdir -p docs/development
+            {
+              echo "---"
+              echo "id: doc://docs/development/ds-cli003-finalization-failure.md"
+              echo "kind: verification_report"
+              echo "language: en"
+              echo "source_language: en"
+              echo "status: active"
+              echo "---"
+              echo
+              echo "# DS-CLI-003 Finalization Failure"
+              echo
+              echo "Failed stage: \`$FAILED_STAGE\`."
+              echo
+              echo "The implementation was not committed. Temporary staging files were removed."
+              echo
+              echo '```text'
+              tail -n 300 "$LOG"
+              echo '```'
+            } > docs/development/ds-cli003-finalization-failure.md
+            git add -A
+            git commit -m "ci: record DS-CLI-003 finalization failure"
+            git push origin HEAD:main
+            exit 1
+          fi
+
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: add versioned lint CLI and SARIF"
+          git push origin HEAD:main
