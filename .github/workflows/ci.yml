@@ -115,7 +115,7 @@ jobs:
 
   flutter003_validate:
     name: Flutter catalogs (${{ matrix.os }})
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.modified, '.github/workflows/ci.yml')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'ci: run Flutter catalog finalization')
     strategy:
       fail-fast: false
       matrix:
@@ -176,7 +176,7 @@ jobs:
   flutter003_finalize:
     name: Commit Flutter catalogs
     needs: flutter003_validate
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.modified, '.github/workflows/ci.yml')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'ci: run Flutter catalog finalization')
     runs-on: ubuntu-latest
     permissions:
       contents: write
