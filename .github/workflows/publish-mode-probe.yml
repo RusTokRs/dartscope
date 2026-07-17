@@ -1,4 +1,4 @@
-name: Publish Script Mode Probe
+name: Repository Consistency Probe
 
 on:
   push:
@@ -14,18 +14,74 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Record mode
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Record consistency findings
         run: |
-          git ls-files --stage tools/publish-crates.sh > .dartscope-mode-result
-          if test -x tools/publish-crates.sh; then
-            echo executable >> .dartscope-mode-result
-          else
-            echo not-executable >> .dartscope-mode-result
-          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import tomllib
+
+          findings = []
+          details = []
+          mode_line = subprocess.check_output(
+              ['git', 'ls-files', '--stage', 'tools/publish-crates.sh'], text=True
+          ).strip()
+          mode = mode_line.split()[0]
+          details.append(f'publish script index entry: {mode_line}')
+          details.append(f'publish script executable: {Path("tools/publish-crates.sh").stat().st_mode & 0o111 != 0}')
+          if mode != '100755':
+              findings.append(f'publish script mode is {mode}, but release workflow executes it directly')
+
+          plan = Path('docs/development/dartscope-library-plan.md').read_text(encoding='utf-8')
+          for text, reason in [
+              ('Rust workspace and eight crates', 'workspace now has nine crates'),
+              ('Lint/rule engine | planned | crate not created', 'lint engine is verified'),
+              ('Baseline reviewed on 2026-07-16.', 'baseline date predates completed 0.1 work'),
+          ]:
+              if text in plan:
+                  findings.append(f'stale roadmap text: {text!r}: {reason}')
+
+          version = str(tomllib.loads(Path('Cargo.toml').read_text())['workspace']['package']['version'])
+          tag = f'v{version}'
+          tag_exists = subprocess.run(
+              ['git', 'rev-parse', '--verify', '--quiet', f'refs/tags/{tag}']
+          ).returncode == 0
+          if f'## [{version}] - ' in Path('CHANGELOG.md').read_text(encoding='utf-8') and not tag_exists:
+              findings.append(f'CHANGELOG marks {version} released but {tag} is absent')
+
+          ignored = {
+              'audit-report.yml', 'full-repository-audit.yml',
+              'repository-audit-observable.yml', 'publish-mode-probe.yml',
+          }
+          mutable = []
+          for workflow in sorted(Path('.github/workflows').glob('*.*ml')):
+              if workflow.name in ignored:
+                  continue
+              for line_no, line in enumerate(workflow.read_text(encoding='utf-8').splitlines(), 1):
+                  text = line.strip()
+                  if text.startswith('uses:') and '@' in text:
+                      ref = text.rsplit('@', 1)[1]
+                      if len(ref) != 40 or any(c not in '0123456789abcdefABCDEF' for c in ref):
+                          mutable.append(f'{workflow}:{line_no}: {text}')
+          if mutable:
+              findings.append(f'{len(mutable)} permanent Action references use mutable tags/branches')
+              details.extend(mutable)
+
+          output = [
+              '# Temporary Repository Consistency Result', '', '## Findings', '',
+              *[f'- {item}' for item in findings or ['none']], '', '## Details', '',
+              *[f'- {item}' for item in details],
+          ]
+          Path('.dartscope-consistency-result.md').write_text('\n'.join(output) + '\n', encoding='utf-8')
+          PY
       - name: Commit result
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add .dartscope-mode-result
-          git commit -m "ci: record publish script mode"
+          git add .dartscope-consistency-result.md
+          git commit -m "ci: record repository consistency findings"
+          git pull --rebase origin main
           git push origin HEAD:main
