@@ -56,8 +56,8 @@ jobs:
           run_check install_machete cargo install cargo-machete --locked
           run_check machete cargo machete
       - name: Run consistency audit
-        continue-on-error: true
         run: |
+          set +e
           python3 - <<'PY' > /tmp/dartscope-audit/consistency.log 2>&1
           from pathlib import Path
           import json
@@ -94,7 +94,7 @@ jobs:
               findings.append(f'CHANGELOG marks {version} released but {tag} is absent')
 
           mutable = []
-          ignored = {'audit-report.yml', 'full-repository-audit.yml', 'repository-audit-observable.yml'}
+          ignored = {'audit-report.yml', 'full-repository-audit.yml', 'repository-audit-observable.yml', 'publish-mode-probe.yml'}
           for workflow in sorted(Path('.github/workflows').glob('*.*ml')):
               if workflow.name in ignored:
                   continue
@@ -109,13 +109,20 @@ jobs:
               print('MUTABLE ACTION REFERENCES:')
               print('\n'.join(mutable))
 
+          mode = subprocess.check_output(['git', 'ls-files', '--stage', 'tools/publish-crates.sh'], text=True).split()[0]
+          if mode != '100755':
+              findings.append(f'publish script mode is {mode}; release workflow executes it directly')
+
           print('\nFINDINGS:')
           for finding in findings or ['none']:
               print(f'- {finding}')
           if findings:
               raise SystemExit(1)
           PY
-          echo $? > /tmp/dartscope-audit/consistency.rc
+          code=$?
+          set -e
+          echo "$code" > /tmp/dartscope-audit/consistency.rc
+          exit 0
       - name: Write audit report
         if: always()
         shell: bash
@@ -161,4 +168,5 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add .dartscope-audit-results.md
           git commit -m "ci: record full repository audit"
+          git pull --rebase origin main
           git push origin HEAD:main
