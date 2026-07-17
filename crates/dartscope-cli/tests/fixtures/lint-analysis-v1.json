@@ -1,0 +1,14 @@
+{
+  "schema": "dartscope.lint-analysis",
+  "version": 1,
+  "data": {
+    "diagnostics": [],
+    "summary": {
+      "enabled_rules": 0,
+      "diagnostics": 0,
+      "info": 0,
+      "warnings": 0,
+      "errors": 0
+    }
+  }
+}
