@@ -6,7 +6,7 @@ use dartscope_core::{
     DartIdentifierReference, DartIdentifierReferenceResolution,
     DartIdentifierReferenceResolutionAnalysis, DartPartLinkAnalysis, DartPartLinkStatus,
     DartProjectAnalysis, DartProjectReferenceAnalysis, DartProjectSummary, DartUriGraph,
-    DartUriReference, PackageConfigAnalysis, PubspecAnalysis, normalize_path,
+    DartUriReference, DartUriReferenceKind, PackageConfigAnalysis, PubspecAnalysis, normalize_path,
 };
 
 use crate::graphql::{GraphqlContractAnalyzer, sort_contract_analysis};
@@ -14,6 +14,14 @@ use crate::namespace::LibraryMembership;
 use crate::parts::analyze_part_links_with_graph;
 use crate::references::resolve_identifier_references_with_options;
 use crate::uri_graph::{DartIndexOptions, UriGraphBuilder, sort_uri_references};
+
+/// Stable import/export dependency evidence for one normalized Dart library.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct DartLibraryDependencyFingerprint {
+    pub owner_path: String,
+    pub member_paths: Vec<String>,
+    pub references: Vec<DartUriReference>,
+}
 
 /// Immutable, shareable view of one workspace-index generation.
 ///
@@ -26,6 +34,7 @@ pub struct DartWorkspaceSnapshot {
     project: Arc<DartProjectAnalysis>,
     uri_graph: Arc<DartUriGraph>,
     part_links: Arc<DartPartLinkAnalysis>,
+    library_dependency_fingerprints: Arc<Vec<DartLibraryDependencyFingerprint>>,
     graphql_contracts: Arc<DartGraphqlContractAnalysis>,
     identifier_reference_resolutions: Arc<DartIdentifierReferenceResolutionAnalysis>,
 }
@@ -45,6 +54,21 @@ impl DartWorkspaceSnapshot {
 
     pub fn part_links(&self) -> &DartPartLinkAnalysis {
         &self.part_links
+    }
+
+    pub fn library_dependency_fingerprints(&self) -> &[DartLibraryDependencyFingerprint] {
+        self.library_dependency_fingerprints.as_slice()
+    }
+
+    pub fn library_dependency_fingerprint(
+        &self,
+        owner_path: &str,
+    ) -> Option<&DartLibraryDependencyFingerprint> {
+        let owner_path = normalize_path(owner_path.to_string());
+        self.library_dependency_fingerprints
+            .binary_search_by(|fingerprint| fingerprint.owner_path.cmp(&owner_path))
+            .ok()
+            .map(|index| &self.library_dependency_fingerprints[index])
     }
 
     pub fn graphql_contracts(&self) -> &DartGraphqlContractAnalysis {
@@ -69,6 +93,7 @@ pub struct DartWorkspaceIndexCounters {
     pub uri_files_rebuilt: u64,
     pub part_link_rebuilds: u64,
     pub namespace_libraries_rebuilt: u64,
+    pub library_dependency_fingerprints_rebuilt: u64,
     pub graphql_rebuilds: u64,
     pub graphql_libraries_rebuilt: u64,
     pub reference_rebuilds: u64,
@@ -101,6 +126,7 @@ pub struct DartWorkspaceUpdate {
     pub generation: u64,
     pub changed_paths: Vec<String>,
     pub affected_paths: Vec<String>,
+    pub affected_libraries: Vec<String>,
     pub rebuilt: DartWorkspaceSubsystems,
 }
 
@@ -125,6 +151,8 @@ pub struct DartWorkspaceIndex {
     references_by_path: BTreeMap<String, Vec<DartIdentifierReference>>,
     uri_references_by_path: BTreeMap<String, Arc<Vec<DartUriReference>>>,
     library_paths_by_owner: BTreeMap<String, Arc<Vec<String>>>,
+    library_dependency_fingerprints_by_owner:
+        BTreeMap<String, Arc<DartLibraryDependencyFingerprint>>,
     graphql_contracts_by_library: BTreeMap<String, Arc<DartGraphqlContractAnalysis>>,
     reference_resolutions_by_path: BTreeMap<String, Arc<Vec<DartIdentifierReferenceResolution>>>,
     options: DartIndexOptions,
@@ -196,6 +224,11 @@ impl DartWorkspaceIndex {
         let uri_graph = Arc::new(uri_graph);
         let part_links = Arc::new(analyze_part_links_with_graph(&project, &uri_graph));
         let library_paths_by_owner = build_library_path_cache(&project, &part_links);
+        let library_dependency_fingerprints_by_owner =
+            build_library_dependency_fingerprint_cache(&uri_graph, &library_paths_by_owner);
+        let library_dependency_fingerprints = Arc::new(aggregate_library_dependency_fingerprints(
+            &library_dependency_fingerprints_by_owner,
+        ));
         let (graphql_contracts_by_library, graphql_contracts) = build_graphql_contract_cache(
             &project,
             &options,
@@ -209,6 +242,7 @@ impl DartWorkspaceIndex {
         let identifier_reference_resolutions = Arc::new(identifier_reference_resolutions);
         let initial_uri_files = uri_references_by_path.len() as u64;
         let initial_namespace_libraries = library_paths_by_owner.len() as u64;
+        let initial_dependency_fingerprints = library_dependency_fingerprints_by_owner.len() as u64;
         let initial_graphql_libraries = graphql_contracts_by_library.len() as u64;
         let initial_reference_files = reference_resolutions_by_path.len() as u64;
         let snapshot = Arc::new(DartWorkspaceSnapshot {
@@ -216,6 +250,7 @@ impl DartWorkspaceIndex {
             project,
             uri_graph,
             part_links,
+            library_dependency_fingerprints,
             graphql_contracts,
             identifier_reference_resolutions,
         });
@@ -229,6 +264,7 @@ impl DartWorkspaceIndex {
             references_by_path,
             uri_references_by_path,
             library_paths_by_owner,
+            library_dependency_fingerprints_by_owner,
             graphql_contracts_by_library,
             reference_resolutions_by_path,
             options,
@@ -239,6 +275,7 @@ impl DartWorkspaceIndex {
                 uri_files_rebuilt: initial_uri_files,
                 part_link_rebuilds: 1,
                 namespace_libraries_rebuilt: initial_namespace_libraries,
+                library_dependency_fingerprints_rebuilt: initial_dependency_fingerprints,
                 graphql_rebuilds: 1,
                 graphql_libraries_rebuilt: initial_graphql_libraries,
                 reference_rebuilds: 1,
@@ -451,6 +488,7 @@ impl DartWorkspaceIndex {
             generation: self.snapshot.generation,
             changed_paths: Vec::new(),
             affected_paths: Vec::new(),
+            affected_libraries: Vec::new(),
             rebuilt: DartWorkspaceSubsystems::default(),
         }
     }
@@ -531,6 +569,20 @@ impl DartWorkspaceIndex {
             self.counters.namespace_libraries_rebuilt +=
                 refresh_library_path_cache(&project, &part_links, &mut self.library_paths_by_owner);
         }
+        let library_dependency_fingerprints =
+            if plan.uri_graph || plan.part_links || file_set_changed {
+                self.counters.library_dependency_fingerprints_rebuilt +=
+                    refresh_library_dependency_fingerprint_cache(
+                        &uri_graph,
+                        &self.library_paths_by_owner,
+                        &mut self.library_dependency_fingerprints_by_owner,
+                    );
+                Arc::new(aggregate_library_dependency_fingerprints(
+                    &self.library_dependency_fingerprints_by_owner,
+                ))
+            } else {
+                Arc::clone(&old.library_dependency_fingerprints)
+            };
         let mut affected_paths: BTreeSet<_> = affected_paths(
             &changed_paths,
             &old.uri_graph,
@@ -553,6 +605,14 @@ impl DartWorkspaceIndex {
             &changed_declaration_names,
         ));
         let affected_paths: Vec<_> = affected_paths.into_iter().collect();
+        let affected_libraries = affected_library_owners(
+            &changed_paths,
+            &affected_paths,
+            &old.project,
+            &old.part_links,
+            &project,
+            &part_links,
+        );
         let graphql_contracts = if plan.graphql_contracts {
             self.counters.graphql_rebuilds += 1;
             let active_libraries = graphql_library_owners(&project, &self.library_paths_by_owner);
@@ -663,6 +723,7 @@ impl DartWorkspaceIndex {
             project,
             uri_graph,
             part_links,
+            library_dependency_fingerprints,
             graphql_contracts,
             identifier_reference_resolutions,
         });
@@ -671,6 +732,7 @@ impl DartWorkspaceIndex {
             generation,
             changed_paths: changed_paths.into_iter().collect(),
             affected_paths,
+            affected_libraries,
             rebuilt: plan.public(),
         }
     }
@@ -952,6 +1014,109 @@ fn refresh_library_path_cache(
         rebuilt += 1;
     }
     rebuilt
+}
+
+fn build_library_dependency_fingerprint_cache(
+    uri_graph: &DartUriGraph,
+    library_paths: &BTreeMap<String, Arc<Vec<String>>>,
+) -> BTreeMap<String, Arc<DartLibraryDependencyFingerprint>> {
+    library_paths
+        .iter()
+        .map(|(owner, paths)| {
+            (
+                owner.clone(),
+                Arc::new(library_dependency_fingerprint(owner, paths, uri_graph)),
+            )
+        })
+        .collect()
+}
+
+fn library_dependency_fingerprint(
+    owner: &str,
+    member_paths: &[String],
+    uri_graph: &DartUriGraph,
+) -> DartLibraryDependencyFingerprint {
+    let members: BTreeSet<_> = member_paths.iter().map(String::as_str).collect();
+    let mut references: Vec<_> = uri_graph
+        .references
+        .iter()
+        .filter(|reference| {
+            matches!(
+                reference.kind,
+                DartUriReferenceKind::Import | DartUriReferenceKind::Export
+            ) && members.contains(reference.source_path.as_str())
+        })
+        .cloned()
+        .collect();
+    sort_uri_references(&mut references);
+    DartLibraryDependencyFingerprint {
+        owner_path: owner.to_string(),
+        member_paths: member_paths.to_vec(),
+        references,
+    }
+}
+
+fn refresh_library_dependency_fingerprint_cache(
+    uri_graph: &DartUriGraph,
+    library_paths: &BTreeMap<String, Arc<Vec<String>>>,
+    cache: &mut BTreeMap<String, Arc<DartLibraryDependencyFingerprint>>,
+) -> u64 {
+    let desired = build_library_dependency_fingerprint_cache(uri_graph, library_paths);
+    let before = cache.len();
+    cache.retain(|owner, _| desired.contains_key(owner));
+    let mut rebuilt = (before - cache.len()) as u64;
+    for (owner, fingerprint) in desired {
+        if cache
+            .get(&owner)
+            .is_some_and(|existing| existing.as_ref() == fingerprint.as_ref())
+        {
+            continue;
+        }
+        cache.insert(owner, fingerprint);
+        rebuilt += 1;
+    }
+    rebuilt
+}
+
+fn aggregate_library_dependency_fingerprints(
+    cache: &BTreeMap<String, Arc<DartLibraryDependencyFingerprint>>,
+) -> Vec<DartLibraryDependencyFingerprint> {
+    cache
+        .values()
+        .map(|fingerprint| fingerprint.as_ref().clone())
+        .collect()
+}
+
+fn affected_library_owners(
+    changed_paths: &BTreeSet<String>,
+    affected_paths: &[String],
+    old_project: &DartProjectAnalysis,
+    old_part_links: &DartPartLinkAnalysis,
+    new_project: &DartProjectAnalysis,
+    new_part_links: &DartPartLinkAnalysis,
+) -> Vec<String> {
+    let old_files: BTreeSet<_> = old_project
+        .files
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect();
+    let new_files: BTreeSet<_> = new_project
+        .files
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect();
+    let old_membership = LibraryMembership::from_part_links(old_part_links);
+    let new_membership = LibraryMembership::from_part_links(new_part_links);
+    let mut owners = BTreeSet::new();
+    for path in changed_paths.iter().chain(affected_paths) {
+        if old_files.contains(path.as_str()) {
+            owners.insert(old_membership.owner_of(path).to_string());
+        }
+        if new_files.contains(path.as_str()) {
+            owners.insert(new_membership.owner_of(path).to_string());
+        }
+    }
+    owners.into_iter().collect()
 }
 
 fn graphql_library_owners(

@@ -57,6 +57,7 @@ One snapshot owns deterministic projections for:
 - the canonical `DartProjectAnalysis` and summary;
 - the URI graph;
 - part links;
+- stable per-library import/export dependency fingerprints;
 - GraphQL operation bindings;
 - opt-in identifier-reference resolutions.
 
@@ -65,9 +66,10 @@ references rather than implementation caches.
 
 ## Invalidation And Counters
 
-`DartWorkspaceUpdate` reports normalized changed paths, the transitive reverse dependency closure, and
-which products were rebuilt. Reverse dependencies include resolved targets, missing target paths, and
-ambiguous package candidates from both the old and new URI graph.
+`DartWorkspaceUpdate` reports normalized changed paths, the transitive reverse dependency closure,
+normalized affected library owners, and which products were rebuilt. Reverse dependencies include
+resolved targets, missing target paths, and ambiguous package candidates from both the old and new URI
+graph. Part paths collapse to their matched owner in `affected_libraries`; metadata paths are excluded.
 
 The current implementation combines immutable subsystem snapshots with per-file URI-reference and
 identifier-resolution caches:
@@ -84,8 +86,9 @@ identifier-resolution caches:
 | package-resolution metadata | rebuild | rebuild | rebuild | rebuild | rebuild |
 
 `DartWorkspaceIndexCounters` records generations, aggregate rebuilds, the exact number of URI and
-identifier-reference source files recomputed, and the number of namespace-membership and GraphQL-use
-libraries refreshed. Unaffected per-file and per-library `Arc` cache entries remain shared internally.
+identifier-reference source files recomputed, and the number of namespace-membership, dependency-
+fingerprint, and GraphQL-use libraries refreshed. Unaffected per-file and per-library `Arc` cache entries
+remain shared internally.
 These are semantic operation counters rather than elapsed-time assertions, so they are deterministic
 across Linux, Windows, and differently loaded runners.
 
@@ -113,8 +116,8 @@ and a deterministic 64-step mixed update sequence.
 
 ## Current Boundary
 
-URI references and identifier-reference resolutions use per-source-file caches. Library membership
-and GraphQL bindings use retained per-library caches, while public snapshots retain the same aggregate
-models. A later DS-INDEX-005 slice will persist import/export dependency fingerprints and expose the same
-affected-library evidence to lint contexts. The public stateful API and existing stateless APIs remain
-stable while that internal granularity improves.
+URI references and identifier-reference resolutions use per-source-file caches. Library membership,
+import/export dependency fingerprints, and GraphQL bindings use retained per-library caches. Snapshots
+publish deterministic fingerprints without exposing mutable cache storage, and updates publish the same
+normalized affected-library owners that the next lint-context slice will consume. The public stateless
+APIs remain available.

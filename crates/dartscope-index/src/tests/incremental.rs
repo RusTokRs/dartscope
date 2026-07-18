@@ -763,6 +763,189 @@ fn deterministic_randomized_update_sequences_match_clean_rebuilds() {
     }
 }
 
+#[test]
+fn dependency_fingerprints_track_resolution_and_retained_snapshots() {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        vec![
+            DartFileInput::new(
+                "lib/client.dart",
+                "import 'missing.dart';
+",
+            ),
+            DartFileInput::new(
+                "lib/stable.dart",
+                "class Stable {}
+",
+            ),
+        ],
+        vec![],
+    ));
+    let mut index = DartWorkspaceIndex::from_project(project);
+    let retained = index.snapshot();
+    let before = index.counters();
+    assert_eq!(
+        retained
+            .library_dependency_fingerprint("lib/client.dart")
+            .expect("client library fingerprint")
+            .references[0]
+            .resolution,
+        DartUriResolution::MissingTarget
+    );
+
+    let update = index.upsert_file(analyze_file(DartFileInput::new(
+        "lib/missing.dart",
+        "class Missing {}
+",
+    )));
+
+    assert_eq!(
+        update.affected_libraries,
+        vec![
+            "lib/client.dart".to_string(),
+            "lib/missing.dart".to_string()
+        ]
+    );
+    assert_eq!(
+        index.counters().library_dependency_fingerprints_rebuilt,
+        before.library_dependency_fingerprints_rebuilt + 2
+    );
+    assert_eq!(
+        retained
+            .library_dependency_fingerprint("lib/client.dart")
+            .expect("retained client fingerprint")
+            .references[0]
+            .resolution,
+        DartUriResolution::MissingTarget
+    );
+    assert_eq!(
+        index
+            .snapshot()
+            .library_dependency_fingerprint("lib/client.dart")
+            .expect("updated client fingerprint")
+            .references[0]
+            .resolution,
+        DartUriResolution::Resolved
+    );
+    assert_snapshot_matches_project_only(&index, &DartIndexOptions::default());
+}
+
+#[test]
+fn dependency_fingerprints_rebuild_only_the_changed_library() {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        vec![
+            DartFileInput::new(
+                "lib/a.dart",
+                "import 'b.dart';
+",
+            ),
+            DartFileInput::new(
+                "lib/b.dart",
+                "class B {}
+",
+            ),
+            DartFileInput::new(
+                "lib/c.dart",
+                "class C {}
+",
+            ),
+            DartFileInput::new(
+                "lib/x.dart",
+                "import 'y.dart';
+",
+            ),
+            DartFileInput::new(
+                "lib/y.dart",
+                "class Y {}
+",
+            ),
+        ],
+        vec![],
+    ));
+    let mut index = DartWorkspaceIndex::from_project(project);
+    let before = index.counters();
+    let x_before = index
+        .snapshot()
+        .library_dependency_fingerprint("lib/x.dart")
+        .expect("x library fingerprint")
+        .clone();
+
+    let update = index.upsert_file(analyze_file(DartFileInput::new(
+        "lib/a.dart",
+        "import 'c.dart';
+",
+    )));
+
+    assert_eq!(update.affected_libraries, vec!["lib/a.dart".to_string()]);
+    assert_eq!(
+        index.counters().library_dependency_fingerprints_rebuilt,
+        before.library_dependency_fingerprints_rebuilt + 1
+    );
+    let snapshot = index.snapshot();
+    assert_eq!(
+        snapshot
+            .library_dependency_fingerprint("lib/x.dart")
+            .expect("retained x fingerprint"),
+        &x_before
+    );
+    assert_eq!(
+        snapshot
+            .library_dependency_fingerprint("lib/a.dart")
+            .expect("updated a fingerprint")
+            .references[0]
+            .target_path
+            .as_deref(),
+        Some("lib/c.dart")
+    );
+    assert_snapshot_matches_project_only(&index, &DartIndexOptions::default());
+}
+
+#[test]
+fn affected_libraries_collapse_part_membership_to_the_owner() {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        vec![
+            DartFileInput::new(
+                "lib/owner.dart",
+                "part 'child.dart';
+",
+            ),
+            DartFileInput::new(
+                "lib/child.dart",
+                "part of 'owner.dart';
+class Child {}
+",
+            ),
+            DartFileInput::new(
+                "lib/independent.dart",
+                "class Independent {}
+",
+            ),
+        ],
+        vec![],
+    ));
+    let mut index = DartWorkspaceIndex::from_project(project);
+    let before = index.counters();
+
+    let update = index.upsert_file(analyze_file(DartFileInput::new(
+        "lib/child.dart",
+        "part of 'owner.dart';
+class RenamedChild {}
+",
+    )));
+
+    assert_eq!(
+        update.affected_libraries,
+        vec!["lib/owner.dart".to_string()]
+    );
+    assert_eq!(
+        index.counters().library_dependency_fingerprints_rebuilt,
+        before.library_dependency_fingerprints_rebuilt
+    );
+    assert_snapshot_matches_project_only(&index, &DartIndexOptions::default());
+}
+
 fn reference_project(sources: &[(&str, &str)]) -> DartProjectReferenceAnalysis {
     analyze_project_with_references(DartProjectInput::new(
         ".",
@@ -797,6 +980,13 @@ fn assert_snapshot_matches(
         snapshot.identifier_reference_resolutions(),
         &resolve_project_identifier_references_with_options(baseline, options)
     );
+    let fresh =
+        DartWorkspaceIndex::from_reference_project_with_options(baseline.clone(), options.clone());
+    let fresh_snapshot = fresh.snapshot();
+    assert_eq!(
+        snapshot.library_dependency_fingerprints(),
+        fresh_snapshot.library_dependency_fingerprints()
+    );
 }
 
 fn assert_snapshot_matches_project_only(index: &DartWorkspaceIndex, options: &DartIndexOptions) {
@@ -812,5 +1002,12 @@ fn assert_snapshot_matches_project_only(index: &DartWorkspaceIndex, options: &Da
     assert_eq!(
         snapshot.graphql_contracts(),
         &analyze_graphql_contracts_with_options(snapshot.project(), options)
+    );
+    let fresh =
+        DartWorkspaceIndex::from_project_with_options(snapshot.project().clone(), options.clone());
+    let fresh_snapshot = fresh.snapshot();
+    assert_eq!(
+        snapshot.library_dependency_fingerprints(),
+        fresh_snapshot.library_dependency_fingerprints()
     );
 }

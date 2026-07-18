@@ -27,6 +27,8 @@ pre-1.0.
 - A stateful workspace index foundation with normalized file/configuration mutations, immutable shared
   snapshots, deterministic reverse invalidation evidence, per-source URI/reference caches, and operation
   counters.
+- Persistent per-library import/export dependency fingerprints with deterministic affected-library
+  evidence for downstream incremental consumers.
 
 ### Fixed
 

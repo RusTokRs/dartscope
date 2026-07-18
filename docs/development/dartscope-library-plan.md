@@ -895,14 +895,15 @@ Foundation implemented (2026-07-17):
 12. Added retained per-library namespace-membership and GraphQL-binding caches. GraphQL operation
     changes rebuild only libraries with affected uses, including unrelated `NotVisible` evidence and
     sibling parts, while the public aggregate snapshot remains unchanged.
+13. Added retained per-library import/export dependency fingerprints and deterministic affected-library
+    owners on every workspace update. Fingerprints preserve exact URI-resolution evidence while unchanged
+    library entries remain shared across generations.
 
 Remaining work:
 
-1. Add persistent per-library import/export dependency fingerprints for lint-context reuse beyond the
-   completed membership and GraphQL binding caches.
-2. Feed the same affected-library evidence into lint contexts without introducing an index/lint
+1. Feed the same affected-library evidence into lint contexts without introducing an index/lint
    dependency cycle.
-3. Add memory/update-time baselines for the per-library cache implementation.
+2. Add memory/update-time baselines for the per-library cache implementation.
 
 Acceptance:
 
