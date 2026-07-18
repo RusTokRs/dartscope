@@ -1,0 +1,56 @@
+name: Check DS-INDEX-005 Dependency Fingerprint Patch
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == '[internal] DS-INDEX-005 dependency fingerprint apply check'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Apply reviewed patch in worktree
+        id: apply
+        shell: bash
+        run: |
+          set +e
+          OUTPUT=$(python3 tools/ds_index005_dependency_fingerprint_apply_v2.py 2>&1)
+          STATUS=$?
+          printf '%s\n' "$OUTPUT"
+          {
+            echo "status=$STATUS"
+            echo 'output<<EOF'
+            printf '%s\n' "$OUTPUT" | tail -n 120
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Report and close trigger
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const status = Number('${{ steps.apply.outputs.status }}');
+            const output = `${{ steps.apply.outputs.output }}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `Apply-only status: ${status}\n\n\`\`\`text\n${output}\n\`\`\``,
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed',
+            });
+            if (status !== 0) core.setFailed(`patch apply failed with ${status}`);
