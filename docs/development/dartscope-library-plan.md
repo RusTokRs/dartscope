@@ -906,6 +906,9 @@ Foundation implemented (2026-07-17):
 16. Added deterministic retained-cache metrics for index and lint contexts plus an informational 1k/10k
     initial-build and single-library update-time baseline. CI gates cache shapes, one-library counters, and
     full semantic equivalence while intentionally avoiding host-dependent duration thresholds.
+17. **P1 fixed:** the corrected apply diagnostic wrote the reviewed baseline patcher into the repository
+    as an untracked file, and `git reset --hard` did not remove it. Final cleanup now removes generated
+    diagnostic helpers explicitly before staging and verifies the resulting workflow/tool inventory.
 
 Verification completed (2026-07-18):
 
