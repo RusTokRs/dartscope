@@ -1,0 +1,70 @@
+name: Diagnose DS-QUALITY-001 Policy Tests
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.event.issue.title == '[internal] DS-QUALITY-001 policy test diagnostic'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Capture policy test output
+        shell: bash
+        run: |
+          set +e
+          git show eb18e5b1b4306297797e635600676fbc26c833ae:tools/ds_quality001_dependency_gates_apply.py > tools/ds_quality001_dependency_gates_apply.py
+          git show 48a1cfdf90d866428cfa39c59553546d8b526898:tools/ds_quality001_dependency_gates_apply_v2.py > tools/ds_quality001_dependency_gates_apply_v2.py
+          python3 tools/ds_quality001_dependency_gates_apply_v2.py > /tmp/apply.log 2>&1
+          APPLY=$?
+          if [ "$APPLY" -eq 0 ]; then
+            python3 -m unittest discover -s tools/tests -p 'test_*.py' -v > /tmp/tests.log 2>&1
+            TESTS=$?
+          else
+            TESTS=125
+            cp /tmp/apply.log /tmp/tests.log
+          fi
+          git reset --hard HEAD
+          git clean -fd
+          rm -f .github/workflows/ds-quality001-policy-test-diagnostic.yml
+          rm -f docs/development/ds-quality001-dependency-failure.md
+          mkdir -p docs/development
+          {
+            echo '---'
+            echo 'id: doc://docs/development/ds-quality001-policy-test-diagnostic.md'
+            echo 'kind: verification_report'
+            echo 'language: en'
+            echo 'source_language: en'
+            echo 'status: active'
+            echo '---'
+            echo
+            echo '# DS-QUALITY-001 Policy Test Diagnostic'
+            echo
+            echo "- apply exit: \`$APPLY\`"
+            echo "- unittest exit: \`$TESTS\`"
+            echo
+            echo '```text'
+            tail -160 /tmp/tests.log
+            echo '```'
+          } > docs/development/ds-quality001-policy-test-diagnostic.md
+          git config user.name "dartscope-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "ci: capture DS-QUALITY-001 policy test diagnostic"
+          git push origin HEAD:main
+      - name: Close trigger
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await github.rest.issues.update({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, state: 'closed'});
