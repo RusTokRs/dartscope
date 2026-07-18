@@ -898,12 +898,15 @@ Foundation implemented (2026-07-17):
 13. Added retained per-library import/export dependency fingerprints and deterministic affected-library
     owners on every workspace update. Fingerprints preserve exact URI-resolution evidence while unchanged
     library entries remain shared across generations.
+14. Added snapshot-backed lint execution plus `DartIncrementalLintCache`. Local rules retain diagnostics
+    per affected library, the global orphan rule follows URI-graph changes, and configuration or generation
+    mismatches fall back to a safe full rebuild without introducing an index/lint dependency cycle.
+15. **P1 fixed:** the new public dependency-fingerprint model was initially omitted from the umbrella
+    crate's explicit index re-export. `dartscope` now exposes the same named type as `dartscope-index`.
 
 Remaining work:
 
-1. Feed the same affected-library evidence into lint contexts without introducing an index/lint
-   dependency cycle.
-2. Add memory/update-time baselines for the per-library cache implementation.
+1. Add memory/update-time baselines for the per-library index and lint-cache implementation.
 
 Acceptance:
 

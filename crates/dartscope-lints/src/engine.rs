@@ -1,4 +1,7 @@
+use std::collections::BTreeSet;
+
 use dartscope_core::DiagnosticSeverity;
+use dartscope_index::DartWorkspaceSnapshot;
 
 use crate::context::RuleContext;
 use crate::model::{DartLintAnalysis, DartLintDiagnostic, DartLintSummary};
@@ -12,30 +15,73 @@ pub fn lint_project(
 ) -> DartLintAnalysis {
     let enabled = config.enabled_rule_ids();
     let context = RuleContext::new(project, &enabled);
+    lint_with_context(&context, config, &enabled)
+}
+
+/// Runs enabled rules over one immutable workspace snapshot without rebuilding index products.
+pub fn lint_workspace_snapshot(
+    snapshot: &DartWorkspaceSnapshot,
+    config: &DartLintConfig,
+) -> DartLintAnalysis {
+    let enabled = config.enabled_rule_ids();
+    lint_workspace_rules(snapshot, config, &enabled)
+}
+
+pub(crate) fn lint_workspace_rules(
+    snapshot: &DartWorkspaceSnapshot,
+    config: &DartLintConfig,
+    enabled: &[DartLintRuleId],
+) -> DartLintAnalysis {
+    let context = RuleContext::from_snapshot(snapshot, enabled, None);
+    lint_with_context(&context, config, enabled)
+}
+
+pub(crate) fn lint_workspace_paths(
+    snapshot: &DartWorkspaceSnapshot,
+    config: &DartLintConfig,
+    enabled: &[DartLintRuleId],
+    included_paths: &BTreeSet<String>,
+) -> DartLintAnalysis {
+    let context = RuleContext::from_snapshot(snapshot, enabled, Some(included_paths));
+    lint_with_context(&context, config, enabled)
+}
+
+fn lint_with_context(
+    context: &RuleContext<'_>,
+    config: &DartLintConfig,
+    enabled: &[DartLintRuleId],
+) -> DartLintAnalysis {
     let mut diagnostics = Vec::new();
 
-    for rule_id in &enabled {
+    for rule_id in enabled {
         match rule_id {
             DartLintRuleId::ForbiddenImport => {
-                rules::forbidden_imports::run(&context, config, &mut diagnostics)
+                rules::forbidden_imports::run(context, config, &mut diagnostics)
             }
             DartLintRuleId::LayerBoundary => {
-                rules::layer_boundaries::run(&context, config, &mut diagnostics)
+                rules::layer_boundaries::run(context, config, &mut diagnostics)
             }
             DartLintRuleId::NamingConvention => {
-                rules::naming::run(&context, config, &mut diagnostics)
+                rules::naming::run(context, config, &mut diagnostics)
             }
             DartLintRuleId::UnresolvedPart => {
-                rules::unresolved_parts::run(&context, config, &mut diagnostics)
+                rules::unresolved_parts::run(context, config, &mut diagnostics)
             }
             DartLintRuleId::OrphanFile => {
-                rules::orphan_files::run(&context, config, &mut diagnostics)
+                rules::orphan_files::run(context, config, &mut diagnostics)
             }
         }
     }
 
+    analysis_from_diagnostics(enabled.len(), diagnostics)
+}
+
+pub(crate) fn analysis_from_diagnostics(
+    enabled_rules: usize,
+    mut diagnostics: Vec<DartLintDiagnostic>,
+) -> DartLintAnalysis {
     sort_and_deduplicate(&mut diagnostics);
-    let summary = summarize(enabled.len(), &diagnostics);
+    let summary = summarize(enabled_rules, &diagnostics);
     DartLintAnalysis {
         diagnostics,
         summary,

@@ -6,6 +6,7 @@
 mod config;
 mod context;
 mod engine;
+mod incremental;
 mod model;
 mod rules;
 
@@ -13,5 +14,8 @@ pub use config::{
     DartForbiddenImportPattern, DartImportPatternKind, DartLayerBoundary, DartLintConfig,
     DartLintRuleId, DartLintSeverityOverride, DartNamingRuleConfig, DartOrphanFileRuleConfig,
 };
-pub use engine::lint_project;
+pub use engine::{lint_project, lint_workspace_snapshot};
+pub use incremental::{
+    DartIncrementalLintCache, DartIncrementalLintCounters, DartIncrementalLintUpdate,
+};
 pub use model::{DartLintAnalysis, DartLintDiagnostic, DartLintSummary};

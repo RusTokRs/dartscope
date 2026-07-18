@@ -11,7 +11,7 @@ pub(crate) fn run(
     config: &DartLintConfig,
     diagnostics: &mut Vec<DartLintDiagnostic>,
 ) {
-    let Some(uri_graph) = &context.uri_graph else {
+    let Some(uri_graph) = context.uri_graph() else {
         return;
     };
     if config.orphan_files.entry_points.is_empty() {

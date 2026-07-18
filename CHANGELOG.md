@@ -29,6 +29,8 @@ pre-1.0.
   counters.
 - Persistent per-library import/export dependency fingerprints with deterministic affected-library
   evidence for downstream incremental consumers.
+- Snapshot-backed and incremental lint contexts that retain unaffected per-library diagnostics while
+  preserving full stateless lint equivalence.
 
 ### Fixed
 

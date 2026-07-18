@@ -118,6 +118,6 @@ and a deterministic 64-step mixed update sequence.
 
 URI references and identifier-reference resolutions use per-source-file caches. Library membership,
 import/export dependency fingerprints, and GraphQL bindings use retained per-library caches. Snapshots
-publish deterministic fingerprints without exposing mutable cache storage, and updates publish the same
-normalized affected-library owners that the next lint-context slice will consume. The public stateless
-APIs remain available.
+publish deterministic fingerprints without exposing mutable cache storage, and updates publish normalized
+affected-library owners consumed by `DartIncrementalLintCache`. The dependency remains one-way from the
+optional lint crate to the index crate, and the public stateless APIs remain available.

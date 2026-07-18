@@ -9,7 +9,7 @@ pub(crate) fn run(
     config: &DartLintConfig,
     diagnostics: &mut Vec<DartLintDiagnostic>,
 ) {
-    let Some(uri_graph) = &context.uri_graph else {
+    let Some(uri_graph) = context.uri_graph() else {
         return;
     };
     let mut boundaries = config.layer_boundaries.clone();
@@ -20,7 +20,8 @@ pub(crate) fn run(
     let severity = config.severity(DartLintRuleId::LayerBoundary);
 
     for reference in &uri_graph.references {
-        if reference.kind != DartUriReferenceKind::Import
+        if !context.includes_path(&reference.source_path)
+            || reference.kind != DartUriReferenceKind::Import
             || reference.resolution != DartUriResolution::Resolved
         {
             continue;

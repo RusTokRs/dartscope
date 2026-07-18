@@ -9,12 +9,12 @@ pub(crate) fn run(
     config: &DartLintConfig,
     diagnostics: &mut Vec<DartLintDiagnostic>,
 ) {
-    let Some(part_links) = &context.part_links else {
+    let Some(part_links) = context.part_links() else {
         return;
     };
     let severity = config.severity(DartLintRuleId::UnresolvedPart);
     for link in &part_links.links {
-        if link.status == DartPartLinkStatus::Matched {
+        if !context.includes_path(&link.owner_path) || link.status == DartPartLinkStatus::Matched {
             continue;
         }
         let related_paths = link.part_path.clone().into_iter().collect();

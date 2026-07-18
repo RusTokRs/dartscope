@@ -14,6 +14,10 @@ status: active
 ## Public API
 
 - `lint_project(&DartProjectAnalysis, &DartLintConfig) -> DartLintAnalysis`
+- `lint_workspace_snapshot(&DartWorkspaceSnapshot, &DartLintConfig) -> DartLintAnalysis` reuses the
+  snapshot's URI graph and part links.
+- `DartIncrementalLintCache` retains local diagnostics by Dart library and consumes
+  `DartWorkspaceUpdate::affected_libraries`.
 - `DartLintRuleId::ALL` lists built-in rules in stable execution order.
 - `DartLintConfig::default()` enables no rules.
 - severity overrides use `DiagnosticSeverity`.
@@ -45,4 +49,5 @@ project. External packages absent from the project index are not treated as inte
 
 The crate remains an optional umbrella feature. `dartscope lint` is a separate filesystem adapter
 that maps versioned TOML into this API and emits `dartscope.lint-analysis` v1 or SARIF 2.1.0 without
-moving rule semantics into the CLI crate. See `docs/development/lint-cli.md`.
+moving rule semantics into the CLI crate. See `docs/development/lint-cli.md` and
+`docs/development/incremental-lints.md`.

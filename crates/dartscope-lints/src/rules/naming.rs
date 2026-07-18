@@ -11,7 +11,9 @@ pub(crate) fn run(
 ) {
     let severity = config.severity(DartLintRuleId::NamingConvention);
     for file in &context.project.files {
-        if ignored(&file.path, &config.naming.ignored_path_prefixes) {
+        if !context.includes_path(&file.path)
+            || ignored(&file.path, &config.naming.ignored_path_prefixes)
+        {
             continue;
         }
         if config.naming.check_file_names && !valid_dart_file_name(&file.path) {

@@ -20,6 +20,9 @@ pub(crate) fn run(
     let severity = config.severity(DartLintRuleId::ForbiddenImport);
 
     for file in &context.project.files {
+        if !context.includes_path(&file.path) {
+            continue;
+        }
         for import in &file.imports {
             for pattern in &patterns {
                 if !source_matches(&file.path, pattern.source_prefix.as_deref())
