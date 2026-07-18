@@ -1,0 +1,46 @@
+name: Dispatch DS-QUALITY-001 Dependency Gate V8
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+
+jobs:
+  dispatch:
+    if: github.event.issue.title == '[internal] dispatch DS-QUALITY-001 dependency gate v8'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Remove one-shot dispatcher
+        shell: bash
+        run: |
+          rm -f .github/workflows/ds-quality001-v8-dispatch.yml
+          git config user.name "dartscope-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "ci: dispatch DS-QUALITY-001 dependency gate v8"
+          git push origin HEAD:main
+      - name: Dispatch registered V8 workflow
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'ds-quality001-dependency-v8-finalize.yml',
+              ref: 'main',
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed',
+            });
