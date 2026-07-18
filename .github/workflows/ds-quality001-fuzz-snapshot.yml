@@ -1,0 +1,49 @@
+name: Export DS-QUALITY-001 Fuzz Snapshot
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  actions: write
+  issues: write
+
+jobs:
+  export:
+    if: github.event.issue.title == '[internal] export DS-QUALITY-001 fuzz snapshot'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Build repository snapshot
+        shell: bash
+        run: |
+          mkdir -p snapshot
+          git archive --format=tar HEAD | tar -xf - -C snapshot
+          git rev-parse HEAD > snapshot/.base-sha
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ds-quality001-fuzz-snapshot-${{ github.run_id }}
+          path: snapshot
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Report run and close trigger
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `run_id=${context.runId}\nartifact=ds-quality001-fuzz-snapshot-${context.runId}`,
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed',
+            });
