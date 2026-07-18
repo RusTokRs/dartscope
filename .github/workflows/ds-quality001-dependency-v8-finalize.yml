@@ -1,4 +1,5 @@
 name: Finalize DS-QUALITY-001 Dependency Gates V8
+# Registered-workflow push trigger; verification logic is unchanged.
 
 on:
   push:
