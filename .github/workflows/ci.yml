@@ -74,7 +74,7 @@ jobs:
       - name: Install pinned Rust toolchains
         run: |
           rustup toolchain install 1.95.0 --profile minimal
-          rustup toolchain install nightly-2026-07-01 --profile minimal
+          rustup toolchain install nightly-2026-07-01 --profile minimal --component rustfmt
       - name: Check fuzz bridge and formatting
         run: |
           cargo +1.95.0 test -p dartscope-parse --features fuzzing --locked --quiet
