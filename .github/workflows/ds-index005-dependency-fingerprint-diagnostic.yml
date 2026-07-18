@@ -1,0 +1,62 @@
+name: Diagnose DS-INDEX-005 Dependency Fingerprint Patch
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == '[internal] DS-INDEX-005 dependency fingerprint diagnostic'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Capture exact apply output
+        shell: bash
+        run: |
+          set +e
+          OUTPUT=$(python3 tools/ds_index005_dependency_fingerprint_apply_diag.py 2>&1)
+          STATUS=$?
+          git reset --hard origin/main
+          rm -f .github/workflows/ds-index005-dependency-fingerprint-diagnostic.yml
+          rm -f tools/ds_index005_dependency_fingerprint_apply_diag.py
+          rm -f docs/development/ds-index005-dependency-fingerprint-v2-failure.md
+          rm -f docs/development/ds-index005-dependency-fingerprint-v3-failure.md
+          mkdir -p docs/development
+          {
+            echo '---'
+            echo 'id: doc://docs/development/ds-index005-dependency-fingerprint-diagnostic.md'
+            echo 'kind: verification_report'
+            echo 'language: en'
+            echo 'source_language: en'
+            echo 'status: active'
+            echo '---'
+            echo
+            echo '# DS-INDEX-005 Dependency Fingerprint Apply Diagnostic'
+            echo
+            echo "Exit status: \`$STATUS\`."
+            echo
+            echo '```text'
+            printf '%s\n' "$OUTPUT" | tail -n 250
+            echo '```'
+          } > docs/development/ds-index005-dependency-fingerprint-diagnostic.md
+          git config user.name "dartscope-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "ci: capture DS-INDEX-005 dependency fingerprint diagnostic"
+          git push origin HEAD:main
+      - name: Close trigger
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            if (context.eventName === 'issues') await github.rest.issues.update({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, state: 'closed'});
