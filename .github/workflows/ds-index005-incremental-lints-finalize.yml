@@ -1,0 +1,219 @@
+name: Finalize DS-INDEX-005 Incremental Lints
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ds-index005-incremental-lints-finalize
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    name: Rust 1.95 quality and release gate
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == '[internal] DS-INDEX-005 incremental lint finalizer'
+    runs-on: ubuntu-latest
+    outputs:
+      failed_stage: ${{ steps.gate.outputs.failed_stage }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Run observable incremental lint gate
+        id: gate
+        env:
+          GOBIN: ${{ runner.temp }}/actionlint-bin
+        shell: bash
+        run: |
+          set +e
+          FAILED_STAGE=""
+          run_stage() {
+            local name="$1"
+            shift
+            echo "===== $name ====="
+            "$@"
+            local status=$?
+            if [ "$status" -ne 0 ]; then
+              FAILED_STAGE="$name (exit $status)"
+              return "$status"
+            fi
+          }
+          run_stage "apply incremental lint slice" python3 tools/ds_index005_incremental_lints_apply.py || true
+          if [ -z "$FAILED_STAGE" ]; then
+            rm -f .github/workflows/ds-index005-incremental-lints-finalize.yml
+            rm -f tools/ds_index005_incremental_lints_apply.py
+            rm -f docs/development/ds-index005-incremental-lints-failure.md
+            run_stage "install actionlint" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 || true
+          fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "actionlint" "$GOBIN/actionlint" -color || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "workflow policy tests" python3 -m unittest discover -s tools/tests -p 'test_*.py' -v || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "workflow policy" python3 tools/check-workflow-policy.py || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "install Rust 1.95" rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "format" cargo fmt --all || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "format check" cargo fmt --all -- --check || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "snapshot lint equivalence" cargo test -p dartscope-lints snapshot_lint_matches_stateless_lint_semantics --locked --quiet || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "local lint cache fixture" cargo test -p dartscope-lints local_lint_diagnostics_rebuild_only_the_affected_library --locked --quiet || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "global orphan cache fixture" cargo test -p dartscope-lints uri_changes_rebuild_the_global_orphan_rule --locked --quiet || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "lint config reset fixture" cargo test -p dartscope-lints lint_configuration_changes_force_a_safe_full_rebuild --locked --quiet || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "lint tests" cargo test -p dartscope-lints --locked --quiet || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "index tests" cargo test -p dartscope-index --locked --quiet || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "Clippy" cargo clippy --workspace --all-targets --locked -- -D warnings || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "rustdoc" env RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps --locked || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "workspace tests" cargo test --workspace --locked --quiet || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "umbrella all-features" cargo test -p dartscope --all-features --locked --quiet || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "repository consistency" python3 tools/check-repository-consistency.py || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "release packages" python3 tools/check-release-packages.py || true; fi
+          if [ -z "$FAILED_STAGE" ]; then run_stage "publish script syntax" bash -n tools/publish-crates.sh || true; fi
+          echo "failed_stage=$FAILED_STAGE" >> "$GITHUB_OUTPUT"
+          if [ -n "$FAILED_STAGE" ]; then exit 1; fi
+
+  matrix:
+    name: Rust 1.95 (${{ matrix.os }})
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == '[internal] DS-INDEX-005 incremental lint finalizer'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Apply incremental lint slice in the worktree
+        shell: bash
+        run: |
+          python tools/ds_index005_incremental_lints_apply.py
+          rm -f .github/workflows/ds-index005-incremental-lints-finalize.yml
+          rm -f tools/ds_index005_incremental_lints_apply.py
+          rm -f docs/development/ds-index005-incremental-lints-failure.md
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+      - name: Run Linux and Windows gates
+        shell: bash
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo test --workspace --locked --quiet
+          cargo check --workspace --all-targets --locked
+          cargo check -p dartscope --no-default-features --locked
+          cargo check -p dartscope --all-features --locked
+
+  finalize:
+    name: Commit verified incremental lint contexts
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == '[internal] DS-INDEX-005 incremental lint finalizer'
+    needs: [quality, matrix]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      statuses: write
+      issues: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Apply and commit verified incremental lint contexts
+        id: commit
+        shell: bash
+        run: |
+          python3 tools/ds_index005_incremental_lints_apply.py
+          rm -f .github/workflows/ds-index005-incremental-lints-finalize.yml
+          rm -f tools/ds_index005_incremental_lints_apply.py
+          rm -f docs/development/ds-index005-incremental-lints-failure.md
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo test -p dartscope-lints --locked --quiet
+          cargo test -p dartscope-index --locked --quiet
+          python3 tools/check-repository-consistency.py
+          git config user.name "dartscope-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "perf: reuse lint contexts by Dart library"
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Publish success and close trigger
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: '${{ steps.commit.outputs.sha }}',
+              state: 'success',
+              context: 'dartscope/ci',
+              description: 'Rust 1.95 incremental lint gate passed',
+            });
+            if (context.eventName === 'issues') {
+              await github.rest.issues.update({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, state: 'closed'});
+            }
+
+  record_failure:
+    name: Record incremental lint failure
+    needs: [quality, matrix]
+    if: always() && (github.event_name == 'workflow_dispatch' || github.event.issue.title == '[internal] DS-INDEX-005 incremental lint finalizer') && (needs.quality.result != 'success' || needs.matrix.result != 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      statuses: write
+      issues: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Record exact failure
+        id: failure
+        shell: bash
+        run: |
+          rm -f .github/workflows/ds-index005-incremental-lints-finalize.yml
+          rm -f tools/ds_index005_incremental_lints_apply.py
+          mkdir -p docs/development
+          cat > docs/development/ds-index005-incremental-lints-failure.md <<'EOF'
+          ---
+          id: doc://docs/development/ds-index005-incremental-lints-failure.md
+          kind: verification_report
+          language: en
+          source_language: en
+          status: active
+          ---
+
+          # DS-INDEX-005 Incremental Lint Gate Failure
+
+          The worktree-only implementation was not committed.
+
+          - quality result: `${{ needs.quality.result }}`
+          - quality failed stage: `${{ needs.quality.outputs.failed_stage }}`
+          - Linux/Windows matrix: `${{ needs.matrix.result }}`
+          EOF
+          git config user.name "dartscope-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "ci: record DS-INDEX-005 incremental lint failure"
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Publish failure and close trigger
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: '${{ steps.failure.outputs.sha }}',
+              state: 'failure',
+              context: 'dartscope/ci',
+              description: 'DS-INDEX-005 incremental lint gate failed',
+            });
+            if (context.eventName === 'issues') {
+              await github.rest.issues.update({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, state: 'closed'});
+            }
