@@ -10,6 +10,6 @@ status: active
 
 The worktree-only dependency-gate implementation was not committed.
 
-- quality result: `cancelled`
-- quality failed stage: ``
-- Linux/Windows matrix: `success`
+- quality result: `failure`
+- quality failed stage: `apply dependency gate v6 (exit 2)`
+- Linux/Windows matrix: `failure`
