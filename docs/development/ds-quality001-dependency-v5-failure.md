@@ -11,5 +11,5 @@ status: active
 The worktree-only dependency-gate implementation was not committed.
 
 - quality result: `failure`
-- quality failed stage: `Clippy (exit 101)`
+- quality failed stage: `apply dependency gate v5 (exit 2)`
 - Linux/Windows matrix: `failure`
