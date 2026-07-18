@@ -1,0 +1,54 @@
+[package]
+name = "dartscope-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+rust-version = "1.95"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+dartscope-core = { path = "../crates/dartscope-core" }
+dartscope-parse = { path = "../crates/dartscope-parse", features = ["fuzzing"] }
+dartscope-resolve = { path = "../crates/dartscope-resolve" }
+libfuzzer-sys = "=0.4.13"
+
+[workspace]
+members = ["."]
+resolver = "3"
+
+[[bin]]
+name = "lexical_masking"
+path = "fuzz_targets/lexical_masking.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "directives"
+path = "fuzz_targets/directives.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pubspec_package_config"
+path = "fuzz_targets/pubspec_package_config.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "graphql"
+path = "fuzz_targets/graphql.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "uri_normalization"
+path = "fuzz_targets/uri_normalization.rs"
+test = false
+doc = false
+bench = false

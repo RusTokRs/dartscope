@@ -34,6 +34,7 @@ pre-1.0.
 - Deterministic retained-cache payload metrics and informational 1k/10k index/lint update-time baselines
   without flaky absolute timing thresholds.
 - Pinned RustSec advisory and unused-dependency CI gates with expiring, owner-attributed exception policy.
+- Five nightly libFuzzer targets with reviewed malformed-input seeds and a bounded panic-free CI corpus.
 
 ### Fixed
 

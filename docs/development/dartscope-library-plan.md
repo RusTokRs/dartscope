@@ -985,6 +985,10 @@ Progress (2026-07-18):
    stale package-level lock edge were removed rather than hidden behind a cargo-machete exception.
 5. **P2 fixed:** the first generated dependency-policy checker used a non-raw outer Python string and
    emitted an invalid-escape `SyntaxWarning`; generation is now warning-clean under `-W error`.
+6. Added a separate non-publishable fuzz workspace with five targets for lexical masking, directives,
+   pubspec/package-config parsing, GraphQL extraction, and URI normalization.
+7. Added reviewed valid/malformed seed corpora plus a pinned nightly Linux CI job that builds every
+   target and runs a fixed 256-execution, 4096-byte bounded campaign.
 
 Findings and limits:
 
@@ -993,6 +997,9 @@ Findings and limits:
 - Dependency-tool installation and RustSec database refresh remain network-dependent CI bootstrap steps.
   Infrastructure failures must not be converted into advisory or unused-dependency exceptions.
 - Exact tool pins are duplicated in CI and policy intentionally; policy validation rejects version drift.
+- libFuzzer requires nightly and sanitizer support, so the permanent fuzz job is Linux-only and
+  supplements rather than replaces the stable Rust 1.95 Linux/Windows matrix.
+- The checked-in corpus is a bounded panic/regression gate, not evidence of exhaustive parser coverage.
 
 Required work:
 

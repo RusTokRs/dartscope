@@ -12,6 +12,10 @@ categories.workspace = true
 documentation = "https://docs.rs/dartscope-parse"
 description = "Conservative Dart and Flutter file analysis for DartScope"
 
+[features]
+default = []
+fuzzing = []
+
 [dependencies]
 dartscope-core.workspace = true
 dartscope-resolve.workspace = true

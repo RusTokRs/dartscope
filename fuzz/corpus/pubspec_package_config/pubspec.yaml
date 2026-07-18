@@ -1,0 +1,5 @@
+name: example
+dependencies:
+  path: ^1.9.0
+  local:
+    path: ../local

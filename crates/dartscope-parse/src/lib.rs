@@ -4,6 +4,9 @@ mod analysis;
 mod backend;
 mod declaration_inventory;
 mod declarations;
+#[cfg(feature = "fuzzing")]
+#[doc(hidden)]
+pub mod fuzzing;
 mod graphql;
 mod identifier_references;
 mod invocations;
