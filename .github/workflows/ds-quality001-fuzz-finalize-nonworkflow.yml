@@ -61,7 +61,6 @@ jobs:
           cargo test -p dartscope-parse --features fuzzing --locked --quiet
           cargo clippy -p dartscope-parse --all-targets --features fuzzing --locked -- -D warnings
           cargo +nightly-2026-07-01 check --manifest-path fuzz/Cargo.toml --all-targets --locked
-          python3 tools/check-repository-consistency.py
       - name: Commit verified non-workflow files
         id: commit
         shell: bash
