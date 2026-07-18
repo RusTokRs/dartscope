@@ -89,6 +89,7 @@ jobs:
           name: ds-quality001-verified-worktree-${{ github.run_id }}
           path: verified-worktree
           if-no-files-found: error
+          include-hidden-files: true
       - name: Report run and close trigger
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
