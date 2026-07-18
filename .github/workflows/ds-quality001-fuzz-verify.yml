@@ -34,6 +34,8 @@ jobs:
           python3 tools/ds_quality001_fuzz_apply.py
           rm -f .github/workflows/ds-quality001-fuzz-snapshot.yml
           rm -f .github/workflows/ds-quality001-fuzz-verify.yml
+          rm -f .github/workflows/ds-quality001-fuzz-inspect.yml
+          rm -f .github/workflows/ds-quality001-fuzz-log-inspect.yml
           rm -f docs/development/.fuzz-snapshot-trigger
           rm -f tools/ds_quality001_fuzz_apply.py
           rm -f tools/.ds_quality001_fuzz_payload_*
@@ -118,6 +120,8 @@ jobs:
           python tools/ds_quality001_fuzz_apply.py
           rm -f .github/workflows/ds-quality001-fuzz-snapshot.yml
           rm -f .github/workflows/ds-quality001-fuzz-verify.yml
+          rm -f .github/workflows/ds-quality001-fuzz-inspect.yml
+          rm -f .github/workflows/ds-quality001-fuzz-log-inspect.yml
           rm -f docs/development/.fuzz-snapshot-trigger
           rm -f tools/ds_quality001_fuzz_apply.py
           rm -f tools/.ds_quality001_fuzz_payload_*
