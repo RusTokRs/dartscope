@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 from pathlib import Path
 import subprocess
 import tarfile
-import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_SHA = "d1af6c52477c67a86716775cacf8269fc86b565c"
@@ -45,22 +45,19 @@ def main() -> None:
     if hashlib.sha256(payload).hexdigest() != PAYLOAD_SHA256:
         raise SystemExit("fuzz payload digest mismatch")
 
-    with tempfile.NamedTemporaryFile(suffix=".tar.gz") as handle:
-        handle.write(payload)
-        handle.flush()
-        with tarfile.open(handle.name, "r:gz") as archive:
-            for member in archive.getmembers():
-                path = Path(member.name)
-                if path.is_absolute() or ".." in path.parts or not member.isfile():
-                    raise SystemExit(f"unsafe payload member: {member.name}")
-                target = (ROOT / path).resolve()
-                if ROOT.resolve() not in target.parents:
-                    raise SystemExit(f"payload escapes repository: {member.name}")
-                target.parent.mkdir(parents=True, exist_ok=True)
-                source = archive.extractfile(member)
-                if source is None:
-                    raise SystemExit(f"missing payload bytes: {member.name}")
-                target.write_bytes(source.read())
+    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
+        for member in archive.getmembers():
+            path = Path(member.name)
+            if path.is_absolute() or ".." in path.parts or not member.isfile():
+                raise SystemExit(f"unsafe payload member: {member.name}")
+            target = (ROOT / path).resolve()
+            if ROOT.resolve() not in target.parents:
+                raise SystemExit(f"payload escapes repository: {member.name}")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            source = archive.extractfile(member)
+            if source is None:
+                raise SystemExit(f"missing payload bytes: {member.name}")
+            target.write_bytes(source.read())
 
     print("DS-QUALITY-001 bounded fuzzing payload applied")
 
