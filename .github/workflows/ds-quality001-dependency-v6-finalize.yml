@@ -2,7 +2,7 @@ name: Finalize DS-QUALITY-001 Dependency Gates V6
 
 on:
   issues:
-    types: [opened]
+    types: [opened, edited]
   workflow_dispatch:
 
 permissions:
@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: ds-quality001-dependency-v6-finalize
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   quality:
