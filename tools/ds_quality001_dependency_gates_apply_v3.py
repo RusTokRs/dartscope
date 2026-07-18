@@ -12,8 +12,8 @@ source = subprocess.check_output(
 )
 replacements = [
     (
-        '''TESTS.write_text('''from __future__ import annotations''',
-        '''TESTS.write_text(r'''from __future__ import annotations''',
+        "TESTS.write_text('''from __future__ import annotations",
+        "TESTS.write_text(r'''from __future__ import annotations",
     ),
     (
         '''import importlib.util
