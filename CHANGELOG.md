@@ -33,9 +33,12 @@ pre-1.0.
   preserving full stateless lint equivalence.
 - Deterministic retained-cache payload metrics and informational 1k/10k index/lint update-time baselines
   without flaky absolute timing thresholds.
+- Pinned RustSec advisory and unused-dependency CI gates with expiring, owner-attributed exception policy.
 
 ### Fixed
 
+- Removed an unused direct `serde` dependency and stale lock edge from `dartscope-parse` instead of
+  suppressing the unused-dependency gate.
 - Incremental reference caches now invalidate same-name `NotVisible` evidence and sibling-part
   visibility changes without leaking non-Dart metadata paths into `affected_paths`.
 - Retained per-library namespace-membership and GraphQL-binding caches rebuild only affected GraphQL-use

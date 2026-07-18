@@ -1,0 +1,19 @@
+# Every exception must be mirrored by the native tool configuration and include review metadata.
+version = 1
+cargo_audit_version = "0.22.2"
+cargo_machete_version = "0.9.2"
+
+# Example RustSec exception:
+# [[rustsec_advisory]]
+# id = "RUSTSEC-2099-0001"
+# owner = "@maintainer"
+# rationale = "The affected API and feature are not built or called by DartScope."
+# expires_on = "2099-01-31"
+
+# Example cargo-machete exception:
+# [[unused_dependency]]
+# manifest = "crates/example/Cargo.toml"
+# dependency = "generated-runtime"
+# owner = "@maintainer"
+# rationale = "The dependency is referenced only from checked-in generated source."
+# expires_on = "2099-01-31"

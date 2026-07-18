@@ -86,7 +86,6 @@ version = "0.1.0"
 dependencies = [
  "dartscope-core",
  "dartscope-resolve",
- "serde",
  "serde_json",
  "yaml-rust2",
 ]

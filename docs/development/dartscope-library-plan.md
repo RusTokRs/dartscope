@@ -809,7 +809,7 @@ See `docs/development/ci-supply-chain.md`.
 
 ### DS-CLI-003: Lint Command, Configuration, And SARIF
 
-Status: implemented. Priority: P1. Prerequisite: DS-LINT-001.
+Status: verified. Priority: P1. Prerequisite: DS-LINT-001.
 
 Implemented (2026-07-17):
 
@@ -845,9 +845,9 @@ Findings and limits:
 - **P1 fixed:** the first successful finalization staged Python bytecode created by policy-test imports.
   Generated Python artifacts are now ignored and a permanent repository-consistency check rejects any
   tracked recurrence.
-- **Verification pending:** the Rust 1.95 Ubuntu feature finalizer and focused cleanup gate passed, but
-  GitHub did not publish the permanent Linux/Windows aggregate status for the final clean main SHA.
-  Promote this task to `verified` only after a later clean main SHA reports `dartscope/ci` success.
+- **Verification completed (2026-07-18):** the later clean DS-INDEX-005 feature SHA
+  `5b1f82eacb606e5692fddd040e1f8dc465989e6b` reported aggregate `dartscope/ci: success`, covering the
+  permanent Rust 1.95 Linux/Windows matrix required by this task.
 
 Acceptance:
 
@@ -857,8 +857,7 @@ Acceptance:
 - a documented GitHub Actions example can upload SARIF without custom parsing;
 - exact Rust 1.95 formatting, focused tests, Clippy, rustdoc, workspace tests, umbrella all-features,
   and release package validation pass in the bounded finalizer;
-- a clean permanent hosted Linux/Windows matrix reports aggregate `dartscope/ci` success before the
-  task is promoted from `implemented` to `verified`.
+- a later clean permanent hosted Linux/Windows matrix reports aggregate `dartscope/ci` success.
 
 See `docs/development/lint-cli.md`.
 
@@ -972,7 +971,28 @@ Acceptance:
 
 ### DS-QUALITY-001: Durable Security, Fuzzing, And Performance Gates
 
-Status: ready. Priority: P1. Prerequisite: DS-AUDIT-001.
+Status: in progress. Priority: P1. Prerequisite: DS-AUDIT-001.
+
+Progress (2026-07-18):
+
+1. Added exact `cargo-audit 0.22.2` and `cargo-machete 0.9.2` installs to permanent read-only CI,
+   including weekly scheduled execution and aggregate-status participation.
+2. Added a versioned exception registry and checker that requires owner, rationale, and unexpired review
+   date, and rejects drift from native RustSec or cargo-machete ignore configuration.
+3. Added focused policy tests for missing metadata, expired exceptions, native-ignore drift, and a valid
+   reviewed unused-dependency exception. The initial exception registry is empty.
+4. **P1 fixed:** `dartscope-parse` declared `serde` directly without using it. The dependency and its
+   stale package-level lock edge were removed rather than hidden behind a cargo-machete exception.
+5. **P2 fixed:** the first generated dependency-policy checker used a non-raw outer Python string and
+   emitted an invalid-escape `SyntaxWarning`; generation is now warning-clean under `-W error`.
+
+Findings and limits:
+
+- `cargo-machete` is a fast static detector and can produce false positives. It runs without
+  `--with-metadata` so CI cannot modify `Cargo.lock`; any ignore must be explicit and expiring.
+- Dependency-tool installation and RustSec database refresh remain network-dependent CI bootstrap steps.
+  Infrastructure failures must not be converted into advisory or unused-dependency exceptions.
+- Exact tool pins are duplicated in CI and policy intentionally; policy validation rejects version drift.
 
 Required work:
 

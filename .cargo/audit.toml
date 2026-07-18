@@ -1,0 +1,13 @@
+[advisories]
+ignore = []
+informational_warnings = ["unmaintained"]
+severity_threshold = "low"
+
+[output]
+deny = ["unmaintained"]
+show_tree = true
+quiet = false
+
+[yanked]
+enabled = true
+update_index = true
