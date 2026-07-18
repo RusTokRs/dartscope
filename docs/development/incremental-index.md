@@ -90,7 +90,9 @@ identifier-reference source files recomputed, and the number of namespace-member
 fingerprint, and GraphQL-use libraries refreshed. Unaffected per-file and per-library `Arc` cache entries
 remain shared internally.
 These are semantic operation counters rather than elapsed-time assertions, so they are deterministic
-across Linux, Windows, and differently loaded runners.
+across Linux, Windows, and differently loaded runners. `retained_metrics()` complements them with cache
+entry counts and exact retained path/URI UTF-8 payload bytes, a stable lower-bound memory proxy that does
+not claim allocator-specific heap precision.
 
 A local reference-fact replacement invalidates only its source path. File insertion/removal recomputes
 that path plus direct URI sources whose previous target resolution may change. Namespace changes report
@@ -104,7 +106,12 @@ Run the synthetic 1k/10k-file operation baseline with:
 
 ```text
 cargo run -p dartscope-index --example incremental_workspace_baseline --release
+cargo run -p dartscope-lints --example incremental_lint_baseline --release
 ```
+
+The lint baseline prints initial-build and single-library update timings for 1k and 10k files. Timings are
+informational; correctness gates assert deterministic cache shapes, counters, and full-result equivalence
+rather than host-dependent duration thresholds.
 
 ## Equivalence Contract
 

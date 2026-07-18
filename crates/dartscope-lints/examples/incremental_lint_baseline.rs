@@ -49,11 +49,7 @@ fn run_baseline(file_count: usize) {
     let snapshot = index.snapshot();
 
     let started = Instant::now();
-    let lint_update = black_box(lint_cache.update(
-        snapshot.as_ref(),
-        &workspace_update,
-        &config,
-    ));
+    let lint_update = black_box(lint_cache.update(snapshot.as_ref(), &workspace_update, &config));
     let lint_update_time = started.elapsed();
 
     assert_eq!(workspace_update.affected_libraries, vec![last_path]);

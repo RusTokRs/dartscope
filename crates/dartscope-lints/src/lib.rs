@@ -16,6 +16,7 @@ pub use config::{
 };
 pub use engine::{lint_project, lint_workspace_snapshot};
 pub use incremental::{
-    DartIncrementalLintCache, DartIncrementalLintCounters, DartIncrementalLintUpdate,
+    DartIncrementalLintCache, DartIncrementalLintCounters, DartIncrementalLintRetainedMetrics,
+    DartIncrementalLintUpdate,
 };
 pub use model::{DartLintAnalysis, DartLintDiagnostic, DartLintSummary};

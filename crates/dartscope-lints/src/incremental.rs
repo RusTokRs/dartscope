@@ -16,6 +16,18 @@ pub struct DartIncrementalLintCounters {
     pub no_op_updates: u64,
 }
 
+/// Deterministic retained-cache shape for memory baselines.
+///
+/// `retained_diagnostic_text_bytes` counts exact UTF-8 diagnostic payload retained by the cache and is
+/// intentionally independent of allocator layout.
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
+pub struct DartIncrementalLintRetainedMetrics {
+    pub cached_libraries: usize,
+    pub local_diagnostics: usize,
+    pub global_diagnostics: usize,
+    pub retained_diagnostic_text_bytes: usize,
+}
+
 /// Work performed while applying one workspace update to the lint cache.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct DartIncrementalLintUpdate {
@@ -79,6 +91,27 @@ impl DartIncrementalLintCache {
 
     pub const fn generation(&self) -> u64 {
         self.generation
+    }
+
+    pub fn retained_metrics(&self) -> DartIncrementalLintRetainedMetrics {
+        let local_diagnostics = self
+            .diagnostics_by_library
+            .values()
+            .map(|diagnostics| diagnostics.len())
+            .sum();
+        let retained_diagnostic_text_bytes = self
+            .diagnostics_by_library
+            .values()
+            .flat_map(|diagnostics| diagnostics.iter())
+            .chain(self.global_diagnostics.iter())
+            .map(diagnostic_text_bytes)
+            .sum();
+        DartIncrementalLintRetainedMetrics {
+            cached_libraries: self.diagnostics_by_library.len(),
+            local_diagnostics,
+            global_diagnostics: self.global_diagnostics.len(),
+            retained_diagnostic_text_bytes,
+        }
     }
 
     /// Applies one workspace update and reuses diagnostics for unaffected libraries.
@@ -195,6 +228,16 @@ impl DartIncrementalLintCache {
         self.analysis =
             analysis_from_diagnostics(self.config.enabled_rule_ids().len(), diagnostics);
     }
+}
+
+fn diagnostic_text_bytes(diagnostic: &DartLintDiagnostic) -> usize {
+    diagnostic.path.len()
+        + diagnostic.message.len()
+        + diagnostic
+            .related_paths
+            .iter()
+            .map(String::len)
+            .sum::<usize>()
 }
 
 fn local_rule_ids(config: &DartLintConfig) -> Vec<DartLintRuleId> {

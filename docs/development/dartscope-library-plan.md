@@ -864,7 +864,7 @@ See `docs/development/lint-cli.md`.
 
 ### DS-INDEX-005: Incremental Workspace Index
 
-Status: in progress. Priority: P1. Prerequisites: DS-INDEX-004, DS-AUDIT-001.
+Status: verified. Priority: P1. Prerequisites: DS-INDEX-004, DS-AUDIT-001.
 
 Foundation implemented (2026-07-17):
 
@@ -903,10 +903,16 @@ Foundation implemented (2026-07-17):
     mismatches fall back to a safe full rebuild without introducing an index/lint dependency cycle.
 15. **P1 fixed:** the new public dependency-fingerprint model was initially omitted from the umbrella
     crate's explicit index re-export. `dartscope` now exposes the same named type as `dartscope-index`.
+16. Added deterministic retained-cache metrics for index and lint contexts plus an informational 1k/10k
+    initial-build and single-library update-time baseline. CI gates cache shapes, one-library counters, and
+    full semantic equivalence while intentionally avoiding host-dependent duration thresholds.
 
-Remaining work:
+Verification completed (2026-07-18):
 
-1. Add memory/update-time baselines for the per-library index and lint-cache implementation.
+- exact Rust 1.95 formatting, focused index/lint fixtures, Clippy, rustdoc, workspace tests, umbrella
+  all-features, release package validation, and hosted Linux/Windows checks passed on the verified final
+  feature SHA;
+- the aggregate `dartscope/ci` status was published as `success` after the final baseline gate.
 
 Acceptance:
 

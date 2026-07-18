@@ -35,5 +35,15 @@ no filesystem I/O, source parsing, SDK invocation, or hidden synchronization.
 ## Counters
 
 `DartIncrementalLintCounters` records full rebuilds, local libraries rebuilt, global rebuilds, and lint
-updates that required no rule work. These are deterministic semantic-work counters, not elapsed-time
-assertions.
+updates that required no rule work. `retained_metrics()` reports cached-library and diagnostic counts plus
+exact retained diagnostic UTF-8 payload bytes. These are deterministic semantic-work and lower-bound
+payload metrics, not allocator or elapsed-time assertions.
+
+Run the informational 1k/10k update-time baseline with:
+
+```text
+cargo run -p dartscope-lints --example incremental_lint_baseline --release
+```
+
+The example asserts one-library rebuild counters and full lint equivalence. Printed microseconds are never
+used as CI pass/fail thresholds.

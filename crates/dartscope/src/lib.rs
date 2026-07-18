@@ -19,12 +19,13 @@ pub use dartscope_resolve::{PackageUriResolutionError, parse_package_config, res
 #[cfg(feature = "index")]
 pub use dartscope_index::{
     DartIndexOptions, DartLibraryDependencyFingerprint, DartWorkspaceIndex,
-    DartWorkspaceIndexCounters, DartWorkspaceSnapshot, DartWorkspaceSubsystems,
-    DartWorkspaceUpdate, analyze_graphql_contracts, analyze_graphql_contracts_with_options,
-    analyze_part_links, build_uri_graph, build_uri_graph_with_options,
-    resolve_identifier_references, resolve_identifier_references_with_options,
-    resolve_project_identifier_references, resolve_project_identifier_references_with_options,
-    resolve_symbol, resolve_symbol_with_options,
+    DartWorkspaceIndexCounters, DartWorkspaceIndexRetainedMetrics, DartWorkspaceSnapshot,
+    DartWorkspaceSubsystems, DartWorkspaceUpdate, analyze_graphql_contracts,
+    analyze_graphql_contracts_with_options, analyze_part_links, build_uri_graph,
+    build_uri_graph_with_options, resolve_identifier_references,
+    resolve_identifier_references_with_options, resolve_project_identifier_references,
+    resolve_project_identifier_references_with_options, resolve_symbol,
+    resolve_symbol_with_options,
 };
 
 #[cfg(feature = "lints")]

@@ -31,6 +31,8 @@ pre-1.0.
   evidence for downstream incremental consumers.
 - Snapshot-backed and incremental lint contexts that retain unaffected per-library diagnostics while
   preserving full stateless lint equivalence.
+- Deterministic retained-cache payload metrics and informational 1k/10k index/lint update-time baselines
+  without flaky absolute timing thresholds.
 
 ### Fixed
 
