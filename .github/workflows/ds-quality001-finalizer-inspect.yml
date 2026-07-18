@@ -1,0 +1,30 @@
+name: Inspect DS-QUALITY-001 Non-Workflow Finalizer
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  inspect:
+    if: github.event.issue.title == '[internal] inspect DS-QUALITY-001 non-workflow finalizer'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const response = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'ds-quality001-fuzz-finalize-nonworkflow.yml',
+              per_page: 5,
+            });
+            const body = response.data.workflow_runs.length
+              ? response.data.workflow_runs.map((run) =>
+                  `run_id=${run.id} status=${run.status} conclusion=${run.conclusion} head_sha=${run.head_sha} url=${run.html_url}`
+                ).join('\n')
+              : 'no runs found';
+            await github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body});
+            await github.rest.issues.update({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, state: 'closed'});
