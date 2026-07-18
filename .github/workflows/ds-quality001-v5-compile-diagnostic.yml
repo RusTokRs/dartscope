@@ -1,0 +1,85 @@
+name: Diagnose DS-QUALITY-001 V5 Compile Failure
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == '[internal] DS-QUALITY-001 v5 compile diagnostic'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Capture exact Rust output
+        shell: bash
+        run: |
+          set +e
+          python3 tools/ds_quality001_v5_compile_diagnostic.py > "$RUNNER_TEMP/apply.log" 2>&1
+          APPLY_STATUS=$?
+          rustup toolchain install 1.95.0 --profile minimal --component clippy > "$RUNNER_TEMP/rust.log" 2>&1
+          RUST_STATUS=$?
+          cargo check -p dartscope-parse --all-targets --locked > "$RUNNER_TEMP/check.log" 2>&1
+          CHECK_STATUS=$?
+          cargo clippy --workspace --all-targets --locked -- -D warnings > "$RUNNER_TEMP/clippy.log" 2>&1
+          CLIPPY_STATUS=$?
+
+          git reset --hard origin/main
+          git clean -fd
+          rm -f .github/workflows/ds-quality001-v5-compile-diagnostic.yml
+          rm -f tools/ds_quality001_v5_compile_diagnostic.py
+          rm -f docs/development/ds-quality001-dependency-v5-failure.md
+          mkdir -p docs/development
+          {
+            echo '---'
+            echo 'id: doc://docs/development/ds-quality001-v5-compile-diagnostic.md'
+            echo 'kind: verification_report'
+            echo 'language: en'
+            echo 'source_language: en'
+            echo 'status: active'
+            echo '---'
+            echo
+            echo '# DS-QUALITY-001 V5 Compile Diagnostic'
+            echo
+            echo "- apply exit: \`$APPLY_STATUS\`"
+            echo "- Rust install exit: \`$RUST_STATUS\`"
+            echo "- parse check exit: \`$CHECK_STATUS\`"
+            echo "- workspace Clippy exit: \`$CLIPPY_STATUS\`"
+            echo
+            echo '## Apply'
+            echo '```text'
+            tail -n 80 "$RUNNER_TEMP/apply.log"
+            echo '```'
+            echo
+            echo '## Parse check'
+            echo '```text'
+            tail -n 180 "$RUNNER_TEMP/check.log"
+            echo '```'
+            echo
+            echo '## Workspace Clippy'
+            echo '```text'
+            tail -n 220 "$RUNNER_TEMP/clippy.log"
+            echo '```'
+          } > docs/development/ds-quality001-v5-compile-diagnostic.md
+          git config user.name "dartscope-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "ci: capture DS-QUALITY-001 v5 compile diagnostic"
+          git push origin HEAD:main
+      - name: Close trigger
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            if (context.eventName === 'issues') {
+              await github.rest.issues.update({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, state: 'closed'});
+            }
