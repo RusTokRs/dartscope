@@ -11,5 +11,5 @@ status: active
 The worktree-only implementation was not committed.
 
 - quality result: `failure`
-- quality failed stage: `apply dependency fingerprint v3 (exit 1)`
+- quality failed stage: `apply dependency fingerprint v3 (exit 2)`
 - Linux/Windows matrix: `failure`
