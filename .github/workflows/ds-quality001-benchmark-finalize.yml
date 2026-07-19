@@ -25,12 +25,11 @@ jobs:
           fetch-depth: 0
       - name: Verify transport base
         env:
-          EXPECTED_PARENT: 87dee903ff9215d7b63238476a100cb90d3aa701
+          EXPECTED_PARENT: fe8d4bf510ae9cf3299452710c8cf746d36dc1e8
         shell: bash
         run: test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
       - name: Decode reviewed payload
         env:
-          ISSUE_BODY: ${{ github.event.issue.body }}
           EXPECTED_SHA256: beb7656bac17b0360de973a1457d1c20f0e8da1d7db76f24980b55af9caa3fbf
         shell: bash
         run: |
@@ -40,11 +39,7 @@ jobs:
           import os
           from pathlib import Path
 
-          body = os.environ['ISSUE_BODY']
-          marker = 'payload_base64:\n'
-          if body.count(marker) != 1:
-              raise SystemExit('payload marker did not match exactly once')
-          encoded = ''.join(body.split(marker, 1)[1].split())
+          encoded = ''.join(Path('tools/ds_quality001_benchmark_payload.b64').read_text().split())
           payload = base64.b64decode(encoded, validate=True)
           digest = hashlib.sha256(payload).hexdigest()
           if digest != os.environ['EXPECTED_SHA256']:
@@ -60,6 +55,7 @@ jobs:
           python3 "$RUNNER_TEMP/ds-quality001-payload/apply.py" \
             "$GITHUB_WORKSPACE" "$RUNNER_TEMP/ds-quality001-payload"
           rm .github/workflows/ds-quality001-benchmark-finalize.yml
+          rm tools/ds_quality001_benchmark_payload.b64
       - name: Install verification tools
         env:
           GOBIN: ${{ runner.temp }}/actionlint-bin
@@ -90,11 +86,11 @@ jobs:
           cargo +1.95.0 test --workspace --locked --quiet
       - name: Verify same-runner report end to end
         env:
-          EXPECTED_PARENT: 87dee903ff9215d7b63238476a100cb90d3aa701
+          FEATURE_BASE: 87dee903ff9215d7b63238476a100cb90d3aa701
         shell: bash
         run: |
           set -euo pipefail
-          git worktree add "$RUNNER_TEMP/benchmark-baseline" "$EXPECTED_PARENT"
+          git worktree add "$RUNNER_TEMP/benchmark-baseline" "$FEATURE_BASE"
           python3 tools/report_benchmark_regressions.py \
             --baseline "$RUNNER_TEMP/benchmark-baseline" \
             --candidate "$GITHUB_WORKSPACE" \
