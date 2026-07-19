@@ -33,6 +33,9 @@ The observation window starts with the first successful default-branch execution
 above. A run is valid only when the job reaches all three repository checks; cancelled, provisioning,
 network, and registry failures are classified separately and do not count toward promotion.
 
+This branch-only sentence triggers a pull-request observation of the already-published signal and is
+not intended for merge.
+
 ## Failure Triage
 
 Every failure must be classified before changing the signal:
