@@ -25,7 +25,7 @@ jobs:
           fetch-depth: 0
       - name: Verify transport base
         env:
-          EXPECTED_PARENT: 7a444765d740d3f1475111d9e5cbc1b15ef5f84b
+          EXPECTED_PARENT: cdbdcf2e07293a7b5083d63779b47be049f8af2d
         shell: bash
         run: test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
       - name: Decode reviewed payload
@@ -59,6 +59,7 @@ jobs:
           rm tools/.benchmark-finalizer-trigger-note
           rm tools/.noop
           rm tools/.do-not-create
+          rm tools/.last-placeholder
       - name: Install verification tools
         env:
           GOBIN: ${{ runner.temp }}/actionlint-bin
