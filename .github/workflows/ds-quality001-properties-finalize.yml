@@ -20,11 +20,11 @@ jobs:
           fetch-depth: 0
       - name: Verify exact base
         env:
-          EXPECTED_BASE: 83776a69416e57b8c3b572e66aba970880f70e09
+          EXPECTED_BASE: e5d54e8d24458f8ffd2d9b63afa69e0ee50a702e
         shell: bash
         run: test "$(git rev-parse HEAD^)" = "$EXPECTED_BASE"
-      - name: Install Rust 1.95 with rustfmt
-        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+      - name: Install Rust 1.95 with formatting and lint components
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy
       - name: Record deterministic property progress
         shell: bash
         run: |
