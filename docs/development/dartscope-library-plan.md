@@ -995,6 +995,10 @@ Progress (2026-07-18):
 9. Added generated direct, prefixed, and re-export `show`/`hide` visibility matrices plus
    deterministic incremental combinator mutations; every mutation compares all retained snapshot products
    with a clean rebuild before asserting resolved versus not-visible evidence.
+10. Added non-blocking same-runner benchmark regression reporting for parsing, project indexing,
+    identifier-reference resolution, and package archive generation. Base/head execution order alternates,
+    reports use medians and MAD plus sustained relative evidence, and Markdown/JSON artifacts remain
+    informational rather than adding an absolute hosted-runner timing gate.
 
 Findings and limits:
 
@@ -1006,6 +1010,9 @@ Findings and limits:
 - libFuzzer requires nightly and sanitizer support, so the permanent fuzz job is Linux-only and
   supplements rather than replaces the stable Rust 1.95 Linux/Windows matrix.
 - The checked-in corpus is a bounded panic/regression gate, not evidence of exhaustive parser coverage.
+- Benchmark timing classifications are non-blocking and excluded from `dartscope/ci`. A changed
+  deterministic workload digest suppresses unlike timing comparisons, and promotion to a blocking gate
+  requires a stable workload-specific metric or reviewed dedicated runner.
 
 Required work:
 
@@ -1256,7 +1263,7 @@ Do not resolve these conditions by silently expanding scope.
 
 ## Current Recommended Next Step
 
-Implement `DS-FLUTTER-004` next. Asset and localization catalogs now have explicit, package-aware
-contracts; the next ready slice expands official framework navigation/theme facts and adds a
-versioned opt-in ledger for selected ecosystem conventions. `DS-COMPAT-001` remains recorded as
-research and is intentionally deferred until the current implementation queue is complete.
+Continue `DS-QUALITY-001` with the non-blocking macOS portability signal for the `0.2` cycle and
+record explicit promotion criteria. Security, bounded fuzzing, deterministic properties, and relative
+benchmark regression reporting are now present; `DS-QUALITY-001` remains `in_progress` until the macOS
+signal is verified. `DS-COMPAT-001` remains research.
