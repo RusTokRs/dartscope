@@ -971,7 +971,7 @@ Acceptance:
 
 ### DS-QUALITY-001: Durable Security, Fuzzing, And Performance Gates
 
-Status: in progress. Priority: P1. Prerequisite: DS-AUDIT-001.
+Status: verified. Priority: P1. Prerequisite: DS-AUDIT-001.
 
 Progress (2026-07-18):
 
@@ -999,6 +999,10 @@ Progress (2026-07-18):
     identifier-reference resolution, and package archive generation. Base/head execution order alternates,
     reports use medians and MAD plus sustained relative evidence, and Markdown/JSON artifacts remain
     informational rather than adding an absolute hosted-runner timing gate.
+11. Added a pinned `macos-15` arm64 portability signal that records runner/compiler evidence, checks all
+    workspace targets, runs the complete workspace test suite, and verifies all nine package archives.
+    Workflow policy and the full signal passed in pull-request CI run `29698405538`; the job remains
+    non-blocking and excluded from the aggregate `dartscope/ci` status during its observation window.
 
 Findings and limits:
 
@@ -1013,6 +1017,9 @@ Findings and limits:
 - Benchmark timing classifications are non-blocking and excluded from `dartscope/ci`. A changed
   deterministic workload digest suppresses unlike timing comparisons, and promotion to a blocking gate
   requires a stable workload-specific metric or reviewed dedicated runner.
+- The verified macOS signal is also excluded from `dartscope/ci`. Promotion requires a GA pinned runner,
+  at least 30 valid default-branch or scheduled observations across six weeks, at least 95% valid-run
+  success, and no unresolved macOS-only product defect or platform-specific bypass.
 
 Required work:
 
@@ -1024,13 +1031,15 @@ Required work:
    combinator visibility, and panic-free malformed input.
 4. Add non-flaky benchmark baselines for parsing, project indexing, reference resolution, and package
    archive generation.
-5. Add macOS as a non-blocking portability signal for the `0.2` cycle and define promotion criteria.
+5. Observe the verified pinned macOS portability signal for the `0.2` cycle and promote it only
+   through the reviewed criteria in `docs/development/macos-portability.md`.
 
 Acceptance:
 
 - malformed inputs never panic in the bounded fuzz corpus;
 - advisory and unused-dependency findings cannot be silently ignored;
 - benchmarks report regressions without relying on unstable absolute hosted-runner timings;
+- macOS portability failures remain visible without participating in the blocking aggregate status;
 - every exception has an owner, rationale, and review date.
 
 ### DS-PARSE-007: Alternative Parser Backend Evaluation
@@ -1263,7 +1272,7 @@ Do not resolve these conditions by silently expanding scope.
 
 ## Current Recommended Next Step
 
-Continue `DS-QUALITY-001` with the non-blocking macOS portability signal for the `0.2` cycle and
-record explicit promotion criteria. Security, bounded fuzzing, deterministic properties, and relative
-benchmark regression reporting are now present; `DS-QUALITY-001` remains `in_progress` until the macOS
-signal is verified. `DS-COMPAT-001` remains research.
+Implement `DS-INDEX-006` next. The durable quality gate is now verified across dependency policy,
+bounded fuzzing, deterministic properties, relative benchmark reporting, and a non-blocking macOS
+portability signal. Broader references and lexical scope resolution are the next P1 prerequisite for
+language-server work; `DS-COMPAT-001` remains research.
