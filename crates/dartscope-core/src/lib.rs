@@ -164,6 +164,8 @@ pub struct DartIdentifierReference {
 #[serde(rename_all = "snake_case")]
 pub enum DartIdentifierReferenceKind {
     InvocationTarget,
+    ConstructorTarget,
+    TypeAnnotation,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]

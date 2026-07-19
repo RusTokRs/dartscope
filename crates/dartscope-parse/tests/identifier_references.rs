@@ -1,4 +1,4 @@
-use dartscope_core::{Confidence, DartFileInput, DartProjectInput};
+use dartscope_core::{Confidence, DartFileInput, DartIdentifierReferenceKind, DartProjectInput};
 use dartscope_parse::{analyze_file_with_references, analyze_project_with_references};
 
 #[test]
@@ -127,4 +127,88 @@ fn project_reference_output_is_sorted_by_path_and_source_span() {
             .collect::<Vec<_>>(),
         [("lib/a.dart", "Alpha"), ("lib/z.dart", "Zed")]
     );
+}
+
+#[test]
+fn extracts_explicit_constructor_and_nominal_type_clause_references() {
+    let source = r#"
+import 'types.dart' as types;
+
+class LocalBase {}
+mixin LocalMixin {}
+class Child<T> extends types.Parent<T> with LocalMixin implements Contract<T> {}
+mixin Guard<T> on types.Parent<T>, Contract<T> {}
+extension Parsing<T> on types.Parent<T> {}
+extension type UserId(int value) implements Contract<UserId> {}
+class TypeParameter<T> extends T {}
+
+void make() {
+  new LocalBase();
+  const types.Parent.named();
+  Factory.create();
+  Parent();
+}
+"#;
+    let analysis = analyze_file_with_references(DartFileInput::new("lib/typed.dart", source));
+
+    let type_references: Vec<_> = analysis
+        .references
+        .iter()
+        .filter(|reference| reference.kind == DartIdentifierReferenceKind::TypeAnnotation)
+        .map(|reference| (reference.name.as_str(), reference.prefix.as_deref()))
+        .collect();
+    assert_eq!(
+        type_references,
+        [
+            ("Parent", Some("types")),
+            ("LocalMixin", None),
+            ("Contract", None),
+            ("Parent", Some("types")),
+            ("Contract", None),
+            ("Parent", Some("types")),
+            ("Contract", None),
+        ]
+    );
+    assert!(!analysis.references.iter().any(|reference| {
+        reference.kind == DartIdentifierReferenceKind::TypeAnnotation && reference.name == "T"
+    }));
+
+    let constructors: Vec<_> = analysis
+        .references
+        .iter()
+        .filter(|reference| reference.kind == DartIdentifierReferenceKind::ConstructorTarget)
+        .map(|reference| (reference.name.as_str(), reference.prefix.as_deref()))
+        .collect();
+    assert_eq!(
+        constructors,
+        [("LocalBase", None), ("Parent", Some("types"))]
+    );
+    assert!(!analysis.references.iter().any(|reference| {
+        reference.kind == DartIdentifierReferenceKind::ConstructorTarget
+            && matches!(reference.name.as_str(), "Factory" | "Parent")
+            && reference.prefix.is_none()
+    }));
+
+    for reference in analysis.references.iter().filter(|reference| {
+        matches!(
+            reference.kind,
+            DartIdentifierReferenceKind::ConstructorTarget
+                | DartIdentifierReferenceKind::TypeAnnotation
+        )
+    }) {
+        assert_eq!(
+            &source[reference.span.byte_start..reference.span.byte_end],
+            reference.name
+        );
+    }
+
+    let encoded = serde_json::to_value(&analysis.references).expect("reference JSON");
+    let kinds: Vec<_> = encoded
+        .as_array()
+        .expect("reference array")
+        .iter()
+        .filter_map(|value| value.get("kind").and_then(serde_json::Value::as_str))
+        .collect();
+    assert!(kinds.contains(&"constructor_target"));
+    assert!(kinds.contains(&"type_annotation"));
 }

@@ -27,6 +27,22 @@ parameter named like an import prefix does not become a high-confidence prefixed
 A local declared in a nested block stops shadowing after that block closes. Declarations after an
 invocation do not retroactively shadow the earlier invocation.
 
+## Explicit typed-reference slice
+
+The second `DS-INDEX-006` slice adds two additive opt-in kinds without changing existing
+`invocation_target` facts:
+
+- `type_annotation` covers only the nominal roots of `extends`, `with`, `implements`, and supported
+  extension/mixin `on` clauses. Generic arguments are not swept as references, declaration type
+  parameters suppress matching unqualified roots, and dotted roots require a declared import prefix.
+- `constructor_target` requires an explicit `new` or `const` keyword. The fact points at the
+  constructor's type token, including an import prefix when present. Ordinary `Type()` and
+  `Factory.create()` calls remain only `invocation_target` facts because syntax alone does not prove
+  constructor selection.
+
+Both kinds retain exact identifier spans and parser-provided enclosing symbol evidence. The index
+resolves the resulting facts through the same namespace context and still never reparses source.
+
 ## Compatibility boundary
 
 - Existing non-shadowed invocation-target facts keep their kind, confidence, exact span, ordering,
@@ -39,7 +55,9 @@ invocation do not retroactively shadow the earlier invocation.
 ## Deferred scope
 
 This slice does not claim analyzer-equivalent lexical semantics. Closure parameters, pattern
-bindings, loop/catch bindings, inherited members, extension lookup, constructor selection, type
-inference, overload resolution, and general variable read/write references remain explicit follow-up
+bindings, loop/catch bindings, inherited members, extension lookup, implicit constructor selection,
+parameter/return/variable type positions, type inference, overload resolution, and general variable
+read/write references remain explicit follow-up work. Explicit `new`/`const` constructor targets and
+nominal declaration clauses are the only typed facts in this slice; other forms remain explicit follow-up
 work. Each future reference kind requires its own documented opt-in compatibility contract and
 negative fixtures before it can enter public output.

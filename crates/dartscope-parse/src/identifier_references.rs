@@ -1,8 +1,11 @@
+mod typed;
+
 use dartscope_core::{
     Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
     DartIdentifierReferenceKind, SourceSpan,
 };
 
+use self::typed::collect_typed_identifier_references;
 use crate::source_lines::span_for_byte_range;
 
 #[derive(Debug, Clone, Copy)]
@@ -62,6 +65,11 @@ pub(crate) fn collect_identifier_references(
         });
     }
 
+    references.extend(collect_typed_identifier_references(
+        source,
+        masked_source,
+        analysis,
+    ));
     sort_identifier_references(&mut references);
     references.dedup_by(|left, right| {
         left.source_path == right.source_path

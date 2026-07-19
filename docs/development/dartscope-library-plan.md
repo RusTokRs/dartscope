@@ -939,12 +939,17 @@ Progress (2026-07-19):
    symbol IDs, pure file/project output, and all non-shadowed namespace-resolution behavior.
 3. Added parser negative fixtures and an index integration fixture proving that the index resolves
    only parser-produced facts and never reparses raw Dart source.
+4. Added additive `type_annotation` facts for nominal declaration clauses and
+   `constructor_target` facts for syntax-proven `new`/`const` calls. The new facts retain exact spans,
+   import prefixes, confidence, and enclosing symbol evidence while leaving all existing
+   `invocation_target` output unchanged.
 
 Findings and limits:
 
 - Suppressed roots are deliberately omitted rather than fabricated as resolved local/member facts.
-  Closure parameters, loop/catch and pattern bindings, inherited members, extension lookup, constructor
-  selection, type inference, and general reads/writes remain follow-up work.
+  Closure parameters, loop/catch and pattern bindings, inherited members, extension lookup, implicit
+  constructor selection, non-clause type positions, type inference, and general reads/writes remain
+  follow-up work.
 - Every future reference kind remains opt-in and requires an explicit compatibility contract plus exact
   span and nearby-shadowing fixtures before it can enter public output.
 
@@ -1293,8 +1298,8 @@ Do not resolve these conditions by silently expanding scope.
 
 ## Current Recommended Next Step
 
-Continue `DS-INDEX-006` with explicit opt-in type-position and constructor reference facts. The
-initial lexical-shadowing guard now prevents parameters, visible block locals, import-prefix collisions,
-and same-type members from being sent to top-level namespace resolution while preserving existing
-non-shadowed invocation output. The next slice must define typed reference kinds and exact-span negative
-fixtures before index lookup; `DS-COMPAT-001` remains research.
+Continue `DS-INDEX-006` with opt-in parameter, return, and variable type-position facts plus
+explicit lexical binding evidence. Nominal declaration clauses and syntax-proven `new`/`const`
+constructor targets now have typed kinds, exact spans, negative fixtures, and index integration without
+changing existing invocation output. Implicit constructor selection and general reads/writes remain
+separate evidence-gated slices; `DS-COMPAT-001` remains research.

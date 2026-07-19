@@ -1,4 +1,6 @@
-use dartscope_core::{DartFileInput, DartProjectInput, DartSymbolResolutionStatus};
+use dartscope_core::{
+    DartFileInput, DartIdentifierReferenceKind, DartProjectInput, DartSymbolResolutionStatus,
+};
 use dartscope_index::resolve_project_identifier_references;
 use dartscope_parse::analyze_project_with_references;
 
@@ -41,4 +43,63 @@ void run() {
     let first = source.find("target();").expect("first invocation");
     let last = source.rfind("target();").expect("last invocation");
     assert_eq!(invocation_offsets, [first, last]);
+}
+
+#[test]
+fn resolves_parser_produced_constructor_and_type_clause_facts() {
+    let types = r#"
+class Parent {
+  const Parent.named();
+}
+mixin LocalMixin {}
+abstract class Contract {}
+"#;
+    let client = r#"
+import 'types.dart' as types;
+
+class Child extends types.Parent with types.LocalMixin implements types.Contract {}
+
+void make() {
+  const types.Parent.named();
+  types.Parent();
+}
+"#;
+    let analysis = analyze_project_with_references(DartProjectInput::new(
+        ".",
+        vec![
+            DartFileInput::new("lib/types.dart", types),
+            DartFileInput::new("lib/client.dart", client),
+        ],
+        vec![],
+    ));
+    let resolved = resolve_project_identifier_references(&analysis);
+
+    let typed: Vec<_> = resolved
+        .resolutions
+        .iter()
+        .filter(|resolution| {
+            matches!(
+                resolution.reference.kind,
+                DartIdentifierReferenceKind::ConstructorTarget
+                    | DartIdentifierReferenceKind::TypeAnnotation
+            )
+        })
+        .collect();
+    assert_eq!(typed.len(), 4);
+    for resolution in typed {
+        assert_eq!(resolution.status, DartSymbolResolutionStatus::Resolved);
+        assert_eq!(resolution.candidates.len(), 1);
+        assert_eq!(resolution.candidates[0].declaration_path, "lib/types.dart");
+    }
+
+    assert_eq!(
+        analysis
+            .references
+            .iter()
+            .filter(|reference| {
+                reference.kind == DartIdentifierReferenceKind::ConstructorTarget
+            })
+            .count(),
+        1
+    );
 }
