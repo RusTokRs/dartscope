@@ -1,8 +1,8 @@
-use dartscope_core::{DartFileAnalysis, DartFileInput, PackageConfigInput, SourceSpan, normalize_path};
-use dartscope_parse::analyze_file;
-use dartscope_resolve::{
-    PackageUriResolutionError, parse_package_config, resolve_package_uri,
+use dartscope_core::{
+    DartFileAnalysis, DartFileInput, PackageConfigInput, SourceSpan, normalize_path,
 };
+use dartscope_parse::analyze_file;
+use dartscope_resolve::{PackageUriResolutionError, parse_package_config, resolve_package_uri};
 
 const PACKAGE_CONFIG: &str = r#"{
   "configVersion": 2,
@@ -22,7 +22,11 @@ fn generated_path_normalization_is_idempotent_and_constructor_stable() {
         let raw = generated_path(seed);
         let normalized = normalize_path(raw.clone());
 
-        assert_eq!(normalize_path(normalized.clone()), normalized, "seed {seed}");
+        assert_eq!(
+            normalize_path(normalized.clone()),
+            normalized,
+            "seed {seed}"
+        );
         assert_eq!(normalized, raw.replace('\\', "/"), "seed {seed}");
         assert!(!normalized.contains('\\'), "seed {seed}");
 
@@ -89,7 +93,11 @@ fn generated_package_uris_are_deterministic_normalized_and_root_bounded() {
         ),
     ] {
         let resolved = resolve_package_uri(&config, uri).expect(uri);
-        assert_eq!(resolved.project_path.as_deref(), Some(expected_path), "{uri}");
+        assert_eq!(
+            resolved.project_path.as_deref(),
+            Some(expected_path),
+            "{uri}"
+        );
     }
 
     for invalid in [
@@ -112,12 +120,7 @@ fn generated_package_uris_are_deterministic_normalized_and_root_bounded() {
     }
 }
 
-fn assert_analysis_spans(
-    source: &str,
-    analysis: &DartFileAnalysis,
-    seed: u64,
-    line_ending: &str,
-) {
+fn assert_analysis_spans(source: &str, analysis: &DartFileAnalysis, seed: u64, line_ending: &str) {
     let case = format!(
         "seed {seed}, {}",
         if line_ending == "\n" { "LF" } else { "CRLF" }
@@ -313,9 +316,7 @@ fn generated_source(seed: u64, line_ending: &str) -> String {
 }
 
 fn generated_path(seed: u64) -> String {
-    const ALPHABET: &[char] = &[
-        'a', 'b', 'Z', '0', '_', '-', '.', '/', '\\', 'λ', '中', ' ',
-    ];
+    const ALPHABET: &[char] = &['a', 'b', 'Z', '0', '_', '-', '.', '/', '\\', 'λ', '中', ' '];
     let mut state = seed ^ 0x9e37_79b9_7f4a_7c15;
     let length = (next(&mut state) % 48 + 1) as usize;
     let mut path = String::with_capacity(length);

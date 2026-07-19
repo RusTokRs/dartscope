@@ -989,6 +989,9 @@ Progress (2026-07-18):
    pubspec/package-config parsing, GraphQL extraction, and URI normalization.
 7. Added reviewed valid/malformed seed corpora plus a pinned nightly Linux CI job that builds every
    target and runs a fixed 256-execution, 4096-byte bounded campaign.
+8. Added a dependency-free deterministic Rust 1.95 property suite for idempotent path
+   normalization, repeatable finding order, exact LF/CRLF UTF-8 spans, package URI canonicalization,
+   and traversal rejection; the integration test runs in the existing Linux/Windows workspace matrix.
 
 Findings and limits:
 
