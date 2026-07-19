@@ -20,7 +20,7 @@ jobs:
           fetch-depth: 0
       - name: Verify exact base
         env:
-          EXPECTED_BASE: ee38ede8d2a2a9d9172d2336327c7e9cbed563e0
+          EXPECTED_BASE: 83776a69416e57b8c3b572e66aba970880f70e09
         shell: bash
         run: test "$(git rev-parse HEAD^)" = "$EXPECTED_BASE"
       - name: Install Rust 1.95 with rustfmt
@@ -49,7 +49,11 @@ jobs:
       - name: Run focused property tests
         run: cargo +1.95.0 test -p dartscope-parse --test deterministic_properties --locked --quiet
       - name: Lint focused property tests
-        run: cargo +1.95.0 clippy -p dartscope-parse --test deterministic_properties --locked -- -D warnings
+        id: clippy
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo +1.95.0 clippy -p dartscope-parse --test deterministic_properties --locked -- -D warnings 2>&1 | tee /tmp/dartscope-properties-clippy.log
       - name: Verify formatting and intended diff
         shell: bash
         run: |
@@ -114,9 +118,16 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
+            const fs = require('fs');
+            let details = '';
+            const path = '/tmp/dartscope-properties-clippy.log';
+            if (fs.existsSync(path)) {
+              const log = fs.readFileSync(path, 'utf8');
+              details = `\n\n\`\`\`text\n${log.slice(-6000)}\n\`\`\``;
+            }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `focused_finalize=failure\nrun_id=${context.runId}\nhead=${context.sha}`,
+              body: `focused_finalize=failure\nrun_id=${context.runId}\nhead=${context.sha}${details}`,
             });
