@@ -204,13 +204,16 @@ fn clause_ranges(
     while at < end.min(bytes.len()) {
         if is_identifier_start(bytes[at]) {
             let token = identifier_at(source, at).expect("identifier token");
-            if parens == 0 && brackets == 0 && angles == 0 && supports_clause(kind, token.text) {
-                if let Some(range_start) = current.replace(token.end) {
-                    ranges.push(ClauseRange {
-                        start: range_start,
-                        end: token.start,
-                    });
-                }
+            if parens == 0
+                && brackets == 0
+                && angles == 0
+                && supports_clause(kind, token.text)
+                && let Some(range_start) = current.replace(token.end)
+            {
+                ranges.push(ClauseRange {
+                    start: range_start,
+                    end: token.start,
+                });
             }
             at = token.end;
             continue;
