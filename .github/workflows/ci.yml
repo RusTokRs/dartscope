@@ -151,6 +151,43 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  macos_portability:
+    name: macOS 15 arm64 portability (non-blocking)
+    needs: workflow_policy
+    continue-on-error: true
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal
+      - name: Record portability environment
+        shell: bash
+        run: |
+          {
+            echo '## macOS portability environment'
+            echo
+            echo '```text'
+            sw_vers
+            uname -a
+            rustc +1.95.0 -vV
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Check and test workspace
+        run: |
+          cargo +1.95.0 check --workspace --all-targets --locked
+          cargo +1.95.0 test --workspace --locked --quiet
+      - name: Build release package archives
+        shell: bash
+        run: |
+          cargo +1.95.0 package --workspace --locked --allow-dirty --no-verify
+          archive_count="$(find target/package -maxdepth 1 -type f -name 'dartscope-*.crate' | wc -l | tr -d ' ')"
+          test "$archive_count" = "9"
+
   quality:
     name: Quality gates
     needs: workflow_policy
