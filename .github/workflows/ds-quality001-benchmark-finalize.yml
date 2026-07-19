@@ -1,0 +1,178 @@
+name: Finalize DS-QUALITY-001 Benchmark Reporting
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  actions: write
+  contents: write
+  issues: write
+
+concurrency:
+  group: ds-quality001-benchmark-finalize
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    name: Verify and publish benchmark reporting
+    if: github.event.issue.title == '[internal] finalize DS-QUALITY-001 benchmark reporting'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify transport base
+        env:
+          EXPECTED_PARENT: 87dee903ff9215d7b63238476a100cb90d3aa701
+        shell: bash
+        run: test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+      - name: Decode reviewed payload
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          EXPECTED_SHA256: beb7656bac17b0360de973a1457d1c20f0e8da1d7db76f24980b55af9caa3fbf
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import os
+          from pathlib import Path
+
+          body = os.environ['ISSUE_BODY']
+          marker = 'payload_base64:\n'
+          if body.count(marker) != 1:
+              raise SystemExit('payload marker did not match exactly once')
+          encoded = ''.join(body.split(marker, 1)[1].split())
+          payload = base64.b64decode(encoded, validate=True)
+          digest = hashlib.sha256(payload).hexdigest()
+          if digest != os.environ['EXPECTED_SHA256']:
+              raise SystemExit(f'payload sha256 mismatch: {digest}')
+          path = Path(os.environ['RUNNER_TEMP']) / 'ds-quality001-payload.tar.gz'
+          path.write_bytes(payload)
+          PY
+          mkdir -p "$RUNNER_TEMP/ds-quality001-payload"
+          tar -xzf "$RUNNER_TEMP/ds-quality001-payload.tar.gz" -C "$RUNNER_TEMP/ds-quality001-payload"
+      - name: Apply benchmark reporting slice
+        shell: bash
+        run: |
+          python3 "$RUNNER_TEMP/ds-quality001-payload/apply.py" \
+            "$GITHUB_WORKSPACE" "$RUNNER_TEMP/ds-quality001-payload"
+          rm .github/workflows/ds-quality001-benchmark-finalize.yml
+      - name: Install verification tools
+        env:
+          GOBIN: ${{ runner.temp }}/actionlint-bin
+        shell: bash
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$GOBIN" >> "$GITHUB_PATH"
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Verify Python and workflow policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tools/tests -p 'test_*.py' -v
+          python3 -W error -m py_compile \
+            tools/report_benchmark_regressions.py \
+            tools/tests/test_report_benchmark_regressions.py
+          actionlint -color
+          python3 tools/check-workflow-policy.py
+          python3 tools/check-repository-consistency.py
+      - name: Verify Rust benchmark harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +1.95.0 fmt --all
+          cargo +1.95.0 fmt --all -- --check
+          cargo +1.95.0 check -p dartscope --example quality_benchmark --locked
+          cargo +1.95.0 clippy -p dartscope --example quality_benchmark --locked -- -D warnings
+          cargo +1.95.0 test --workspace --locked --quiet
+      - name: Verify same-runner report end to end
+        env:
+          EXPECTED_PARENT: 87dee903ff9215d7b63238476a100cb90d3aa701
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add "$RUNNER_TEMP/benchmark-baseline" "$EXPECTED_PARENT"
+          python3 tools/report_benchmark_regressions.py \
+            --baseline "$RUNNER_TEMP/benchmark-baseline" \
+            --candidate "$GITHUB_WORKSPACE" \
+            --markdown "$RUNNER_TEMP/benchmark-report.md" \
+            --json "$RUNNER_TEMP/benchmark-report.json" \
+            --samples 3
+          grep -F '# DartScope benchmark regression report' "$RUNNER_TEMP/benchmark-report.md"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          report = json.loads((Path(os.environ['RUNNER_TEMP']) / 'benchmark-report.json').read_text())
+          assert report['status'] == 'ok'
+          assert [entry['workload'] for entry in report['reports']] == [
+              'parse', 'index', 'references', 'package'
+          ]
+          PY
+      - name: Verify exact feature tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/check-release-packages.py
+          python3 tools/check-repository-consistency.py
+          mapfile -t changed < <({ git diff --name-only; git ls-files --others --exclude-standard; } | sort -u)
+          expected=(
+            .github/workflows/ci.yml
+            crates/dartscope/examples/quality_benchmark.rs
+            docs/development/benchmark-regressions.md
+            docs/development/dartscope-library-plan.md
+            tools/report_benchmark_regressions.py
+            tools/tests/test_report_benchmark_regressions.py
+          )
+          printf 'changed=%s\n' "${changed[*]}"
+          test "${changed[*]}" = "${expected[*]}"
+          git diff --check
+      - name: Commit verified feature directly to main
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "dartscope-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "perf: report relative benchmark regressions"
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Dispatch permanent CI and close trigger
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const sha = '${{ steps.publish.outputs.sha }}';
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'ci.yml',
+              ref: 'main',
+            });
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `feature_sha=${sha}\npermanent_ci_dispatched=true`,
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed',
+            });
+      - name: Report focused failure
+        if: failure()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `benchmark_finalize=failure\nrun_id=${context.runId}\nhead=${context.sha}`,
+            });
