@@ -49,19 +49,86 @@ jobs:
           PY
           mkdir -p "$RUNNER_TEMP/ds-quality001-payload"
           tar -xzf "$RUNNER_TEMP/ds-quality001-payload.tar.gz" -C "$RUNNER_TEMP/ds-quality001-payload"
-      - name: Apply benchmark reporting slice
+      - name: Apply corrected benchmark reporting slice
         shell: bash
         run: |
           python3 "$RUNNER_TEMP/ds-quality001-payload/apply.py" \
             "$GITHUB_WORKSPACE" "$RUNNER_TEMP/ds-quality001-payload"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('tools/report_benchmark_regressions.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''def package_archive(root: Path) -> Path:
+              version = "0.1.0"
+              return root / f"target/package/dartscope-{version}.crate"
+
+
+          def run_package_workload(root: Path) -> Sample:
+              archive = package_archive(root)
+              archive.unlink(missing_ok=True)
+              started = time.perf_counter_ns()
+              run_checked(
+                  [
+                      "cargo",
+                      "+1.95.0",
+                      "package",
+                      "-p",
+                      "dartscope",
+                      "--allow-dirty",
+                      "--no-verify",
+                      "--locked",
+                  ],
+                  root,
+              )
+              elapsed = time.perf_counter_ns() - started
+              if not archive.is_file():
+                  raise BenchmarkError(f"cargo package did not create {archive}")
+              size = archive.stat().st_size
+              return Sample(elapsed_ns=elapsed, units=size, digest=size)
+          '''
+          new = '''def run_package_workload(root: Path) -> Sample:
+              package_dir = root / "target/package"
+              shutil.rmtree(package_dir, ignore_errors=True)
+              started = time.perf_counter_ns()
+              run_checked(
+                  [
+                      "cargo",
+                      "+1.95.0",
+                      "package",
+                      "--workspace",
+                      "--allow-dirty",
+                      "--no-verify",
+                      "--locked",
+                  ],
+                  root,
+              )
+              elapsed = time.perf_counter_ns() - started
+              archives = sorted(package_dir.glob("dartscope-*.crate"))
+              if len(archives) != 9:
+                  raise BenchmarkError(
+                      f"cargo package created {len(archives)} DartScope archives instead of 9 in {package_dir}"
+                  )
+              size = sum(archive.stat().st_size for archive in archives)
+              return Sample(elapsed_ns=elapsed, units=size, digest=size)
+          '''
+          import textwrap
+          old = textwrap.dedent(old)
+          new = textwrap.dedent(new)
+          if text.count(old) != 1:
+              raise SystemExit('package workload patch anchor did not match exactly once')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
           rm .github/workflows/ds-quality001-benchmark-finalize.yml
+          rm -f .github/workflows/ds-quality001-benchmark-diagnose.yml
           rm tools/ds_quality001_benchmark_payload.b64
           rm -f \
             tools/.benchmark-finalizer-trigger-note \
             tools/.noop \
             tools/.do-not-create \
             tools/.last-placeholder \
-            tools/.mistake-sentinel
+            tools/.mistake-sentinel \
+            tools/.this-is-not-the-trigger
       - name: Install verification tools
         env:
           GOBIN: ${{ runner.temp }}/actionlint-bin
@@ -102,7 +169,8 @@ jobs:
             --candidate "$GITHUB_WORKSPACE" \
             --markdown "$RUNNER_TEMP/benchmark-report.md" \
             --json "$RUNNER_TEMP/benchmark-report.json" \
-            --samples 3
+            --samples 3 \
+            2>&1 | tee "$RUNNER_TEMP/benchmark-command.log"
           grep -F '# DartScope benchmark regression report' "$RUNNER_TEMP/benchmark-report.md"
           python3 - <<'PY'
           import json
@@ -115,12 +183,14 @@ jobs:
           ]
           PY
       - name: Verify exact feature tree
+        env:
+          FEATURE_BASE: 87dee903ff9215d7b63238476a100cb90d3aa701
         shell: bash
         run: |
           set -euo pipefail
           python3 tools/check-release-packages.py
           python3 tools/check-repository-consistency.py
-          mapfile -t changed < <({ git diff --name-only; git ls-files --others --exclude-standard; } | sort -u)
+          mapfile -t changed < <({ git diff --name-only "$FEATURE_BASE"; git ls-files --others --exclude-standard; } | sort -u)
           expected=(
             .github/workflows/ci.yml
             crates/dartscope/examples/quality_benchmark.rs
@@ -131,7 +201,7 @@ jobs:
           )
           printf 'changed=%s\n' "${changed[*]}"
           test "${changed[*]}" = "${expected[*]}"
-          git diff --check
+          git diff "$FEATURE_BASE" --check
       - name: Commit verified feature directly to main
         id: publish
         shell: bash
@@ -172,9 +242,11 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: `benchmark_finalize=failure\nrun_id=${context.runId}\nhead=${context.sha}`,
-            });
+            const fs = require('fs');
+            const path = require('path');
+            const reportPath = path.join(process.env.RUNNER_TEMP, 'benchmark-report.json');
+            const logPath = path.join(process.env.RUNNER_TEMP, 'benchmark-command.log');
+            const report = fs.existsSync(reportPath) ? fs.readFileSync(reportPath, 'utf8') : '<missing report>';
+            const log = fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf8') : '<missing log>';
+            const body = `benchmark_finalize=failure\nrun_id=${context.runId}\nhead=${context.sha}\n\nreport:\n\`\`\`json\n${report.slice(-8000)}\n\`\`\`\n\nlog_tail:\n\`\`\`text\n${log.slice(-8000)}\n\`\`\``;
+            await github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body});
