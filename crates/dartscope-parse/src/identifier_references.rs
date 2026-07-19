@@ -1,5 +1,6 @@
 use dartscope_core::{
-    Confidence, DartFileAnalysis, DartIdentifierReference, DartIdentifierReferenceKind,
+    Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
+    DartIdentifierReferenceKind, SourceSpan,
 };
 
 use crate::source_lines::span_for_byte_range;
@@ -21,7 +22,9 @@ pub(crate) fn collect_identifier_references(
         let Some(root) = identifier_at(masked_source, invocation.span.byte_start) else {
             continue;
         };
-        if matches!(root.text, "this" | "super") {
+        if matches!(root.text, "this" | "super")
+            || invocation_root_is_shadowed(masked_source, analysis, invocation.enclosing_symbol_id.as_deref(), root)
+        {
             continue;
         }
 
@@ -85,6 +88,229 @@ pub(crate) fn sort_identifier_references(references: &mut [DartIdentifierReferen
                 &right.prefix,
             ))
     });
+}
+
+fn invocation_root_is_shadowed(
+    masked_source: &str,
+    analysis: &DartFileAnalysis,
+    enclosing_symbol_id: Option<&str>,
+    root: IdentifierToken<'_>,
+) -> bool {
+    let Some(owner_id) = enclosing_symbol_id else {
+        return false;
+    };
+    let Some(owner) = analysis
+        .declarations
+        .iter()
+        .find(|declaration| declaration.symbol_id.as_deref() == Some(owner_id))
+    else {
+        return false;
+    };
+
+    if callable_parameter_names(masked_source, owner)
+        .iter()
+        .any(|name| name == root.text)
+    {
+        return true;
+    }
+
+    if analysis.declarations.iter().any(|declaration| {
+        declaration.kind == DartDeclarationKind::LocalVariable
+            && declaration.name == root.text
+            && declaration.parent_symbol_id.as_deref() == Some(owner_id)
+            && declaration.declaration_span.as_ref().is_some_and(|span| {
+                span.byte_start < root.start
+                    && local_scope_contains(masked_source, span.byte_start, root.start, owner)
+            })
+    }) {
+        return true;
+    }
+
+    let Some(type_id) = owner.parent_symbol_id.as_deref() else {
+        return false;
+    };
+    analysis.declarations.iter().any(|declaration| {
+        declaration.parent_symbol_id.as_deref() == Some(type_id)
+            && declaration.name == root.text
+            && is_instance_member_kind(declaration.kind)
+    })
+}
+
+fn callable_parameter_names(masked_source: &str, owner: &DartDeclaration) -> Vec<String> {
+    let Some(span) = owner.declaration_span.as_ref() else {
+        return Vec::new();
+    };
+    let Some((start, end)) = first_parenthesized_range(masked_source, span) else {
+        return Vec::new();
+    };
+    let mut names = Vec::new();
+    collect_parameter_names(&masked_source[start..end], &mut names);
+    names
+}
+
+fn first_parenthesized_range(source: &str, span: &SourceSpan) -> Option<(usize, usize)> {
+    let bytes = source.as_bytes();
+    let mut open = span.byte_start;
+    while open < span.byte_end.min(bytes.len()) && bytes[open] != b'(' {
+        open += 1;
+    }
+    if bytes.get(open) != Some(&b'(') {
+        return None;
+    }
+
+    let mut depth = 1usize;
+    let mut at = open + 1;
+    while at < span.byte_end.min(bytes.len()) {
+        match bytes[at] {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((open + 1, at));
+                }
+            }
+            _ => {}
+        }
+        at += 1;
+    }
+    None
+}
+
+fn collect_parameter_names(source: &str, names: &mut Vec<String>) {
+    for segment in parameter_segments(source) {
+        let trimmed = segment.trim();
+        if trimmed.len() >= 2
+            && matches!(trimmed.as_bytes().first(), Some(b'{') | Some(b'['))
+            && matches!(trimmed.as_bytes().last(), Some(b'}') | Some(b']'))
+        {
+            collect_parameter_names(&trimmed[1..trimmed.len() - 1], names);
+            continue;
+        }
+        let declaration = trimmed.split('=').next().unwrap_or_default();
+        let Some(name) = last_identifier(declaration) else {
+            continue;
+        };
+        if name != "_" && !is_parameter_modifier(name) {
+            names.push(name.to_string());
+        }
+    }
+}
+
+fn parameter_segments(source: &str) -> Vec<&str> {
+    let bytes = source.as_bytes();
+    let mut segments = Vec::new();
+    let mut start = 0usize;
+    let mut parens = 0usize;
+    let mut brackets = 0usize;
+    let mut braces = 0usize;
+    let mut angles = 0usize;
+    let mut default_value = false;
+
+    for (index, byte) in bytes.iter().copied().enumerate() {
+        match byte {
+            b'(' => parens += 1,
+            b')' => parens = parens.saturating_sub(1),
+            b'[' => brackets += 1,
+            b']' => brackets = brackets.saturating_sub(1),
+            b'{' => braces += 1,
+            b'}' => braces = braces.saturating_sub(1),
+            b'<' if !default_value => angles += 1,
+            b'>' if !default_value => angles = angles.saturating_sub(1),
+            b'=' if parens == 0 && brackets == 0 && braces == 0 => default_value = true,
+            b',' if parens == 0 && brackets == 0 && braces == 0 && angles == 0 => {
+                segments.push(&source[start..index]);
+                start = index + 1;
+                default_value = false;
+            }
+            _ => {}
+        }
+    }
+    segments.push(&source[start..]);
+    segments
+}
+
+fn last_identifier(source: &str) -> Option<&str> {
+    let bytes = source.as_bytes();
+    let mut at = 0usize;
+    let mut last = None;
+    while at < bytes.len() {
+        if !is_identifier_start(bytes[at]) {
+            at += 1;
+            continue;
+        }
+        let end = identifier_end(bytes, at);
+        last = Some(&source[at..end]);
+        at = end;
+    }
+    last
+}
+
+fn is_parameter_modifier(value: &str) -> bool {
+    matches!(
+        value,
+        "required" | "covariant" | "final" | "var" | "const" | "late" | "this" | "super"
+    )
+}
+
+fn local_scope_contains(
+    masked_source: &str,
+    declaration_start: usize,
+    reference_start: usize,
+    owner: &DartDeclaration,
+) -> bool {
+    let Some(owner_span) = owner.declaration_span.as_ref() else {
+        return false;
+    };
+    let bytes = masked_source.as_bytes();
+    let mut blocks = Vec::new();
+    let mut at = owner_span.byte_start;
+    while at < declaration_start.min(owner_span.byte_end).min(bytes.len()) {
+        match bytes[at] {
+            b'{' => blocks.push(at),
+            b'}' => {
+                blocks.pop();
+            }
+            _ => {}
+        }
+        at += 1;
+    }
+
+    let Some(open) = blocks.last().copied() else {
+        return false;
+    };
+    matching_brace(masked_source, open, owner_span.byte_end)
+        .is_some_and(|close| reference_start < close)
+}
+
+fn matching_brace(source: &str, open: usize, limit: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut depth = 1usize;
+    let mut at = open + 1;
+    while at < limit.min(bytes.len()) {
+        match bytes[at] {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(at);
+                }
+            }
+            _ => {}
+        }
+        at += 1;
+    }
+    None
+}
+
+fn is_instance_member_kind(kind: DartDeclarationKind) -> bool {
+    matches!(
+        kind,
+        DartDeclarationKind::Method
+            | DartDeclarationKind::Field
+            | DartDeclarationKind::Getter
+            | DartDeclarationKind::Setter
+            | DartDeclarationKind::Operator
+    )
 }
 
 fn identifier_at(source: &str, start: usize) -> Option<IdentifierToken<'_>> {
