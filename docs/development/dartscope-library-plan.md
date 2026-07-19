@@ -992,6 +992,9 @@ Progress (2026-07-18):
 8. Added a dependency-free deterministic Rust 1.95 property suite for idempotent path
    normalization, repeatable finding order, exact LF/CRLF UTF-8 spans, package URI canonicalization,
    and traversal rejection; the integration test runs in the existing Linux/Windows workspace matrix.
+9. Added generated direct, prefixed, and re-export `show`/`hide` visibility matrices plus
+   deterministic incremental combinator mutations; every mutation compares all retained snapshot products
+   with a clean rebuild before asserting resolved versus not-visible evidence.
 
 Findings and limits:
 

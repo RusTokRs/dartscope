@@ -42,6 +42,8 @@ The suite checks that:
 - generated package URI resolution is deterministic and normalized;
 - dot-segment canonicalization stays within the configured package root, while literal and percent-encoded
   traversal, encoded separators, queries, and fragments are rejected.
+- generated direct, prefixed, and re-export combinator matrices preserve `show`/`hide` and
+  privacy semantics, while every incremental combinator mutation matches a clean workspace rebuild.
 
 The deterministic suite is bounded and exhaustive only over its generated cases. It does not replace the
 malformed-input fuzz corpus or claim analyzer-equivalent parser coverage.
