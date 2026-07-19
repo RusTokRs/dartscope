@@ -23,7 +23,12 @@ pub(crate) fn collect_identifier_references(
             continue;
         };
         if matches!(root.text, "this" | "super")
-            || invocation_root_is_shadowed(masked_source, analysis, invocation.enclosing_symbol_id.as_deref(), root)
+            || invocation_root_is_shadowed(
+                masked_source,
+                analysis,
+                invocation.enclosing_symbol_id.as_deref(),
+                root,
+            )
         {
             continue;
         }
@@ -180,8 +185,8 @@ fn collect_parameter_names(source: &str, names: &mut Vec<String>) {
     for segment in parameter_segments(source) {
         let trimmed = segment.trim();
         if trimmed.len() >= 2
-            && matches!(trimmed.as_bytes().first(), Some(b'{') | Some(b'['))
-            && matches!(trimmed.as_bytes().last(), Some(b'}') | Some(b']'))
+            && matches!(trimmed.as_bytes().first(), Some(&b'{') | Some(&b'['))
+            && matches!(trimmed.as_bytes().last(), Some(&b'}') | Some(&b']'))
         {
             collect_parameter_names(&trimmed[1..trimmed.len() - 1], names);
             continue;
