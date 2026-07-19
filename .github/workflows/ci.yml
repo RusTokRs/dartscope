@@ -94,6 +94,63 @@ jobs:
               -rss_limit_mb=2048
           done
 
+  benchmark_report:
+    name: Benchmark regression report
+    needs: workflow_policy
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve same-runner baseline
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            baseline="$PR_BASE_SHA"
+          elif [ -n "$PUSH_BEFORE_SHA" ] && ! [[ "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+            baseline="$PUSH_BEFORE_SHA"
+          else
+            baseline="$(git -C candidate rev-parse HEAD^)"
+          fi
+          git -C candidate worktree add ../baseline "$baseline"
+          printf 'baseline=%s\n' "$baseline"
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal
+      - name: Compare benchmark workloads
+        shell: bash
+        run: |
+          set +e
+          python3 candidate/tools/report_benchmark_regressions.py \
+            --baseline baseline \
+            --candidate candidate \
+            --markdown "$RUNNER_TEMP/benchmark-report.md" \
+            --json "$RUNNER_TEMP/benchmark-report.json"
+          status=$?
+          if [ -f "$RUNNER_TEMP/benchmark-report.md" ]; then
+            cat "$RUNNER_TEMP/benchmark-report.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmark-regression-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/benchmark-report.md
+            ${{ runner.temp }}/benchmark-report.json
+          if-no-files-found: warn
+          retention-days: 14
+
   quality:
     name: Quality gates
     needs: workflow_policy
