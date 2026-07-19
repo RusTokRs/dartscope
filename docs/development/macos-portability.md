@@ -27,6 +27,12 @@ The job has `continue-on-error: true`, has a 30-minute timeout, and is deliberat
 `report.needs` list that produces the aggregate `dartscope/ci` status. A macOS failure is therefore
 visible and actionable but cannot hide Linux/Windows release readiness or block unrelated changes.
 
+## Observation Record
+
+The observation window starts with the first successful default-branch execution of the exact signal
+above. A run is valid only when the job reaches all three repository checks; cancelled, provisioning,
+network, and registry failures are classified separately and do not count toward promotion.
+
 ## Failure Triage
 
 Every failure must be classified before changing the signal:
