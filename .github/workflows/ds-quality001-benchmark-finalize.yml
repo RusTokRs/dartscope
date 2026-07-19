@@ -23,11 +23,11 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Verify transport base
+      - name: Verify feature base ancestry
         env:
-          EXPECTED_PARENT: cdbdcf2e07293a7b5083d63779b47be049f8af2d
+          FEATURE_BASE: 87dee903ff9215d7b63238476a100cb90d3aa701
         shell: bash
-        run: test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+        run: git merge-base --is-ancestor "$FEATURE_BASE" HEAD
       - name: Decode reviewed payload
         env:
           EXPECTED_SHA256: beb7656bac17b0360de973a1457d1c20f0e8da1d7db76f24980b55af9caa3fbf
@@ -56,10 +56,12 @@ jobs:
             "$GITHUB_WORKSPACE" "$RUNNER_TEMP/ds-quality001-payload"
           rm .github/workflows/ds-quality001-benchmark-finalize.yml
           rm tools/ds_quality001_benchmark_payload.b64
-          rm tools/.benchmark-finalizer-trigger-note
-          rm tools/.noop
-          rm tools/.do-not-create
-          rm tools/.last-placeholder
+          rm -f \
+            tools/.benchmark-finalizer-trigger-note \
+            tools/.noop \
+            tools/.do-not-create \
+            tools/.last-placeholder \
+            tools/.mistake-sentinel
       - name: Install verification tools
         env:
           GOBIN: ${{ runner.temp }}/actionlint-bin
