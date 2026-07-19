@@ -33,6 +33,13 @@ The observation window starts with the first successful default-branch execution
 above. A run is valid only when the job reaches all three repository checks; cancelled, provisioning,
 network, and registry failures are classified separately and do not count toward promotion.
 
+### Initial implementation validation
+
+Pull-request CI run `29698405538` completed the pinned `macos-15` job successfully on July 19, 2026.
+Environment capture, all-target workspace checking, the full workspace test suite, and the exact
+nine-archive package contract all passed. This validates the signal implementation but does not count
+as a default-branch observation for promotion.
+
 ## Failure Triage
 
 Every failure must be classified before changing the signal:
