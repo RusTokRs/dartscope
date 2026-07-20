@@ -1,12 +1,41 @@
 use std::cmp::Reverse;
 
 use dartscope_core::{
-    DartLexicalBinding, DartLexicalBindingQuery, DartLexicalBindingResolution,
-    DartLexicalBindingResolutionStatus, DartProjectReferenceAnalysis, normalize_path,
+    DartIdentifierReferenceKind, DartLexicalBinding, DartLexicalBindingQuery,
+    DartLexicalBindingResolution, DartLexicalBindingResolutionStatus,
+    DartProjectReferenceAnalysis, normalize_path,
 };
 
 /// Selects the most specific parser-produced lexical binding visible at one byte offset.
 pub fn resolve_project_lexical_binding(
+    analysis: &DartProjectReferenceAnalysis,
+    query: DartLexicalBindingQuery,
+) -> DartLexicalBindingResolution {
+    resolve_lexical_binding(analysis, query)
+}
+
+/// Resolves parser-produced variable-read references only through lexical binding intervals.
+pub fn resolve_project_variable_read_references(
+    analysis: &DartProjectReferenceAnalysis,
+) -> Vec<DartLexicalBindingResolution> {
+    analysis
+        .references
+        .iter()
+        .filter(|reference| reference.kind == DartIdentifierReferenceKind::VariableRead)
+        .map(|reference| {
+            resolve_lexical_binding(
+                analysis,
+                DartLexicalBindingQuery::new(
+                    reference.source_path.clone(),
+                    reference.name.clone(),
+                    reference.span.byte_start,
+                ),
+            )
+        })
+        .collect()
+}
+
+pub(crate) fn resolve_lexical_binding(
     analysis: &DartProjectReferenceAnalysis,
     mut query: DartLexicalBindingQuery,
 ) -> DartLexicalBindingResolution {

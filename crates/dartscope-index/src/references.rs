@@ -1,5 +1,5 @@
 use dartscope_core::{
-    DartIdentifierReference, DartIdentifierReferenceResolution,
+    DartIdentifierReference, DartIdentifierReferenceKind, DartIdentifierReferenceResolution,
     DartIdentifierReferenceResolutionAnalysis, DartProjectAnalysis, DartProjectReferenceAnalysis,
     DartSymbolQuery,
 };
@@ -7,7 +7,10 @@ use dartscope_core::{
 use crate::namespace::{NamespaceResolver, resolve_symbol_with_resolver};
 use crate::uri_graph::DartIndexOptions;
 
-/// Resolves a batch of parser-produced identifier references.
+/// Resolves a batch of parser-produced namespace identifier references.
+///
+/// Lexical `variable_read` facts are deliberately excluded because they require the parser-produced
+/// binding intervals carried by `DartProjectReferenceAnalysis`.
 pub fn resolve_identifier_references(
     project: &DartProjectAnalysis,
     references: &[DartIdentifierReference],
@@ -15,14 +18,18 @@ pub fn resolve_identifier_references(
     resolve_identifier_references_with_options(project, references, &DartIndexOptions::default())
 }
 
-/// Resolves a batch of references with an explicit conditional-import environment.
+/// Resolves a batch of namespace references with an explicit conditional-import environment.
 pub fn resolve_identifier_references_with_options(
     project: &DartProjectAnalysis,
     references: &[DartIdentifierReference],
     options: &DartIndexOptions,
 ) -> DartIdentifierReferenceResolutionAnalysis {
     let resolver = NamespaceResolver::new(project, options);
-    let mut ordered = references.to_vec();
+    let mut ordered: Vec<_> = references
+        .iter()
+        .filter(|reference| reference.kind != DartIdentifierReferenceKind::VariableRead)
+        .cloned()
+        .collect();
     sort_references(&mut ordered);
     let resolutions = ordered
         .into_iter()
@@ -43,14 +50,14 @@ pub fn resolve_identifier_references_with_options(
     DartIdentifierReferenceResolutionAnalysis { resolutions }
 }
 
-/// Resolves all references carried by an opt-in project reference analysis.
+/// Resolves all namespace references carried by an opt-in project reference analysis.
 pub fn resolve_project_identifier_references(
     analysis: &DartProjectReferenceAnalysis,
 ) -> DartIdentifierReferenceResolutionAnalysis {
     resolve_identifier_references(&analysis.project, &analysis.references)
 }
 
-/// Resolves all project references with an explicit conditional-import environment.
+/// Resolves all project namespace references with an explicit conditional-import environment.
 pub fn resolve_project_identifier_references_with_options(
     analysis: &DartProjectReferenceAnalysis,
     options: &DartIndexOptions,

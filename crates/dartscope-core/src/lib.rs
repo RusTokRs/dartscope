@@ -192,6 +192,7 @@ pub enum DartIdentifierReferenceKind {
     ParameterType,
     ReturnType,
     VariableType,
+    VariableRead,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
