@@ -2,6 +2,7 @@
 
 mod graphql;
 mod incremental;
+mod lexical_bindings;
 mod namespace;
 mod parts;
 mod paths;
@@ -14,6 +15,7 @@ pub use incremental::{
     DartWorkspaceIndexRetainedMetrics, DartWorkspaceSnapshot, DartWorkspaceSubsystems,
     DartWorkspaceUpdate,
 };
+pub use lexical_bindings::resolve_project_lexical_binding;
 pub use namespace::{resolve_symbol, resolve_symbol_with_options};
 pub use parts::analyze_part_links;
 pub use references::{

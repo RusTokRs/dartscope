@@ -947,13 +947,18 @@ Progress (2026-07-19):
    explicit declaration roots already represented by the parser inventory. Visible type parameters,
    inferred declarations, receiver formals, SDK roots, and nested generic arguments are suppressed;
    prefixed facts retain high confidence and exact type-token spans.
+6. Added opt-in `parameter` and `local_variable` lexical binding facts with stable IDs, exact identifier
+    spans, explicit half-open scope intervals, and deterministic index selection of the most-specific
+    visible binding. Local scopes start after the declaration statement, so initializer and
+    same-statement lookup remain deliberately unclaimed.
 
 Findings and limits:
 
 - Suppressed roots are deliberately omitted rather than fabricated as resolved local/member facts.
-  Closure parameters, loop/catch and pattern bindings, inherited members, extension lookup, implicit
-  constructor selection, nested generic arguments, SDK/external namespaces, metadata, type inference,
-  and general reads/writes remain follow-up work.
+  Closure parameters, receiver formals, loop/catch and pattern bindings, initializer/same-statement
+  lookup, inherited members, extension lookup, implicit constructor selection, nested generic
+  arguments, SDK/external namespaces, metadata, type inference, and general reads/writes remain
+  follow-up work.
 - Every future reference kind remains opt-in and requires an explicit compatibility contract plus exact
   span and nearby-shadowing fixtures before it can enter public output.
 
@@ -1302,8 +1307,8 @@ Do not resolve these conditions by silently expanding scope.
 
 ## Current Recommended Next Step
 
-Continue `DS-INDEX-006` with explicit lexical binding facts for parameters and locals before
-emitting conservative variable read/write references. Declaration type roots now have separate opt-in
-kinds, exact spans, type-parameter and inference negatives, and index integration without changing
-existing invocation output. Member/extension lookup and implicit constructor selection remain separate
-evidence-gated slices; `DS-COMPAT-001` remains research.
+Continue `DS-INDEX-006` with conservative unqualified variable read references resolved only
+through the new parser-produced lexical binding intervals. Write/assignment classification should
+remain a separate follow-up until compound assignments, increments, destructuring, and initializer
+ordering have explicit fixtures. Member/extension lookup and implicit constructor selection remain
+separate evidence-gated slices; `DS-COMPAT-001` remains research.

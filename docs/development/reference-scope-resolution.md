@@ -58,20 +58,40 @@ unprefixed project roots remain medium confidence. Visible type parameters, infe
 Every emitted fact retains the declaration's parser-provided enclosing symbol evidence and exact span.
 The index resolves these facts through the existing namespace context and still never reparses source.
 
+## Lexical binding slice
+
+The fourth `DS-INDEX-006` slice adds parser-produced lexical binding facts alongside the existing
+opt-in references:
+
+- `parameter` records ordinary callable parameter names, including named and optional parameters;
+- `local_variable` reuses the declaration inventory's stable local symbol IDs;
+- every binding carries an exact identifier `declaration_span`, its enclosing callable symbol ID, and
+  an explicit half-open `scope_span` consumed by the index without source reparsing;
+- parameter scope begins after the callable's closing `)`, covering constructor initializer lists and
+  executable bodies;
+- local scope begins after the complete declaration statement and ends at the closing brace of the
+  nearest containing block. Initializer and same-statement lookup are intentionally deferred.
+
+The index exposes deterministic most-specific binding selection. A nested local wins over a parameter
+only while its explicit scope contains the query offset; after the block closes, the parameter becomes
+visible again. Receiver formals, wildcards, closure parameters, loop/catch/pattern bindings, and
+analyzer-equivalent declaration-order semantics remain omitted.
+
 ## Compatibility boundary
 
 - Existing non-shadowed invocation-target facts keep their kind, confidence, exact span, ordering,
   enclosing symbol ID, and namespace-resolution behavior.
 - Pure file/project analysis and serialized invocation output are unchanged.
+- Existing reference fields and kinds remain unchanged; lexical bindings are additive fields on the
+  already opt-in reference-analysis models and default to an empty list when deserializing older JSON.
 - The index receives parser-produced facts only and never scans raw Dart source.
 - Suppressed roots are not claimed as resolved local/member references yet; they are deliberately
   omitted until typed lexical/member candidate models are introduced.
 
 ## Deferred scope
 
-This slice does not claim analyzer-equivalent lexical semantics. Closure parameters, pattern
-bindings, loop/catch bindings, inherited members, extension lookup, implicit constructor selection,
-nested generic arguments, SDK/external namespaces, record and function-type internals, metadata
-annotations, type inference, overload resolution, and general variable read/write references remain
-explicit follow-up work. Each future reference kind requires its own documented opt-in compatibility
-contract and negative fixtures before it can enter public output.
+This slice does not claim analyzer-equivalent lexical semantics. Closure parameters, receiver
+formals, pattern bindings, loop/catch bindings, initializer and same-statement lookup, inherited
+members, extension lookup, implicit constructor selection, nested generic arguments, SDK/external
+namespaces, record and function-type internals, metadata annotations, type inference, overload
+resolution, and general variable read/write references remain explicit follow-up work.

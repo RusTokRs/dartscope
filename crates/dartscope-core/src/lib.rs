@@ -137,6 +137,8 @@ pub struct DartProjectAnalysis {
 pub struct DartFileReferenceAnalysis {
     pub file: DartFileAnalysis,
     pub references: Vec<DartIdentifierReference>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bindings: Vec<DartLexicalBinding>,
 }
 
 /// Opt-in project analysis paired with conservative identifier-reference facts.
@@ -144,6 +146,27 @@ pub struct DartFileReferenceAnalysis {
 pub struct DartProjectReferenceAnalysis {
     pub project: DartProjectAnalysis,
     pub references: Vec<DartIdentifierReference>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bindings: Vec<DartLexicalBinding>,
+}
+
+/// One parser-produced lexical binding with an explicit visibility interval.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartLexicalBinding {
+    pub source_path: String,
+    pub name: String,
+    pub kind: DartLexicalBindingKind,
+    pub symbol_id: String,
+    pub enclosing_symbol_id: String,
+    pub declaration_span: SourceSpan,
+    pub scope_span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartLexicalBindingKind {
+    Parameter,
+    LocalVariable,
 }
 
 /// One syntactically bounded identifier reference discovered by a parser backend.
@@ -560,6 +583,53 @@ pub struct DartIdentifierReferenceResolution {
     pub reference: DartIdentifierReference,
     pub status: DartSymbolResolutionStatus,
     pub candidates: Vec<DartSymbolCandidate>,
+}
+
+/// One lexical-binding lookup at a source byte offset.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartLexicalBindingQuery {
+    pub source_path: String,
+    pub name: String,
+    pub byte_offset: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enclosing_symbol_id: Option<String>,
+}
+
+impl DartLexicalBindingQuery {
+    pub fn new(
+        source_path: impl Into<String>,
+        name: impl Into<String>,
+        byte_offset: usize,
+    ) -> Self {
+        Self {
+            source_path: normalize_path(source_path.into()),
+            name: name.into(),
+            byte_offset,
+            enclosing_symbol_id: None,
+        }
+    }
+
+    pub fn with_enclosing_symbol_id(mut self, symbol_id: impl Into<String>) -> Self {
+        self.enclosing_symbol_id = Some(symbol_id.into());
+        self
+    }
+}
+
+/// Deterministic result of selecting the most specific parser-produced lexical binding.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartLexicalBindingResolution {
+    pub query: DartLexicalBindingQuery,
+    pub status: DartLexicalBindingResolutionStatus,
+    pub candidates: Vec<DartLexicalBinding>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartLexicalBindingResolutionStatus {
+    Resolved,
+    Missing,
+    Ambiguous,
+    SourceFileMissing,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]

@@ -17,6 +17,7 @@ use crate::graphql::{extract_graphql_operation_uses, extract_graphql_operations}
 use crate::identifier_references::{collect_identifier_references, sort_identifier_references};
 use crate::invocations::collect_invocations;
 use crate::lexical::mask_non_code;
+use crate::lexical_bindings::{collect_lexical_bindings, sort_lexical_bindings};
 use crate::namespace::{directive_uri, extract_namespace_directives};
 use crate::pubspec::parse_pubspec;
 use crate::source_lines::{SourceLine, attach_diagnostic_paths, source_lines};
@@ -250,16 +251,21 @@ pub fn analyze_project(input: DartProjectInput) -> DartProjectAnalysis {
     analyze_project_with_backend(&HeuristicDartParser, input)
 }
 
-/// Analyzes one file and opt-in conservative invocation-target references.
+/// Analyzes one file and opt-in conservative reference and lexical-binding facts.
 pub fn analyze_file_with_references(input: DartFileInput) -> DartFileReferenceAnalysis {
     let source = input.source.clone();
     let file = analyze_file(input);
     let lexical = mask_non_code(&source);
     let references = collect_identifier_references(&source, &lexical.code, &file);
-    DartFileReferenceAnalysis { file, references }
+    let bindings = collect_lexical_bindings(&source, &lexical.code, &file);
+    DartFileReferenceAnalysis {
+        file,
+        references,
+        bindings,
+    }
 }
 
-/// Analyzes a project and opt-in conservative invocation-target references.
+/// Analyzes a project and opt-in conservative reference and lexical-binding facts.
 pub fn analyze_project_with_references(input: DartProjectInput) -> DartProjectReferenceAnalysis {
     let sources: HashMap<_, _> = input
         .files
@@ -268,16 +274,20 @@ pub fn analyze_project_with_references(input: DartProjectInput) -> DartProjectRe
         .collect();
     let project = analyze_project(input);
     let mut references = Vec::new();
+    let mut bindings = Vec::new();
     for file in &project.files {
         let Some(source) = sources.get(&file.path) else {
             continue;
         };
         let lexical = mask_non_code(source);
         references.extend(collect_identifier_references(source, &lexical.code, file));
+        bindings.extend(collect_lexical_bindings(source, &lexical.code, file));
     }
     sort_identifier_references(&mut references);
+    sort_lexical_bindings(&mut bindings);
     DartProjectReferenceAnalysis {
         project,
         references,
+        bindings,
     }
 }

@@ -11,6 +11,7 @@ mod graphql;
 mod identifier_references;
 mod invocations;
 mod lexical;
+mod lexical_bindings;
 mod namespace;
 #[path = "pubspec_analysis.rs"]
 mod pubspec;
