@@ -77,6 +77,24 @@ only while its explicit scope contains the query offset; after the block closes,
 visible again. Receiver formals, wildcards, closure parameters, loop/catch/pattern bindings, and
 analyzer-equivalent declaration-order semantics remain omitted.
 
+## Variable-read slice
+
+The fifth `DS-INDEX-006` slice adds the opt-in `variable_read` reference kind. A fact is emitted only
+for an unqualified identifier token backed by exactly one most-specific parser-produced lexical
+binding interval at that byte offset. The fact retains an exact identifier span, high confidence, and
+the innermost modeled callable symbol ID.
+
+The parser deliberately omits tokens that are not proven reads, including declaration identifiers,
+member suffixes, labels and named-argument keys, assignment targets, compound assignments, increments,
+callable headers, explicit type positions, local declarations without initializers, and same-statement
+self or sibling-declarator lookup. Recognized anonymous-closure, `for`, and `catch` regions are omitted
+entirely until those constructs produce their own lexical bindings.
+
+`resolve_project_variable_read_references` resolves these facts only through the `bindings` intervals
+already carried by `DartProjectReferenceAnalysis`. Namespace resolution filters `variable_read` facts
+rather than treating them as top-level symbol queries. Most-specific selection remains deterministic:
+the smaller visible scope wins, then the later declaration; equal best ranks remain ambiguous.
+
 ## Compatibility boundary
 
 - Existing non-shadowed invocation-target facts keep their kind, confidence, exact span, ordering,
@@ -84,14 +102,16 @@ analyzer-equivalent declaration-order semantics remain omitted.
 - Pure file/project analysis and serialized invocation output are unchanged.
 - Existing reference fields and kinds remain unchanged; lexical bindings are additive fields on the
   already opt-in reference-analysis models and default to an empty list when deserializing older JSON.
+- `variable_read` is additive within the opt-in reference stream and is handled by a separate lexical
+  resolution entry point; existing namespace resolution continues to return namespace facts only.
 - The index receives parser-produced facts only and never scans raw Dart source.
-- Suppressed roots are not claimed as resolved local/member references yet; they are deliberately
-  omitted until typed lexical/member candidate models are introduced.
+- Suppressed roots are not claimed as resolved local/member references; omitted syntax remains explicit
+  follow-up work rather than low-confidence output.
 
 ## Deferred scope
 
-This slice does not claim analyzer-equivalent lexical semantics. Closure parameters, receiver
-formals, pattern bindings, loop/catch bindings, initializer and same-statement lookup, inherited
-members, extension lookup, implicit constructor selection, nested generic arguments, SDK/external
-namespaces, record and function-type internals, metadata annotations, type inference, overload
-resolution, and general variable read/write references remain explicit follow-up work.
+This slice does not claim analyzer-equivalent lexical semantics. Receiver formals, anonymous-closure
+bindings, pattern bindings, loop/catch bindings, initializer and same-statement declaration ordering,
+inherited members, extension lookup, implicit constructor selection, nested generic internals,
+SDK/external namespaces, record and function-type internals, metadata annotations, type inference,
+overload resolution, and variable writes remain explicit follow-up work.

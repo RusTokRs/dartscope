@@ -93,7 +93,6 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Use the `Ordered Work Queue` in
-`docs/development/dartscope-library-plan.md`. The highest-priority open item is the
-structured pubspec model work: replace remaining line-oriented YAML heuristics while preserving
-the normalized public model and the verified parser-backend boundary.
+Continue `DS-INDEX-006` with explicit variable-write and assignment classification.
+Keep compound assignments, increments, destructuring, closure/loop/catch bindings, and
+initializer ordering behind focused fixtures before broadening the public reference model.

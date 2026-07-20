@@ -64,16 +64,20 @@ class Controller {
 }
 "#;
     let analysis = analyze_file_with_references(DartFileInput::new("lib/scopes.dart", source));
+    let namespace_references: Vec<_> = analysis
+        .references
+        .iter()
+        .filter(|reference| reference.kind == DartIdentifierReferenceKind::InvocationTarget)
+        .collect();
 
     assert_eq!(
-        analysis
-            .references
+        namespace_references
             .iter()
             .map(|reference| (reference.name.as_str(), reference.prefix.as_deref()))
             .collect::<Vec<_>>(),
         [("local", None), ("external", None)]
     );
-    for reference in &analysis.references {
+    for reference in namespace_references {
         assert_eq!(
             &source[reference.span.byte_start..reference.span.byte_end],
             reference.name
@@ -99,12 +103,27 @@ void run() {
 }
 "#;
     let analysis = analyze_file_with_references(DartFileInput::new("lib/order.dart", source));
+    let namespace_references: Vec<_> = analysis
+        .references
+        .iter()
+        .filter(|reference| reference.kind == DartIdentifierReferenceKind::InvocationTarget)
+        .collect();
+    let lexical_reads: Vec<_> = analysis
+        .references
+        .iter()
+        .filter(|reference| reference.kind == DartIdentifierReferenceKind::VariableRead)
+        .collect();
 
-    assert_eq!(analysis.references.len(), 1);
-    assert_eq!(analysis.references[0].name, "target");
+    assert_eq!(namespace_references.len(), 1);
+    assert_eq!(namespace_references[0].name, "target");
     assert_eq!(
-        analysis.references[0].span.byte_start,
+        namespace_references[0].span.byte_start,
         source.find("target();").expect("first invocation")
+    );
+    assert_eq!(lexical_reads.len(), 1);
+    assert_eq!(
+        lexical_reads[0].span.byte_start,
+        source.rfind("target();").expect("bound invocation")
     );
 }
 

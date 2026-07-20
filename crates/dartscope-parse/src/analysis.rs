@@ -18,6 +18,7 @@ use crate::identifier_references::{collect_identifier_references, sort_identifie
 use crate::invocations::collect_invocations;
 use crate::lexical::mask_non_code;
 use crate::lexical_bindings::{collect_lexical_bindings, sort_lexical_bindings};
+use crate::lexical_reads::collect_lexical_read_references;
 use crate::namespace::{directive_uri, extract_namespace_directives};
 use crate::pubspec::parse_pubspec;
 use crate::source_lines::{SourceLine, attach_diagnostic_paths, source_lines};
@@ -256,8 +257,12 @@ pub fn analyze_file_with_references(input: DartFileInput) -> DartFileReferenceAn
     let source = input.source.clone();
     let file = analyze_file(input);
     let lexical = mask_non_code(&source);
-    let references = collect_identifier_references(&source, &lexical.code, &file);
     let bindings = collect_lexical_bindings(&source, &lexical.code, &file);
+    let mut references = collect_identifier_references(&source, &lexical.code, &file);
+    let lexical_reads =
+        collect_lexical_read_references(&source, &lexical.code, &file, &bindings, &references);
+    references.extend(lexical_reads);
+    sort_identifier_references(&mut references);
     DartFileReferenceAnalysis {
         file,
         references,
@@ -280,8 +285,18 @@ pub fn analyze_project_with_references(input: DartProjectInput) -> DartProjectRe
             continue;
         };
         let lexical = mask_non_code(source);
-        references.extend(collect_identifier_references(source, &lexical.code, file));
-        bindings.extend(collect_lexical_bindings(source, &lexical.code, file));
+        let file_bindings = collect_lexical_bindings(source, &lexical.code, file);
+        let mut file_references = collect_identifier_references(source, &lexical.code, file);
+        let lexical_reads = collect_lexical_read_references(
+            source,
+            &lexical.code,
+            file,
+            &file_bindings,
+            &file_references,
+        );
+        file_references.extend(lexical_reads);
+        references.extend(file_references);
+        bindings.extend(file_bindings);
     }
     sort_identifier_references(&mut references);
     sort_lexical_bindings(&mut bindings);

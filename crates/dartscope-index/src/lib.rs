@@ -15,7 +15,9 @@ pub use incremental::{
     DartWorkspaceIndexRetainedMetrics, DartWorkspaceSnapshot, DartWorkspaceSubsystems,
     DartWorkspaceUpdate,
 };
-pub use lexical_bindings::resolve_project_lexical_binding;
+pub use lexical_bindings::{
+    resolve_project_lexical_binding, resolve_project_variable_read_references,
+};
 pub use namespace::{resolve_symbol, resolve_symbol_with_options};
 pub use parts::analyze_part_links;
 pub use references::{

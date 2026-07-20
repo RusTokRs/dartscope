@@ -12,6 +12,7 @@ mod identifier_references;
 mod invocations;
 mod lexical;
 mod lexical_bindings;
+mod lexical_reads;
 mod namespace;
 #[path = "pubspec_analysis.rs"]
 mod pubspec;

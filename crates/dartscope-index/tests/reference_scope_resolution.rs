@@ -24,7 +24,22 @@ void run() {
         vec![],
     ));
 
-    assert_eq!(analysis.references.len(), 2);
+    assert_eq!(
+        analysis
+            .references
+            .iter()
+            .filter(|reference| reference.kind == DartIdentifierReferenceKind::InvocationTarget)
+            .count(),
+        2
+    );
+    assert_eq!(
+        analysis
+            .references
+            .iter()
+            .filter(|reference| reference.kind == DartIdentifierReferenceKind::VariableRead)
+            .count(),
+        1
+    );
     let resolved = resolve_project_identifier_references(&analysis);
     assert_eq!(resolved.resolutions.len(), 2);
     for resolution in &resolved.resolutions {
