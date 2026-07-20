@@ -141,10 +141,11 @@ inside the following braced body. Catch parameters are visible only in the catch
 headers are suppressed as lexical access positions, while iterable expressions, classic-loop
 conditions and updates, and executable bodies emit binding-backed reads and writes normally.
 
-Pattern and multi-declarator loops, single-statement or collection control-flow elements,
-existing-variable `for-in` targets, unparenthesized/receiver/pattern/function-type closure parameters,
-and malformed regions remain fully deferred. Invocation roots inside supported scopes are filtered by
-the same parser-produced binding intervals before namespace resolution.
+Pattern and multi-declarator declarations, single-statement or collection control-flow elements,
+unparenthesized/receiver/pattern/function-type closure parameters, and malformed regions remain fully
+deferred. Existing-variable `for-in` targets are enabled only by the later focused assignment slice.
+Invocation roots inside supported scopes are filtered by the same parser-produced binding intervals
+before namespace resolution.
 
 ## Initializer and declaration-order slice
 
@@ -164,6 +165,22 @@ This focused slice does not retroactively shadow references in earlier statement
 declaration, and it does not perform definite-assignment or flow analysis. Those positions preserve the
 existing compatibility contract until a diagnostic-bearing pre-declaration slice is designed.
 
+## Existing-variable for-in slice
+
+The tenth `DS-INDEX-006` slice supports a braced `for-in` header whose left side is one unqualified
+existing lexical variable. The header target emits one high-confidence `variable_write` at the exact
+identifier span and creates no new lexical binding. The iterable expression is evaluated independently,
+so its binding-backed reads remain visible before the per-iteration assignment.
+
+Body reads, plain writes, combined updates, and invocation-root filtering reuse the existing visible
+parameter or local interval. The target and body therefore resolve through the existing read/write index
+entry points without source reparsing. A declared `for-in` variable keeps its separate loop-local binding
+and does not emit an assignment-target write fact.
+
+Pattern, member/index, wildcard, multi-target, malformed, single-statement, and collection `for-in`
+forms remain deferred. This slice records syntax-proven assignment access only; it does not validate
+mutability, element types, definite assignment, or flow reachability.
+
 ## Compatibility boundary
 
 - Existing non-shadowed invocation-target facts keep their kind, confidence, exact span, ordering,
@@ -182,7 +199,7 @@ existing compatibility contract until a diagnostic-bearing pre-declaration slice
 
 This slice does not claim analyzer-equivalent lexical semantics. Receiver formals;
 unparenthesized, pattern, or function-type closure parameter forms; pattern and multi-declarator loops;
-single-statement and collection control-flow elements; existing-variable `for-in` assignment semantics;
+single-statement and collection control-flow elements;
 retroactive pre-declaration shadowing across earlier statements; definite-assignment and flow analysis;
 member/index writes; destructuring, inherited members, extension lookup, implicit constructor selection,
 nested generic internals, SDK/external namespaces, record and function-type internals, metadata

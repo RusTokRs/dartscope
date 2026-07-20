@@ -16,9 +16,18 @@ pub(crate) struct LexicalRegionBinding {
     pub(crate) owner_id: String,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct LexicalRegionWrite {
+    pub(crate) name: String,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) owner_id: String,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct LexicalRegionAnalysis {
     pub(crate) bindings: Vec<LexicalRegionBinding>,
+    pub(crate) write_targets: Vec<LexicalRegionWrite>,
     pub(crate) deferred_regions: Vec<(usize, usize)>,
     pub(crate) suppressed_regions: Vec<(usize, usize)>,
 }
@@ -65,9 +74,38 @@ pub(crate) fn analyze_lexical_regions(
                 right.scope_end,
             ))
     });
+    result.write_targets.sort_by(|left, right| {
+        (left.start, left.end, &left.name, &left.owner_id).cmp(&(
+            right.start,
+            right.end,
+            &right.name,
+            &right.owner_id,
+        ))
+    });
+    result.write_targets.dedup_by(|left, right| {
+        left.start == right.start
+            && left.end == right.end
+            && left.name == right.name
+            && left.owner_id == right.owner_id
+    });
     result.suppressed_regions.sort_unstable();
     result.suppressed_regions.dedup();
     result
+}
+
+pub(super) fn write_for_token(
+    token: IdentifierToken<'_>,
+    owner_id: &str,
+) -> Option<LexicalRegionWrite> {
+    if token.text == "_" {
+        return None;
+    }
+    Some(LexicalRegionWrite {
+        name: token.text.to_string(),
+        start: token.start,
+        end: token.end,
+        owner_id: owner_id.to_string(),
+    })
 }
 
 pub(super) fn binding_for_token(

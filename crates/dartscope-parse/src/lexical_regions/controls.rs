@@ -6,7 +6,7 @@ use super::scan::{
     matching_delimiter, next_non_whitespace, top_level_assignment, top_level_byte_positions,
     top_level_identifiers, trim_range,
 };
-use super::{LexicalRegionAnalysis, binding_for_token, innermost_callable_symbol};
+use super::{LexicalRegionAnalysis, binding_for_token, innermost_callable_symbol, write_for_token};
 
 pub(super) fn collect_for_regions(
     source: &str,
@@ -55,7 +55,7 @@ pub(super) fn collect_for_regions(
             scope_start,
             scope_end,
             &owner_id,
-            &mut result.suppressed_regions,
+            (&mut result.suppressed_regions, &mut result.write_targets),
         ) {
             Some(bindings) => result.bindings.extend(bindings),
             None => result.deferred_regions.push((found, region_end)),
@@ -70,19 +70,14 @@ fn parse_for_header(
     body_start: usize,
     body_end: usize,
     owner_id: &str,
-    suppressed_regions: &mut Vec<(usize, usize)>,
+    outputs: (
+        &mut Vec<(usize, usize)>,
+        &mut Vec<super::LexicalRegionWrite>,
+    ),
 ) -> Option<Vec<super::LexicalRegionBinding>> {
     let semicolons = top_level_byte_positions(source, start, end, b';');
     if semicolons.is_empty() {
-        return parse_for_in_header(
-            source,
-            start,
-            end,
-            body_start,
-            body_end,
-            owner_id,
-            suppressed_regions,
-        );
+        return parse_for_in_header(source, start, end, body_start, body_end, owner_id, outputs);
     }
     if semicolons.len() != 2 {
         return None;
@@ -108,7 +103,7 @@ fn parse_for_header(
     if !is_binding_name(name.text) {
         return None;
     }
-    suppressed_regions.push((init_start, declaration_end));
+    outputs.0.push((init_start, declaration_end));
     binding_for_token(
         name,
         DartLexicalBindingKind::LocalVariable,
@@ -127,7 +122,10 @@ fn parse_for_in_header(
     body_start: usize,
     body_end: usize,
     owner_id: &str,
-    suppressed_regions: &mut Vec<(usize, usize)>,
+    outputs: (
+        &mut Vec<(usize, usize)>,
+        &mut Vec<super::LexicalRegionWrite>,
+    ),
 ) -> Option<Vec<super::LexicalRegionBinding>> {
     let in_at = find_top_level_keyword(source, start, end, "in")?;
     let (left_start, left_end) = trim_range(source, start, in_at)?;
@@ -143,13 +141,23 @@ fn parse_for_in_header(
     }
     let declares = is_declaration_prefix(tokens[0].text) || tokens.len() >= 2;
     if !declares {
-        return None;
+        let target = *tokens.first()?;
+        if tokens.len() != 1
+            || target.start != left_start
+            || target.end != left_end
+            || !is_binding_name(target.text)
+        {
+            return None;
+        }
+        outputs.0.push((left_start, left_end));
+        outputs.1.push(write_for_token(target, owner_id)?);
+        return Some(Vec::new());
     }
     let name = *tokens.last()?;
     if !is_binding_name(name.text) {
         return None;
     }
-    suppressed_regions.push((left_start, left_end));
+    outputs.0.push((left_start, left_end));
     binding_for_token(
         name,
         DartLexicalBindingKind::LocalVariable,

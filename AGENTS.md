@@ -93,8 +93,9 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Continue `DS-INDEX-006` with existing-variable `for-in` assignment semantics. Require exact target,
-iterable-expression, body-scope, and read/write-resolution fixtures before emitting a public fact. Keep
-unparenthesized/pattern/function-type closures, pattern and multi-declarator loops, single-statement or
-collection control flow, retroactive pre-declaration shadowing, flow analysis, destructuring, and
-member/index writes behind focused slices.
+Continue `DS-INDEX-006` with single-statement classic and `for-in` loop scopes. Require exact
+statement boundaries, declaration or assignment targets, iterable/condition/update accesses, nested
+control-flow negatives, and read/write resolution fixtures before enabling a region. Keep collection
+control flow, unparenthesized/pattern/function-type closures, pattern and multi-declarator loops,
+retroactive pre-declaration shadowing, flow analysis, destructuring, and member/index writes behind
+focused slices.

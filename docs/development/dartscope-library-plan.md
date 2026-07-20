@@ -969,12 +969,16 @@ Progress (2026-07-20):
     end, while an uninitialized declarator opens it after the identifier. Earlier declarators can now
     produce binding-backed reads, writes, updates, and invocation roots in later initializers; self and
     later-declarator accesses remain suppressed rather than resolving to outer names.
+12. Added `variable_write` facts for supported braced existing-variable `for-in` targets without
+    creating a new binding. Iterable-expression reads and body accesses remain independent and resolve
+    through the same visible parameter or local interval; declared, pattern, member/index, and
+    single-statement targets retain their existing conservative behavior.
 
 Findings and limits:
 
 - Suppressed roots are deliberately omitted rather than fabricated as resolved local/member facts.
   Receiver formals, unparenthesized or pattern/function-type closure parameters, pattern and
-  multi-declarator loops, single-statement/collection control flow, existing-variable `for-in` targets,
+  multi-declarator loops, single-statement/collection control flow,
   retroactive pre-declaration shadowing across earlier statements, definite-assignment/flow analysis,
   inherited members, extension lookup, implicit constructor selection, nested generic arguments,
   SDK/external namespaces, metadata, type inference, member/index writes, and destructuring remain

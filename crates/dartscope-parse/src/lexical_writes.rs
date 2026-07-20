@@ -6,6 +6,7 @@ use dartscope_core::{
 };
 
 use crate::lexical_reads::deferred::read_regions;
+use crate::lexical_regions::analyze_lexical_regions;
 use crate::source_lines::span_for_byte_range;
 
 #[derive(Debug, Clone, Copy)]
@@ -28,14 +29,59 @@ pub(crate) fn collect_lexical_write_references(
     bindings: &[DartLexicalBinding],
     existing_references: &[DartIdentifierReference],
 ) -> Vec<DartIdentifierReference> {
-    collect_lexical_target_references(
+    let mut references = collect_lexical_target_references(
         source,
         masked_source,
         analysis,
         bindings,
         existing_references,
         LexicalTargetMode::SimpleAssignment,
-    )
+    );
+    references.extend(collect_for_in_write_references(
+        source,
+        masked_source,
+        analysis,
+        bindings,
+        existing_references,
+    ));
+    references
+}
+
+fn collect_for_in_write_references(
+    source: &str,
+    masked_source: &str,
+    analysis: &DartFileAnalysis,
+    bindings: &[DartLexicalBinding],
+    existing_references: &[DartIdentifierReference],
+) -> Vec<DartIdentifierReference> {
+    analyze_lexical_regions(masked_source, analysis)
+        .write_targets
+        .into_iter()
+        .filter_map(|target| {
+            let text = masked_source.get(target.start..target.end)?;
+            let token = IdentifierToken {
+                text,
+                start: target.start,
+                end: target.end,
+            };
+            if token.text != target.name
+                || overlaps_existing_reference(existing_references, token)
+                || is_binding_declaration(bindings, token)
+            {
+                return None;
+            }
+            select_visible_binding(bindings, token)?;
+            Some(DartIdentifierReference {
+                source_path: analysis.path.clone(),
+                name: target.name,
+                prefix: None,
+                kind: DartIdentifierReferenceKind::VariableWrite,
+                confidence: Confidence::High,
+                enclosing_symbol_id: Some(target.owner_id),
+                span: span_for_byte_range(source, target.start, target.end),
+            })
+        })
+        .collect()
 }
 
 pub(crate) fn collect_lexical_update_references(
