@@ -9,8 +9,8 @@ use crate::uri_graph::DartIndexOptions;
 
 /// Resolves a batch of parser-produced namespace identifier references.
 ///
-/// Lexical `variable_read` facts are deliberately excluded because they require the parser-produced
-/// binding intervals carried by `DartProjectReferenceAnalysis`.
+/// Lexical variable read/write facts are deliberately excluded because they require the
+/// parser-produced binding intervals carried by `DartProjectReferenceAnalysis`.
 pub fn resolve_identifier_references(
     project: &DartProjectAnalysis,
     references: &[DartIdentifierReference],
@@ -27,7 +27,13 @@ pub fn resolve_identifier_references_with_options(
     let resolver = NamespaceResolver::new(project, options);
     let mut ordered: Vec<_> = references
         .iter()
-        .filter(|reference| reference.kind != DartIdentifierReferenceKind::VariableRead)
+        .filter(|reference| {
+            !matches!(
+                reference.kind,
+                DartIdentifierReferenceKind::VariableRead
+                    | DartIdentifierReferenceKind::VariableWrite
+            )
+        })
         .cloned()
         .collect();
     sort_references(&mut ordered);

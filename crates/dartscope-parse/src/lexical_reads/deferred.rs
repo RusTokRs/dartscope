@@ -2,7 +2,7 @@ use dartscope_core::{
     DartDeclarationKind, DartFileAnalysis, DartLexicalBinding, DartLexicalBindingKind,
 };
 
-pub(super) fn read_regions(
+pub(crate) fn read_regions(
     source: &str,
     analysis: &DartFileAnalysis,
     bindings: &[DartLexicalBinding],

@@ -19,6 +19,7 @@ use crate::invocations::collect_invocations;
 use crate::lexical::mask_non_code;
 use crate::lexical_bindings::{collect_lexical_bindings, sort_lexical_bindings};
 use crate::lexical_reads::collect_lexical_read_references;
+use crate::lexical_writes::collect_lexical_write_references;
 use crate::namespace::{directive_uri, extract_namespace_directives};
 use crate::pubspec::parse_pubspec;
 use crate::source_lines::{SourceLine, attach_diagnostic_paths, source_lines};
@@ -262,6 +263,9 @@ pub fn analyze_file_with_references(input: DartFileInput) -> DartFileReferenceAn
     let lexical_reads =
         collect_lexical_read_references(&source, &lexical.code, &file, &bindings, &references);
     references.extend(lexical_reads);
+    let lexical_writes =
+        collect_lexical_write_references(&source, &lexical.code, &file, &bindings, &references);
+    references.extend(lexical_writes);
     sort_identifier_references(&mut references);
     DartFileReferenceAnalysis {
         file,
@@ -295,6 +299,14 @@ pub fn analyze_project_with_references(input: DartProjectInput) -> DartProjectRe
             &file_references,
         );
         file_references.extend(lexical_reads);
+        let lexical_writes = collect_lexical_write_references(
+            source,
+            &lexical.code,
+            file,
+            &file_bindings,
+            &file_references,
+        );
+        file_references.extend(lexical_writes);
         references.extend(file_references);
         bindings.extend(file_bindings);
     }

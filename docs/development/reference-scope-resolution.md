@@ -95,6 +95,23 @@ already carried by `DartProjectReferenceAnalysis`. Namespace resolution filters 
 rather than treating them as top-level symbol queries. Most-specific selection remains deterministic:
 the smaller visible scope wins, then the later declaration; equal best ranks remain ambiguous.
 
+## Variable-write slice
+
+The sixth `DS-INDEX-006` slice adds the opt-in `variable_write` reference kind for the target token
+of a plain `=` assignment. The target must be one unqualified identifier backed by exactly one
+most-specific parser-produced lexical binding interval. The fact retains the exact identifier span,
+high confidence, and the innermost modeled callable symbol ID. Assignment right-hand sides continue
+to produce independent `variable_read` facts.
+
+The parser deliberately omits compound assignments, prefix/postfix increments, member and indexed
+targets, destructuring, declaration initializers, and recognized anonymous-closure, `for`, and
+`catch` regions. Equality and arrow tokens are not assignments. These exclusions avoid claiming the
+combined read/write semantics of compound operations before dedicated fixtures exist.
+
+`resolve_project_variable_write_references` resolves write facts through the same parser-produced
+`bindings` intervals as reads. Namespace resolution filters both lexical access kinds and never
+reparses source.
+
 ## Compatibility boundary
 
 - Existing non-shadowed invocation-target facts keep their kind, confidence, exact span, ordering,
@@ -102,8 +119,9 @@ the smaller visible scope wins, then the later declaration; equal best ranks rem
 - Pure file/project analysis and serialized invocation output are unchanged.
 - Existing reference fields and kinds remain unchanged; lexical bindings are additive fields on the
   already opt-in reference-analysis models and default to an empty list when deserializing older JSON.
-- `variable_read` is additive within the opt-in reference stream and is handled by a separate lexical
-  resolution entry point; existing namespace resolution continues to return namespace facts only.
+- `variable_read` and `variable_write` are additive within the opt-in reference stream and are handled
+  by separate lexical resolution entry points; existing namespace resolution continues to return
+  namespace facts only.
 - The index receives parser-produced facts only and never scans raw Dart source.
 - Suppressed roots are not claimed as resolved local/member references; omitted syntax remains explicit
   follow-up work rather than low-confidence output.
@@ -112,6 +130,7 @@ the smaller visible scope wins, then the later declaration; equal best ranks rem
 
 This slice does not claim analyzer-equivalent lexical semantics. Receiver formals, anonymous-closure
 bindings, pattern bindings, loop/catch bindings, initializer and same-statement declaration ordering,
+compound assignments, increments, member/index writes, destructuring,
 inherited members, extension lookup, implicit constructor selection, nested generic internals,
 SDK/external namespaces, record and function-type internals, metadata annotations, type inference,
-overload resolution, and variable writes remain explicit follow-up work.
+and overload resolution remain explicit follow-up work.

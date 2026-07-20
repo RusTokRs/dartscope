@@ -951,14 +951,22 @@ Progress (2026-07-19):
     spans, explicit half-open scope intervals, and deterministic index selection of the most-specific
     visible binding. Local scopes start after the declaration statement, so initializer and
     same-statement lookup remain deliberately unclaimed.
+7. Added conservative unqualified `variable_read` facts backed only by parser-produced lexical binding
+   intervals. Assignment targets, compound operations, increments, type positions, declaration
+   identifiers, and recognized closure/loop/catch regions remain omitted; namespace resolution filters
+   lexical reads rather than treating them as top-level symbols.
+8. Added `variable_write` facts for the target identifier of plain `=` assignments. Exact spans,
+   high confidence, enclosing callable evidence, nested shadowing, and deterministic lexical index
+   resolution are preserved while right-hand-side reads remain separate facts. Compound assignments,
+   increments, member/index targets, destructuring, and initializer ordering remain deferred.
 
 Findings and limits:
 
 - Suppressed roots are deliberately omitted rather than fabricated as resolved local/member facts.
   Closure parameters, receiver formals, loop/catch and pattern bindings, initializer/same-statement
   lookup, inherited members, extension lookup, implicit constructor selection, nested generic
-  arguments, SDK/external namespaces, metadata, type inference, and general reads/writes remain
-  follow-up work.
+  arguments, SDK/external namespaces, metadata, type inference, compound assignments, increments,
+  member/index writes, and destructuring remain follow-up work.
 - Every future reference kind remains opt-in and requires an explicit compatibility contract plus exact
   span and nearby-shadowing fixtures before it can enter public output.
 

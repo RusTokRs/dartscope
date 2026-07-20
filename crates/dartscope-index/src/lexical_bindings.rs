@@ -18,10 +18,24 @@ pub fn resolve_project_lexical_binding(
 pub fn resolve_project_variable_read_references(
     analysis: &DartProjectReferenceAnalysis,
 ) -> Vec<DartLexicalBindingResolution> {
+    resolve_project_lexical_references(analysis, DartIdentifierReferenceKind::VariableRead)
+}
+
+/// Resolves parser-produced variable-write references only through lexical binding intervals.
+pub fn resolve_project_variable_write_references(
+    analysis: &DartProjectReferenceAnalysis,
+) -> Vec<DartLexicalBindingResolution> {
+    resolve_project_lexical_references(analysis, DartIdentifierReferenceKind::VariableWrite)
+}
+
+fn resolve_project_lexical_references(
+    analysis: &DartProjectReferenceAnalysis,
+    kind: DartIdentifierReferenceKind,
+) -> Vec<DartLexicalBindingResolution> {
     analysis
         .references
         .iter()
-        .filter(|reference| reference.kind == DartIdentifierReferenceKind::VariableRead)
+        .filter(|reference| reference.kind == kind)
         .map(|reference| {
             resolve_lexical_binding(
                 analysis,
