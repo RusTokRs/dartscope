@@ -962,14 +962,19 @@ Progress (2026-07-20):
 9. Added paired `variable_read` plus `variable_write` facts for every supported unqualified compound
    assignment and prefix/postfix increment target. The pair shares one exact span and resolves to the
    same most-specific lexical binding, while compound right-hand sides remain independent reads.
+10. Added parser-produced parenthesized closure-parameter, braced single-declarator classic/`for-in`,
+    and catch-parameter bindings with exact half-open scopes and stable origin-bearing IDs.
+    Binding-backed reads, writes, combined updates, and invocation shadowing are enabled inside supported regions without new public
+    binding or reference kinds.
 
 Findings and limits:
 
 - Suppressed roots are deliberately omitted rather than fabricated as resolved local/member facts.
-  Closure parameters, receiver formals, loop/catch and pattern bindings, initializer/same-statement
-  lookup, inherited members, extension lookup, implicit constructor selection, nested generic
-   arguments, SDK/external namespaces, metadata, type inference, member/index writes, and
-   destructuring remain follow-up work.
+  Receiver formals, unparenthesized or pattern/function-type closure parameters, pattern and
+  multi-declarator loops, single-statement/collection control flow, existing-variable `for-in` targets,
+  initializer/same-statement lookup, inherited members, extension lookup, implicit constructor
+  selection, nested generic arguments, SDK/external namespaces, metadata, type inference, member/index
+  writes, and destructuring remain follow-up work.
 - Every future reference kind remains opt-in and requires an explicit compatibility contract plus exact
   span and nearby-shadowing fixtures before it can enter public output.
 

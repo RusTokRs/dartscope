@@ -45,6 +45,7 @@ void run(int value, int other, dynamic object, List<int> values, int index) {
         source.find("value += other").expect("compound assignment"),
         source.find("value++").expect("postfix increment"),
         source.find("++value").expect("prefix increment") + 2,
+        source.rfind("value = other").expect("closure assignment"),
     ];
     assert_eq!(writes.len(), expected_offsets.len());
     assert_eq!(

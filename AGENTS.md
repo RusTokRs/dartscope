@@ -93,6 +93,7 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Continue `DS-INDEX-006` by modeling closure, loop, and catch lexical bindings before re-enabling
-reads and writes inside those regions. Keep destructuring, member/index writes, pattern bindings,
-and initializer ordering behind focused slices.
+Continue `DS-INDEX-006` with initializer and same-statement declaration ordering. Keep
+unparenthesized/pattern/function-type closures, pattern and multi-declarator loops, single-statement or
+collection control flow, existing-variable `for-in` targets, destructuring, and member/index writes
+behind focused slices.

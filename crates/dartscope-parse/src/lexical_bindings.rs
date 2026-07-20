@@ -5,6 +5,7 @@ use dartscope_core::{
     DartLexicalBindingKind, SourceSpan,
 };
 
+use crate::lexical_regions::analyze_lexical_regions;
 use crate::source_lines::span_for_byte_range;
 
 #[derive(Debug, Clone, Copy)]
@@ -34,6 +35,7 @@ pub(crate) fn collect_lexical_bindings(
     {
         collect_local_binding(source, masked_source, analysis, declaration, &mut bindings);
     }
+    collect_region_bindings(source, masked_source, analysis, &mut bindings);
     sort_lexical_bindings(&mut bindings);
     bindings.dedup_by(|left, right| {
         left.source_path == right.source_path
@@ -63,6 +65,33 @@ pub(crate) fn sort_lexical_bindings(bindings: &mut [DartLexicalBinding]) {
                 &right.symbol_id,
             ))
     });
+}
+
+fn collect_region_bindings(
+    source: &str,
+    masked_source: &str,
+    analysis: &DartFileAnalysis,
+    bindings: &mut Vec<DartLexicalBinding>,
+) {
+    for region in analyze_lexical_regions(masked_source, analysis).bindings {
+        let symbol_id = format!(
+            "{}/{}:{}@{}",
+            region.owner_id, region.symbol_segment, region.name, region.declaration_start
+        );
+        bindings.push(DartLexicalBinding {
+            source_path: analysis.path.clone(),
+            name: region.name,
+            kind: region.kind,
+            symbol_id,
+            enclosing_symbol_id: region.owner_id,
+            declaration_span: span_for_byte_range(
+                source,
+                region.declaration_start,
+                region.declaration_end,
+            ),
+            scope_span: span_for_byte_range(source, region.scope_start, region.scope_end),
+        });
+    }
 }
 
 fn collect_parameter_bindings(

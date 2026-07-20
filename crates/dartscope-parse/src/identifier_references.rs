@@ -3,7 +3,7 @@ mod typed_positions;
 
 use dartscope_core::{
     Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
-    DartIdentifierReferenceKind, SourceSpan,
+    DartIdentifierReferenceKind, DartLexicalBinding, SourceSpan,
 };
 
 use self::typed::collect_typed_identifier_references;
@@ -21,6 +21,7 @@ pub(crate) fn collect_identifier_references(
     source: &str,
     masked_source: &str,
     analysis: &DartFileAnalysis,
+    bindings: &[DartLexicalBinding],
 ) -> Vec<DartIdentifierReference> {
     let mut references = Vec::new();
     for invocation in &analysis.invocations {
@@ -31,6 +32,7 @@ pub(crate) fn collect_identifier_references(
             || invocation_root_is_shadowed(
                 masked_source,
                 analysis,
+                bindings,
                 invocation.enclosing_symbol_id.as_deref(),
                 root,
             )
@@ -113,6 +115,7 @@ pub(crate) fn sort_identifier_references(references: &mut [DartIdentifierReferen
 fn invocation_root_is_shadowed(
     masked_source: &str,
     analysis: &DartFileAnalysis,
+    bindings: &[DartLexicalBinding],
     enclosing_symbol_id: Option<&str>,
     root: IdentifierToken<'_>,
 ) -> bool {
@@ -126,6 +129,14 @@ fn invocation_root_is_shadowed(
     else {
         return false;
     };
+
+    if bindings.iter().any(|binding| {
+        binding.name == root.text
+            && binding.scope_span.byte_start <= root.start
+            && root.start < binding.scope_span.byte_end
+    }) {
+        return true;
+    }
 
     if callable_parameter_names(masked_source, owner)
         .iter()

@@ -79,22 +79,26 @@ fn normative_compound_assignments_and_increments_emit_paired_access_facts() {
 }
 
 #[test]
-fn heuristic_combined_updates_remain_omitted_for_unmodeled_targets_and_scopes() {
+fn heuristic_combined_updates_remain_omitted_for_unmodeled_targets_and_patterns() {
     let source = r#"
-void run(int value, int other, dynamic object, List<int> values, int index) {
+void run(
+  int value,
+  int other,
+  dynamic object,
+  List<int> values,
+  int index,
+  Iterable<(int, int)> pairs,
+) {
   object.value += other;
   ++object.value;
   values[index]++;
   --values[index];
   (value, other) = pair;
-  [value].forEach((value) => value++);
-  for (final value in values) {
+  for (final (value, other) in pairs) {
     value += other;
   }
-  try {
-    consume(value);
-  } catch (value, stack) {
-    value--;
+  for (var value = 0, other = 0; value < 1; value++) {
+    other++;
   }
 }
 "#;
@@ -104,7 +108,7 @@ void run(int value, int other, dynamic object, List<int> values, int index) {
         reference.kind == DartIdentifierReferenceKind::VariableWrite
             && matches!(
                 reference.name.as_str(),
-                "value" | "object" | "values" | "index"
+                "value" | "other" | "object" | "values" | "index"
             )
     }));
 }

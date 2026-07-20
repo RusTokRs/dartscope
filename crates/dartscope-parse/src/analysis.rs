@@ -259,7 +259,7 @@ pub fn analyze_file_with_references(input: DartFileInput) -> DartFileReferenceAn
     let file = analyze_file(input);
     let lexical = mask_non_code(&source);
     let bindings = collect_lexical_bindings(&source, &lexical.code, &file);
-    let mut references = collect_identifier_references(&source, &lexical.code, &file);
+    let mut references = collect_identifier_references(&source, &lexical.code, &file, &bindings);
     let lexical_reads =
         collect_lexical_read_references(&source, &lexical.code, &file, &bindings, &references);
     references.extend(lexical_reads);
@@ -293,7 +293,8 @@ pub fn analyze_project_with_references(input: DartProjectInput) -> DartProjectRe
         };
         let lexical = mask_non_code(source);
         let file_bindings = collect_lexical_bindings(source, &lexical.code, file);
-        let mut file_references = collect_identifier_references(source, &lexical.code, file);
+        let mut file_references =
+            collect_identifier_references(source, &lexical.code, file, &file_bindings);
         let lexical_reads = collect_lexical_read_references(
             source,
             &lexical.code,

@@ -74,8 +74,8 @@ opt-in references:
 
 The index exposes deterministic most-specific binding selection. A nested local wins over a parameter
 only while its explicit scope contains the query offset; after the block closes, the parameter becomes
-visible again. Receiver formals, wildcards, closure parameters, loop/catch/pattern bindings, and
-analyzer-equivalent declaration-order semantics remain omitted.
+visible again. Receiver formals, wildcards, pattern bindings, and analyzer-equivalent declaration-order
+semantics remain omitted.
 
 ## Variable-read slice
 
@@ -87,8 +87,8 @@ the innermost modeled callable symbol ID.
 The parser deliberately omits tokens that are not proven reads, including declaration identifiers,
 member suffixes, labels and named-argument keys, assignment targets, compound assignments, increments,
 callable headers, explicit type positions, local declarations without initializers, and same-statement
-self or sibling-declarator lookup. Recognized anonymous-closure, `for`, and `catch` regions are omitted
-entirely until those constructs produce their own lexical bindings.
+self or sibling-declarator lookup. Anonymous-closure, `for`, and `catch` regions were initially
+omitted and are enabled only after the lexical-region slice supplies explicit bindings and scopes.
 
 `resolve_project_variable_read_references` resolves these facts only through the `bindings` intervals
 already carried by `DartProjectReferenceAnalysis`. Namespace resolution filters `variable_read` facts
@@ -104,8 +104,9 @@ high confidence, and the innermost modeled callable symbol ID. Assignment right-
 to produce independent `variable_read` facts.
 
 The plain-write collector deliberately omits compound assignments, prefix/postfix increments, member
-and indexed targets, destructuring, declaration initializers, and recognized anonymous-closure,
-`for`, and `catch` regions. Equality and arrow tokens are not assignments.
+and indexed targets, destructuring, and declaration initializers. Closure and supported control-region
+writes are enabled only where the lexical-region slice provides an exact visible binding. Equality and
+arrow tokens are not assignments.
 
 `resolve_project_variable_write_references` resolves write facts through the same parser-produced
 `bindings` intervals as reads. Namespace resolution filters both lexical access kinds and never
@@ -120,9 +121,28 @@ identifier span. Compound assignments cover `+=`, `-=`, `*=`, `/=`, `%=`, `~/=`,
 callable evidence; a compound assignment's right-hand side continues to emit independent reads.
 
 The paired facts resolve independently through the existing read and write index entry points and
-must select the same most-specific lexical binding. Member/index targets, destructuring, declaration
-initializers, and recognized anonymous-closure, `for`, and `catch` regions remain omitted. No new
-serialized kind is introduced: combined semantics are represented by the deterministic fact pair.
+must select the same most-specific lexical binding. Member/index targets, destructuring, and declaration
+initializers remain omitted. No new serialized kind is introduced: combined semantics are represented
+by the deterministic fact pair.
+
+## Closure and control binding slice
+
+The eighth `DS-INDEX-006` slice adds parser-produced bindings for supported parenthesized
+anonymous-closure parameters, braced single-declarator classic and `for-in` declarations, and
+one- or two-name `catch` parameters. The public binding kinds remain `parameter` and
+`local_variable`; stable symbol IDs retain `closure_parameter`, `for_variable`, or `catch_parameter`
+origin plus the declaration byte offset.
+
+Closure scope begins after `=>` or the opening body brace. A classic-loop declaration becomes visible
+after the first semicolon and remains visible through its body; a `for-in` declaration is visible only
+inside the following braced body. Catch parameters are visible only in the catch block. Supported region
+headers are suppressed as lexical access positions, while iterable expressions, classic-loop
+conditions and updates, and executable bodies emit binding-backed reads and writes normally.
+
+Pattern and multi-declarator loops, single-statement or collection control-flow elements,
+existing-variable `for-in` targets, unparenthesized/receiver/pattern/function-type closure parameters,
+and malformed regions remain fully deferred. Invocation roots inside supported scopes are filtered by
+the same parser-produced binding intervals before namespace resolution.
 
 ## Compatibility boundary
 
@@ -140,9 +160,10 @@ serialized kind is introduced: combined semantics are represented by the determi
 
 ## Deferred scope
 
-This slice does not claim analyzer-equivalent lexical semantics. Receiver formals, anonymous-closure
-bindings, pattern bindings, loop/catch bindings, initializer and same-statement declaration ordering,
-member/index writes, destructuring,
+This slice does not claim analyzer-equivalent lexical semantics. Receiver formals;
+unparenthesized, pattern, or function-type closure parameter forms; pattern and multi-declarator loops;
+single-statement and collection control-flow elements; existing-variable `for-in` assignment semantics;
+initializer and same-statement declaration ordering; member/index writes; destructuring,
 inherited members, extension lookup, implicit constructor selection, nested generic internals,
 SDK/external namespaces, record and function-type internals, metadata annotations, type inference,
 and overload resolution remain explicit follow-up work.

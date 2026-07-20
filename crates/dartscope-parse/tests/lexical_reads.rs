@@ -47,6 +47,7 @@ void run(int value, int other) {
         ("value", "++value"),
         ("value", "value.toString"),
         ("value", "[value]"),
+        ("value", "closure body"),
     ];
     assert_eq!(reads.len(), expected.len());
     for (read, (name, _evidence)) in reads.iter().zip(expected) {
@@ -87,7 +88,7 @@ void run(int value, int other) {
     assert!(
         reads
             .iter()
-            .all(|read| read.span.byte_start != closure_body)
+            .any(|read| read.span.byte_start == closure_body)
     );
 
     let encoded = serde_json::to_value(&analysis.references).expect("reference JSON");
@@ -104,7 +105,7 @@ void run(int value, int other) {
 }
 
 #[test]
-fn suppresses_unmodeled_loop_and_catch_shadowing() {
+fn models_loop_and_catch_shadowing_with_binding_backed_reads() {
     let source = r#"
 void consume(Object? value) {}
 
@@ -133,9 +134,14 @@ void run(int value) {
         .map(|(offset, _)| offset + "consume(".len())
         .collect();
     assert_eq!(uses.len(), 4);
-    assert_eq!(reads.len(), 2);
-    assert_eq!(reads[0].span.byte_start, uses[1]);
-    assert_eq!(reads[1].span.byte_start, uses[3]);
+    assert_eq!(reads.len(), uses.len());
+    assert_eq!(
+        reads
+            .iter()
+            .map(|read| read.span.byte_start)
+            .collect::<Vec<_>>(),
+        uses
+    );
 }
 
 #[test]

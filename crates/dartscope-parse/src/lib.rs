@@ -13,6 +13,7 @@ mod invocations;
 mod lexical;
 mod lexical_bindings;
 mod lexical_reads;
+mod lexical_regions;
 mod lexical_writes;
 mod namespace;
 #[path = "pubspec_analysis.rs"]
