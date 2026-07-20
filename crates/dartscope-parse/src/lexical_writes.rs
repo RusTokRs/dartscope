@@ -15,6 +15,12 @@ struct IdentifierToken<'source> {
     end: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum LexicalTargetMode {
+    SimpleAssignment,
+    CombinedUpdate,
+}
+
 pub(crate) fn collect_lexical_write_references(
     source: &str,
     masked_source: &str,
@@ -22,9 +28,44 @@ pub(crate) fn collect_lexical_write_references(
     bindings: &[DartLexicalBinding],
     existing_references: &[DartIdentifierReference],
 ) -> Vec<DartIdentifierReference> {
+    collect_lexical_target_references(
+        source,
+        masked_source,
+        analysis,
+        bindings,
+        existing_references,
+        LexicalTargetMode::SimpleAssignment,
+    )
+}
+
+pub(crate) fn collect_lexical_update_references(
+    source: &str,
+    masked_source: &str,
+    analysis: &DartFileAnalysis,
+    bindings: &[DartLexicalBinding],
+    existing_references: &[DartIdentifierReference],
+) -> Vec<DartIdentifierReference> {
+    collect_lexical_target_references(
+        source,
+        masked_source,
+        analysis,
+        bindings,
+        existing_references,
+        LexicalTargetMode::CombinedUpdate,
+    )
+}
+
+fn collect_lexical_target_references(
+    source: &str,
+    masked_source: &str,
+    analysis: &DartFileAnalysis,
+    bindings: &[DartLexicalBinding],
+    existing_references: &[DartIdentifierReference],
+    mode: LexicalTargetMode,
+) -> Vec<DartIdentifierReference> {
     let deferred_regions = read_regions(masked_source, analysis, bindings);
     let bytes = masked_source.as_bytes();
-    let mut writes = Vec::new();
+    let mut references = Vec::new();
     let mut at = 0usize;
 
     while at < bytes.len() {
@@ -47,7 +88,7 @@ pub(crate) fn collect_lexical_write_references(
             || overlaps_existing_reference(existing_references, token)
             || is_binding_declaration(bindings, token)
             || is_deferred_local_initializer(masked_source, bindings, token)
-            || !is_simple_assignment_target(masked_source, token)
+            || !mode.matches(masked_source, token)
         {
             continue;
         }
@@ -55,21 +96,48 @@ pub(crate) fn collect_lexical_write_references(
         let Some(binding) = select_visible_binding(bindings, token) else {
             continue;
         };
-        writes.push(DartIdentifierReference {
-            source_path: analysis.path.clone(),
-            name: token.text.to_string(),
-            prefix: None,
-            kind: DartIdentifierReferenceKind::VariableWrite,
-            confidence: Confidence::High,
-            enclosing_symbol_id: Some(
-                innermost_callable_symbol(analysis, token.start)
-                    .unwrap_or_else(|| binding.enclosing_symbol_id.clone()),
-            ),
-            span: span_for_byte_range(source, token.start, token.end),
-        });
+        let enclosing_symbol_id = Some(
+            innermost_callable_symbol(analysis, token.start)
+                .unwrap_or_else(|| binding.enclosing_symbol_id.clone()),
+        );
+        let span = span_for_byte_range(source, token.start, token.end);
+        for kind in mode.reference_kinds() {
+            references.push(DartIdentifierReference {
+                source_path: analysis.path.clone(),
+                name: token.text.to_string(),
+                prefix: None,
+                kind: *kind,
+                confidence: Confidence::High,
+                enclosing_symbol_id: enclosing_symbol_id.clone(),
+                span: span.clone(),
+            });
+        }
     }
 
-    writes
+    references
+}
+
+impl LexicalTargetMode {
+    fn matches(self, source: &str, token: IdentifierToken<'_>) -> bool {
+        match self {
+            Self::SimpleAssignment => is_simple_assignment_target(source, token),
+            Self::CombinedUpdate => is_combined_update_target(source, token),
+        }
+    }
+
+    fn reference_kinds(self) -> &'static [DartIdentifierReferenceKind] {
+        const SIMPLE_ASSIGNMENT: [DartIdentifierReferenceKind; 1] =
+            [DartIdentifierReferenceKind::VariableWrite];
+        const COMBINED_UPDATE: [DartIdentifierReferenceKind; 2] = [
+            DartIdentifierReferenceKind::VariableRead,
+            DartIdentifierReferenceKind::VariableWrite,
+        ];
+
+        match self {
+            Self::SimpleAssignment => &SIMPLE_ASSIGNMENT,
+            Self::CombinedUpdate => &COMBINED_UPDATE,
+        }
+    }
 }
 
 fn is_simple_assignment_target(source: &str, token: IdentifierToken<'_>) -> bool {
@@ -79,10 +147,61 @@ fn is_simple_assignment_target(source: &str, token: IdentifierToken<'_>) -> bool
         return false;
     };
 
-    !previous.is_some_and(|at| matches!(bytes[at], b'.' | b'@'))
+    is_unqualified_target(bytes, previous, Some(next))
         && bytes[next..].starts_with(b"=")
         && !bytes[next..].starts_with(b"==")
         && !bytes[next..].starts_with(b"=>")
+}
+
+fn is_combined_update_target(source: &str, token: IdentifierToken<'_>) -> bool {
+    let bytes = source.as_bytes();
+    let previous = previous_non_whitespace(bytes, token.start);
+    let next = next_non_whitespace(bytes, token.end);
+
+    is_unqualified_target(bytes, previous, next)
+        && (next.is_some_and(|at| {
+            compound_assignment_operator_at(bytes, at) || starts_increment_operator(bytes, at)
+        }) || ends_increment_operator(bytes, previous))
+}
+
+fn is_unqualified_target(bytes: &[u8], previous: Option<usize>, next: Option<usize>) -> bool {
+    !previous.is_some_and(|at| matches!(bytes[at], b'.' | b'@'))
+        && next.is_none_or(|at| !matches!(bytes[at], b'.' | b'['))
+}
+
+fn compound_assignment_operator_at(bytes: &[u8], at: usize) -> bool {
+    let tail = &bytes[at..];
+    [
+        b">>>=".as_slice(),
+        b"<<=".as_slice(),
+        b">>=".as_slice(),
+        b"??=".as_slice(),
+        b"~/=".as_slice(),
+        b"+=".as_slice(),
+        b"-=".as_slice(),
+        b"*=".as_slice(),
+        b"/=".as_slice(),
+        b"%=".as_slice(),
+        b"&=".as_slice(),
+        b"|=".as_slice(),
+        b"^=".as_slice(),
+    ]
+    .iter()
+    .any(|operator| tail.starts_with(operator))
+}
+
+fn starts_increment_operator(bytes: &[u8], at: usize) -> bool {
+    bytes[at..].starts_with(b"++") || bytes[at..].starts_with(b"--")
+}
+
+fn ends_increment_operator(bytes: &[u8], at: Option<usize>) -> bool {
+    let Some(at) = at else {
+        return false;
+    };
+    at > 0
+        && bytes
+            .get(at - 1..=at)
+            .is_some_and(|operator| operator == b"++" || operator == b"--")
 }
 
 fn select_visible_binding<'a>(

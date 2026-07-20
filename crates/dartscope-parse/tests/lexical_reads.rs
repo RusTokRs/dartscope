@@ -41,7 +41,10 @@ void run(int value, int other) {
         ("value", "consume(value)"),
         ("value", "named: value"),
         ("other", "value = other"),
+        ("value", "value += other"),
         ("other", "value += other"),
+        ("value", "value++"),
+        ("value", "++value"),
         ("value", "value.toString"),
         ("value", "[value]"),
     ];
@@ -58,17 +61,23 @@ void run(int value, int other) {
         );
     }
 
-    let write_offsets = [
-        source.find("value = other").expect("assignment"),
+    let simple_write = source.find("value = other").expect("plain assignment");
+    assert!(
+        reads
+            .iter()
+            .all(|read| read.span.byte_start != simple_write)
+    );
+
+    let combined_offsets = [
         source.find("value += other").expect("compound assignment"),
         source.find("value++").expect("postfix increment"),
         source.find("++value").expect("prefix increment") + 2,
     ];
-    assert!(
+    assert!(combined_offsets.iter().all(|offset| {
         reads
             .iter()
-            .all(|read| !write_offsets.contains(&read.span.byte_start))
-    );
+            .any(|read| read.name == "value" && read.span.byte_start == *offset)
+    }));
     assert!(!reads.iter().any(|read| read.name == "self"));
 
     let closure_body = source

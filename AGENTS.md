@@ -93,6 +93,6 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Continue `DS-INDEX-006` with compound-assignment and increment classification. Require fixtures
-that prove their combined read/write semantics before adding public facts. Keep destructuring,
-closure/loop/catch bindings, member/index writes, and initializer ordering behind focused slices.
+Continue `DS-INDEX-006` by modeling closure, loop, and catch lexical bindings before re-enabling
+reads and writes inside those regions. Keep destructuring, member/index writes, pattern bindings,
+and initializer ordering behind focused slices.

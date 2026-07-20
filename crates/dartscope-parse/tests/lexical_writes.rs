@@ -2,7 +2,7 @@ use dartscope_core::{Confidence, DartFileInput, DartIdentifierReferenceKind};
 use dartscope_parse::analyze_file_with_references;
 
 #[test]
-fn emits_only_binding_backed_simple_assignment_targets() {
+fn emits_binding_backed_assignment_and_update_targets() {
     let source = r#"
 void consume(Object? value) {}
 
@@ -42,6 +42,9 @@ void run(int value, int other, dynamic object, List<int> values, int index) {
             .rfind("  value = other;")
             .expect("parameter write after block")
             + 2,
+        source.find("value += other").expect("compound assignment"),
+        source.find("value++").expect("postfix increment"),
+        source.find("++value").expect("prefix increment") + 2,
     ];
     assert_eq!(writes.len(), expected_offsets.len());
     assert_eq!(

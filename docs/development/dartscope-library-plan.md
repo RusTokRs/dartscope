@@ -929,7 +929,7 @@ See `docs/development/incremental-index.md`.
 
 Status: in progress. Priority: P1. Prerequisites: DS-INDEX-005, DS-PARSE-006.
 
-Progress (2026-07-19):
+Progress (2026-07-20):
 
 1. Added a parser-side lexical-shadowing guard for the existing opt-in `invocation_target` facts.
    Parameters, preceding block-local variables, import-prefix collisions, and members of the enclosing
@@ -957,16 +957,19 @@ Progress (2026-07-19):
    lexical reads rather than treating them as top-level symbols.
 8. Added `variable_write` facts for the target identifier of plain `=` assignments. Exact spans,
    high confidence, enclosing callable evidence, nested shadowing, and deterministic lexical index
-   resolution are preserved while right-hand-side reads remain separate facts. Compound assignments,
-   increments, member/index targets, destructuring, and initializer ordering remain deferred.
+   resolution are preserved while right-hand-side reads remain separate facts. Member/index targets,
+   destructuring, and initializer ordering remain deferred.
+9. Added paired `variable_read` plus `variable_write` facts for every supported unqualified compound
+   assignment and prefix/postfix increment target. The pair shares one exact span and resolves to the
+   same most-specific lexical binding, while compound right-hand sides remain independent reads.
 
 Findings and limits:
 
 - Suppressed roots are deliberately omitted rather than fabricated as resolved local/member facts.
   Closure parameters, receiver formals, loop/catch and pattern bindings, initializer/same-statement
   lookup, inherited members, extension lookup, implicit constructor selection, nested generic
-  arguments, SDK/external namespaces, metadata, type inference, compound assignments, increments,
-  member/index writes, and destructuring remain follow-up work.
+   arguments, SDK/external namespaces, metadata, type inference, member/index writes, and
+   destructuring remain follow-up work.
 - Every future reference kind remains opt-in and requires an explicit compatibility contract plus exact
   span and nearby-shadowing fixtures before it can enter public output.
 

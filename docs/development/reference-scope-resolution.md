@@ -103,14 +103,26 @@ most-specific parser-produced lexical binding interval. The fact retains the exa
 high confidence, and the innermost modeled callable symbol ID. Assignment right-hand sides continue
 to produce independent `variable_read` facts.
 
-The parser deliberately omits compound assignments, prefix/postfix increments, member and indexed
-targets, destructuring, declaration initializers, and recognized anonymous-closure, `for`, and
-`catch` regions. Equality and arrow tokens are not assignments. These exclusions avoid claiming the
-combined read/write semantics of compound operations before dedicated fixtures exist.
+The plain-write collector deliberately omits compound assignments, prefix/postfix increments, member
+and indexed targets, destructuring, declaration initializers, and recognized anonymous-closure,
+`for`, and `catch` regions. Equality and arrow tokens are not assignments.
 
 `resolve_project_variable_write_references` resolves write facts through the same parser-produced
 `bindings` intervals as reads. Namespace resolution filters both lexical access kinds and never
 reparses source.
+
+## Compound-update slice
+
+The seventh `DS-INDEX-006` slice classifies every supported unqualified compound-assignment or
+prefix/postfix increment target as a paired `variable_read` and `variable_write` at the same exact
+identifier span. Compound assignments cover `+=`, `-=`, `*=`, `/=`, `%=`, `~/=`, `<<=`, `>>=`,
+`>>>=`, `&=`, `|=`, `^=`, and `??=`. Both facts retain high confidence and the same enclosing
+callable evidence; a compound assignment's right-hand side continues to emit independent reads.
+
+The paired facts resolve independently through the existing read and write index entry points and
+must select the same most-specific lexical binding. Member/index targets, destructuring, declaration
+initializers, and recognized anonymous-closure, `for`, and `catch` regions remain omitted. No new
+serialized kind is introduced: combined semantics are represented by the deterministic fact pair.
 
 ## Compatibility boundary
 
@@ -130,7 +142,7 @@ reparses source.
 
 This slice does not claim analyzer-equivalent lexical semantics. Receiver formals, anonymous-closure
 bindings, pattern bindings, loop/catch bindings, initializer and same-statement declaration ordering,
-compound assignments, increments, member/index writes, destructuring,
+member/index writes, destructuring,
 inherited members, extension lookup, implicit constructor selection, nested generic internals,
 SDK/external namespaces, record and function-type internals, metadata annotations, type inference,
 and overload resolution remain explicit follow-up work.
