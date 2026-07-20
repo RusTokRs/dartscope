@@ -943,13 +943,17 @@ Progress (2026-07-19):
    `constructor_target` facts for syntax-proven `new`/`const` calls. The new facts retain exact spans,
    import prefixes, confidence, and enclosing symbol evidence while leaving all existing
    `invocation_target` output unchanged.
+5. Added separate `parameter_type`, `return_type`, and `variable_type` facts for
+   explicit declaration roots already represented by the parser inventory. Visible type parameters,
+   inferred declarations, receiver formals, SDK roots, and nested generic arguments are suppressed;
+   prefixed facts retain high confidence and exact type-token spans.
 
 Findings and limits:
 
 - Suppressed roots are deliberately omitted rather than fabricated as resolved local/member facts.
   Closure parameters, loop/catch and pattern bindings, inherited members, extension lookup, implicit
-  constructor selection, non-clause type positions, type inference, and general reads/writes remain
-  follow-up work.
+  constructor selection, nested generic arguments, SDK/external namespaces, metadata, type inference,
+  and general reads/writes remain follow-up work.
 - Every future reference kind remains opt-in and requires an explicit compatibility contract plus exact
   span and nearby-shadowing fixtures before it can enter public output.
 
@@ -1298,8 +1302,8 @@ Do not resolve these conditions by silently expanding scope.
 
 ## Current Recommended Next Step
 
-Continue `DS-INDEX-006` with opt-in parameter, return, and variable type-position facts plus
-explicit lexical binding evidence. Nominal declaration clauses and syntax-proven `new`/`const`
-constructor targets now have typed kinds, exact spans, negative fixtures, and index integration without
-changing existing invocation output. Implicit constructor selection and general reads/writes remain
-separate evidence-gated slices; `DS-COMPAT-001` remains research.
+Continue `DS-INDEX-006` with explicit lexical binding facts for parameters and locals before
+emitting conservative variable read/write references. Declaration type roots now have separate opt-in
+kinds, exact spans, type-parameter and inference negatives, and index integration without changing
+existing invocation output. Member/extension lookup and implicit constructor selection remain separate
+evidence-gated slices; `DS-COMPAT-001` remains research.

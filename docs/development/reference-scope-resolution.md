@@ -43,6 +43,21 @@ The second `DS-INDEX-006` slice adds two additive opt-in kinds without changing 
 Both kinds retain exact identifier spans and parser-provided enclosing symbol evidence. The index
 resolves the resulting facts through the same namespace context and still never reparses source.
 
+## Declaration type-position slice
+
+The third `DS-INDEX-006` slice adds three additive opt-in kinds:
+
+- `parameter_type` covers the nominal root of an explicitly typed callable parameter;
+- `return_type` covers the nominal root before a supported function, method, getter, or operator;
+- `variable_type` covers the nominal root of an explicitly typed top-level variable, field, or local
+  already represented by the declaration inventory.
+
+The scanner keeps only exact root tokens. Declared import prefixes produce high-confidence facts;
+unprefixed project roots remain medium confidence. Visible type parameters, inferred declarations,
+`this`/`super` formals, SDK roots, record syntax, and nested generic arguments are deliberately omitted.
+Every emitted fact retains the declaration's parser-provided enclosing symbol evidence and exact span.
+The index resolves these facts through the existing namespace context and still never reparses source.
+
 ## Compatibility boundary
 
 - Existing non-shadowed invocation-target facts keep their kind, confidence, exact span, ordering,
@@ -56,8 +71,7 @@ resolves the resulting facts through the same namespace context and still never 
 
 This slice does not claim analyzer-equivalent lexical semantics. Closure parameters, pattern
 bindings, loop/catch bindings, inherited members, extension lookup, implicit constructor selection,
-parameter/return/variable type positions, type inference, overload resolution, and general variable
-read/write references remain explicit follow-up work. Explicit `new`/`const` constructor targets and
-nominal declaration clauses are the only typed facts in this slice; other forms remain explicit follow-up
-work. Each future reference kind requires its own documented opt-in compatibility contract and
-negative fixtures before it can enter public output.
+nested generic arguments, SDK/external namespaces, record and function-type internals, metadata
+annotations, type inference, overload resolution, and general variable read/write references remain
+explicit follow-up work. Each future reference kind requires its own documented opt-in compatibility
+contract and negative fixtures before it can enter public output.

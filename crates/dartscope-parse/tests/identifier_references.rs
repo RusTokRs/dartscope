@@ -212,3 +212,122 @@ void make() {
     assert!(kinds.contains(&"constructor_target"));
     assert!(kinds.contains(&"type_annotation"));
 }
+
+#[test]
+fn extracts_explicit_declaration_type_positions_without_inference() {
+    let source = r#"
+import 'types.dart' as types;
+
+class Box<T> {
+  final types.Value field = seed;
+  T genericField = seed;
+
+  Box(this.field, types.Value explicit);
+
+  types.Result convert(
+    types.Value input,
+    T generic,
+    {required types.Value? named, final untyped, int count}
+  ) {
+    final types.Value local = input;
+    T genericLocal = generic;
+    return result;
+  }
+
+  types.Value get current => field;
+  set current(types.Value value) {}
+}
+
+final types.Value top = seed;
+
+types.Result build(
+  types.Value input,
+  [types.Value? optional, String label]
+) {
+  final types.Value local = input;
+  var inferred = input;
+  return result;
+}
+"#;
+    let analysis = analyze_file_with_references(DartFileInput::new("lib/positions.dart", source));
+
+    let parameters: Vec<_> = analysis
+        .references
+        .iter()
+        .filter(|reference| reference.kind == DartIdentifierReferenceKind::ParameterType)
+        .collect();
+    assert_eq!(parameters.len(), 6);
+    assert!(parameters.iter().all(|reference| {
+        reference.name == "Value"
+            && reference.prefix.as_deref() == Some("types")
+            && reference.confidence == Confidence::High
+    }));
+
+    let returns: Vec<_> = analysis
+        .references
+        .iter()
+        .filter(|reference| reference.kind == DartIdentifierReferenceKind::ReturnType)
+        .collect();
+    assert_eq!(returns.len(), 3);
+    assert_eq!(
+        returns
+            .iter()
+            .filter(|reference| reference.name == "Result")
+            .count(),
+        2
+    );
+    assert_eq!(
+        returns
+            .iter()
+            .filter(|reference| reference.name == "Value")
+            .count(),
+        1
+    );
+
+    let variables: Vec<_> = analysis
+        .references
+        .iter()
+        .filter(|reference| reference.kind == DartIdentifierReferenceKind::VariableType)
+        .collect();
+    assert_eq!(variables.len(), 4);
+    assert!(variables.iter().all(|reference| {
+        reference.name == "Value" && reference.prefix.as_deref() == Some("types")
+    }));
+
+    assert!(!analysis.references.iter().any(|reference| {
+        matches!(
+            reference.kind,
+            DartIdentifierReferenceKind::ParameterType
+                | DartIdentifierReferenceKind::ReturnType
+                | DartIdentifierReferenceKind::VariableType
+        ) && matches!(
+            reference.name.as_str(),
+            "T" | "int" | "String" | "inferred" | "untyped" | "field"
+        )
+    }));
+
+    for reference in analysis.references.iter().filter(|reference| {
+        matches!(
+            reference.kind,
+            DartIdentifierReferenceKind::ParameterType
+                | DartIdentifierReferenceKind::ReturnType
+                | DartIdentifierReferenceKind::VariableType
+        )
+    }) {
+        assert_eq!(
+            &source[reference.span.byte_start..reference.span.byte_end],
+            reference.name
+        );
+    }
+
+    let encoded = serde_json::to_value(&analysis.references).expect("reference JSON");
+    let kinds: Vec<_> = encoded
+        .as_array()
+        .expect("reference array")
+        .iter()
+        .filter_map(|value| value.get("kind").and_then(serde_json::Value::as_str))
+        .collect();
+    assert!(kinds.contains(&"parameter_type"));
+    assert!(kinds.contains(&"return_type"));
+    assert!(kinds.contains(&"variable_type"));
+}

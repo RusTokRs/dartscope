@@ -103,3 +103,62 @@ void make() {
         1
     );
 }
+
+#[test]
+fn resolves_parser_produced_declaration_type_positions() {
+    let types = r#"
+class Value {}
+class Result {}
+"#;
+    let client = r#"
+import 'types.dart' as types;
+
+final types.Value top = seed;
+
+types.Result build(types.Value input) {
+  final types.Value local = input;
+  return result;
+}
+
+class Holder {
+  types.Value field = seed;
+
+  types.Result convert(types.Value input) {
+    return result;
+  }
+}
+"#;
+    let analysis = analyze_project_with_references(DartProjectInput::new(
+        ".",
+        vec![
+            DartFileInput::new("lib/types.dart", types),
+            DartFileInput::new("lib/client.dart", client),
+        ],
+        vec![],
+    ));
+    let resolved = resolve_project_identifier_references(&analysis);
+    let typed: Vec<_> = resolved
+        .resolutions
+        .iter()
+        .filter(|resolution| {
+            matches!(
+                resolution.reference.kind,
+                DartIdentifierReferenceKind::ParameterType
+                    | DartIdentifierReferenceKind::ReturnType
+                    | DartIdentifierReferenceKind::VariableType
+            )
+        })
+        .collect();
+
+    assert_eq!(typed.len(), 7);
+    for resolution in typed {
+        assert_eq!(resolution.status, DartSymbolResolutionStatus::Resolved);
+        assert_eq!(resolution.candidates.len(), 1);
+        assert_eq!(resolution.candidates[0].declaration_path, "lib/types.dart");
+        assert!(matches!(
+            resolution.reference.name.as_str(),
+            "Value" | "Result"
+        ));
+        assert_eq!(resolution.reference.prefix.as_deref(), Some("types"));
+    }
+}

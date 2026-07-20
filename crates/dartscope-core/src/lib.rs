@@ -166,6 +166,9 @@ pub enum DartIdentifierReferenceKind {
     InvocationTarget,
     ConstructorTarget,
     TypeAnnotation,
+    ParameterType,
+    ReturnType,
+    VariableType,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
