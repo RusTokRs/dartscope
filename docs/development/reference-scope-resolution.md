@@ -69,8 +69,8 @@ opt-in references:
   an explicit half-open `scope_span` consumed by the index without source reparsing;
 - parameter scope begins after the callable's closing `)`, covering constructor initializer lists and
   executable bodies;
-- local scope begins after the complete declaration statement and ends at the closing brace of the
-  nearest containing block. Initializer and same-statement lookup are intentionally deferred.
+- local scope initially began after the complete declaration statement and ends at the closing brace
+  of the nearest containing block. The declaration-order slice below refines the start per declarator.
 
 The index exposes deterministic most-specific binding selection. A nested local wins over a parameter
 only while its explicit scope contains the query offset; after the block closes, the parameter becomes
@@ -86,9 +86,10 @@ the innermost modeled callable symbol ID.
 
 The parser deliberately omits tokens that are not proven reads, including declaration identifiers,
 member suffixes, labels and named-argument keys, assignment targets, compound assignments, increments,
-callable headers, explicit type positions, local declarations without initializers, and same-statement
-self or sibling-declarator lookup. Anonymous-closure, `for`, and `catch` regions were initially
-omitted and are enabled only after the lexical-region slice supplies explicit bindings and scopes.
+callable headers, explicit type positions, and illegal self or later-declarator accesses. Legal reads
+of an earlier declarator from a later initializer are enabled by the declaration-order slice below.
+Anonymous-closure, `for`, and `catch` regions were initially omitted and are enabled only after the
+lexical-region slice supplies explicit bindings and scopes.
 
 `resolve_project_variable_read_references` resolves these facts only through the `bindings` intervals
 already carried by `DartProjectReferenceAnalysis`. Namespace resolution filters `variable_read` facts
@@ -104,9 +105,10 @@ high confidence, and the innermost modeled callable symbol ID. Assignment right-
 to produce independent `variable_read` facts.
 
 The plain-write collector deliberately omits compound assignments, prefix/postfix increments, member
-and indexed targets, destructuring, and declaration initializers. Closure and supported control-region
-writes are enabled only where the lexical-region slice provides an exact visible binding. Equality and
-arrow tokens are not assignments.
+and indexed targets, and destructuring. Writes inside a later declarator initializer are enabled only
+when an earlier declarator's explicit interval already contains the target; self and later-declarator
+targets remain suppressed. Closure and supported control-region writes require an exact visible binding.
+Equality and arrow tokens are not assignments.
 
 `resolve_project_variable_write_references` resolves write facts through the same parser-produced
 `bindings` intervals as reads. Namespace resolution filters both lexical access kinds and never
@@ -144,6 +146,24 @@ existing-variable `for-in` targets, unparenthesized/receiver/pattern/function-ty
 and malformed regions remain fully deferred. Invocation roots inside supported scopes are filtered by
 the same parser-produced binding intervals before namespace resolution.
 
+## Initializer and declaration-order slice
+
+The ninth `DS-INDEX-006` slice refines each ordinary block-local binding interval independently. A
+declarator with an explicit initializer becomes reference-eligible immediately after the end of that
+initializer; a declarator without an initializer becomes eligible immediately after its identifier.
+The scope still ends at the nearest containing block. This implements the normative legal case
+`var first = seed, second = first;` without introducing a new binding or reference kind.
+
+Reads, plain writes, paired compound/increment accesses, and invocation-root filtering inside later
+initializers reuse the existing collectors and index entry points. A self-reference remains suppressed
+until its initializer ends, and a reference to a later declarator in the same statement is also
+suppressed rather than escaping to an outer parameter or namespace declaration. The index continues to
+resolve only parser-produced intervals and never reparses source.
+
+This focused slice does not retroactively shadow references in earlier statements with a later local
+declaration, and it does not perform definite-assignment or flow analysis. Those positions preserve the
+existing compatibility contract until a diagnostic-bearing pre-declaration slice is designed.
+
 ## Compatibility boundary
 
 - Existing non-shadowed invocation-target facts keep their kind, confidence, exact span, ordering,
@@ -163,7 +183,7 @@ the same parser-produced binding intervals before namespace resolution.
 This slice does not claim analyzer-equivalent lexical semantics. Receiver formals;
 unparenthesized, pattern, or function-type closure parameter forms; pattern and multi-declarator loops;
 single-statement and collection control-flow elements; existing-variable `for-in` assignment semantics;
-initializer and same-statement declaration ordering; member/index writes; destructuring,
-inherited members, extension lookup, implicit constructor selection, nested generic internals,
-SDK/external namespaces, record and function-type internals, metadata annotations, type inference,
-and overload resolution remain explicit follow-up work.
+retroactive pre-declaration shadowing across earlier statements; definite-assignment and flow analysis;
+member/index writes; destructuring, inherited members, extension lookup, implicit constructor selection,
+nested generic internals, SDK/external namespaces, record and function-type internals, metadata
+annotations, type inference, and overload resolution remain explicit follow-up work.

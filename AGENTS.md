@@ -93,7 +93,8 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Continue `DS-INDEX-006` with initializer and same-statement declaration ordering. Keep
+Continue `DS-INDEX-006` with existing-variable `for-in` assignment semantics. Require exact target,
+iterable-expression, body-scope, and read/write-resolution fixtures before emitting a public fact. Keep
 unparenthesized/pattern/function-type closures, pattern and multi-declarator loops, single-statement or
-collection control flow, existing-variable `for-in` targets, destructuring, and member/index writes
-behind focused slices.
+collection control flow, retroactive pre-declaration shadowing, flow analysis, destructuring, and
+member/index writes behind focused slices.

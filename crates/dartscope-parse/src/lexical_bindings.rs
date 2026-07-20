@@ -15,6 +15,12 @@ struct IdentifierToken<'source> {
     end: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct LocalDeclarator<'source> {
+    token: IdentifierToken<'source>,
+    scope_start: usize,
+}
+
 pub(crate) fn collect_lexical_bindings(
     source: &str,
     masked_source: &str,
@@ -230,9 +236,9 @@ fn collect_local_binding(
     else {
         return;
     };
-    let Some(token) = local_declarator_tokens(masked_source, span.byte_start, span.byte_end)
+    let Some(declarator) = local_declarators(masked_source, span.byte_start, span.byte_end)
         .into_iter()
-        .find(|token| token.text == declaration.name)
+        .find(|declarator| declarator.token.text == declaration.name)
     else {
         return;
     };
@@ -248,21 +254,29 @@ fn collect_local_binding(
         kind: DartLexicalBindingKind::LocalVariable,
         symbol_id: symbol_id.to_string(),
         enclosing_symbol_id: owner_id.to_string(),
-        declaration_span: span_for_byte_range(source, token.start, token.end),
-        scope_span: span_for_byte_range(source, span.byte_end, scope_end),
+        declaration_span: span_for_byte_range(source, declarator.token.start, declarator.token.end),
+        scope_span: span_for_byte_range(source, declarator.scope_start, scope_end),
     });
 }
 
-fn local_declarator_tokens(source: &str, start: usize, end: usize) -> Vec<IdentifierToken<'_>> {
+fn local_declarators(source: &str, start: usize, end: usize) -> Vec<LocalDeclarator<'_>> {
     top_level_segments(source, start, end)
         .into_iter()
         .filter_map(|(segment_start, segment_end)| {
             let (segment_start, segment_end) = trim_range(source, segment_start, segment_end)?;
-            let declaration_end =
-                top_level_assignment(source, segment_start, segment_end).unwrap_or(segment_end);
-            last_top_level_identifier(source, segment_start, declaration_end)
+            let assignment = top_level_assignment(source, segment_start, segment_end);
+            let declaration_end = assignment.unwrap_or(segment_end);
+            let token = last_top_level_identifier(source, segment_start, declaration_end)?;
+            if !is_binding_name(token.text) {
+                return None;
+            }
+            let scope_start = match assignment {
+                Some(assignment) => trim_range(source, assignment + 1, segment_end)
+                    .map_or(segment_end, |(_, initializer_end)| initializer_end),
+                None => token.end,
+            };
+            Some(LocalDeclarator { token, scope_start })
         })
-        .filter(|token| is_binding_name(token.text))
         .collect()
 }
 

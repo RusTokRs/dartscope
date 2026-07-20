@@ -19,8 +19,9 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
 - `dartscope-index` performs project-level linking over normalized analysis results. A shared
   namespace engine resolves top-level Dart declarations, batch-resolves opt-in conservative
   namespace references, and resolves parser-produced lexical reads and writes, including paired
-  compound-assignment and increment accesses plus supported closure, loop, and catch scopes, through
-  explicit binding intervals. It links GraphQL
+  compound-assignment and increment accesses, supported closure/loop/catch scopes, and legal
+  earlier-to-later accesses inside one local declaration statement, through explicit binding
+  intervals. It links GraphQL
   operation constants through same-library, import,
   re-export, combinator, privacy, part, and conditional-environment semantics; GraphQL linking also
   compares operation, client-call, and variable contracts without parser internals. A stateful

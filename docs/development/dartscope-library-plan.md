@@ -949,8 +949,7 @@ Progress (2026-07-20):
    prefixed facts retain high confidence and exact type-token spans.
 6. Added opt-in `parameter` and `local_variable` lexical binding facts with stable IDs, exact identifier
     spans, explicit half-open scope intervals, and deterministic index selection of the most-specific
-    visible binding. Local scopes start after the declaration statement, so initializer and
-    same-statement lookup remain deliberately unclaimed.
+    visible binding. Local scopes initially started after the complete declaration statement.
 7. Added conservative unqualified `variable_read` facts backed only by parser-produced lexical binding
    intervals. Assignment targets, compound operations, increments, type positions, declaration
    identifiers, and recognized closure/loop/catch regions remain omitted; namespace resolution filters
@@ -964,17 +963,22 @@ Progress (2026-07-20):
    same most-specific lexical binding, while compound right-hand sides remain independent reads.
 10. Added parser-produced parenthesized closure-parameter, braced single-declarator classic/`for-in`,
     and catch-parameter bindings with exact half-open scopes and stable origin-bearing IDs.
-    Binding-backed reads, writes, combined updates, and invocation shadowing are enabled inside supported regions without new public
-    binding or reference kinds.
+    Binding-backed reads, writes, combined updates, and invocation shadowing are enabled inside
+    supported regions without new public binding or reference kinds.
+11. Refined ordinary local intervals per declarator: an explicit initializer opens the interval at its
+    end, while an uninitialized declarator opens it after the identifier. Earlier declarators can now
+    produce binding-backed reads, writes, updates, and invocation roots in later initializers; self and
+    later-declarator accesses remain suppressed rather than resolving to outer names.
 
 Findings and limits:
 
 - Suppressed roots are deliberately omitted rather than fabricated as resolved local/member facts.
   Receiver formals, unparenthesized or pattern/function-type closure parameters, pattern and
   multi-declarator loops, single-statement/collection control flow, existing-variable `for-in` targets,
-  initializer/same-statement lookup, inherited members, extension lookup, implicit constructor
-  selection, nested generic arguments, SDK/external namespaces, metadata, type inference, member/index
-  writes, and destructuring remain follow-up work.
+  retroactive pre-declaration shadowing across earlier statements, definite-assignment/flow analysis,
+  inherited members, extension lookup, implicit constructor selection, nested generic arguments,
+  SDK/external namespaces, metadata, type inference, member/index writes, and destructuring remain
+  follow-up work.
 - Every future reference kind remains opt-in and requires an explicit compatibility contract plus exact
   span and nearby-shadowing fixtures before it can enter public output.
 
