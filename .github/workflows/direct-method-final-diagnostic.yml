@@ -1,0 +1,51 @@
+name: Direct method final diagnostic
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    if: github.head_ref == 'agent/diagnose-direct-method-final'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: agent/diagnose-direct-method-final
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Run and retain final checks
+        id: verify
+        shell: bash
+        run: |
+          status=0
+          {
+            echo '=== cargo fmt ==='
+            cargo +1.95.0 fmt --all -- --check || status=1
+            echo '=== workspace all-targets ==='
+            cargo +1.95.0 check --workspace --all-targets --locked || status=1
+            echo '=== umbrella all-features ==='
+            cargo +1.95.0 check -p dartscope --all-features --locked || status=1
+            echo '=== workspace tests ==='
+            cargo +1.95.0 test --workspace --locked --quiet || status=1
+            echo '=== workspace clippy ==='
+            cargo +1.95.0 clippy --workspace --all-targets --locked -- -D warnings || status=1
+            echo "FINAL_STATUS=${status}"
+            echo "status=${status}" >> "${GITHUB_OUTPUT}"
+          } 2>&1 | tee .github/direct-method-final.log
+      - name: Commit diagnostic output
+        if: always()
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/direct-method-final.log
+          if ! git diff --cached --quiet; then
+            git commit -m "ci: retain direct method final log"
+            git push origin HEAD:agent/diagnose-direct-method-final
+          fi
+      - name: Fail on verification error
+        if: steps.verify.outputs.status != '0'
+        run: exit 1
