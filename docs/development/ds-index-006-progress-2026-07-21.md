@@ -133,9 +133,37 @@ Implemented on `main`:
 8. Kept the slice source-free and additive. It changes no serialized core field, reference kind,
    command envelope, or parser/index ownership boundary.
 
-The loop slices did not change public Rust types or serialized fields. The navigation slices add
-opt-in Rust library API types and snapshot accessors in `dartscope-index`; they do not alter stable
-serialized command payloads, reference kinds, confidence rules, or parser/index ownership boundaries.
+## Completed Slice: Direct Method Targets
+
+Implemented on `main`:
+
+1. Added four additive opt-in identifier-reference kinds for instance/static method declarations and
+   instance/static method invocations. Existing serialized fields and command-facing v1 envelopes are
+   unchanged.
+2. Added a parser-owned method-reference collector that keeps the method name separate from exact
+   owner evidence and records static-versus-instance mode without exposing parser internals to the
+   index.
+3. Emitted high-confidence direct instance facts for explicit `this.method()` calls and exact named-
+   type facts for `Type.method()` and `prefix.Type.method()` calls. Explicit `new` and `const`
+   constructor calls remain on the constructor path rather than being reclassified as methods.
+4. Suppressed named-type static facts when an in-scope lexical binding shadows the uppercase root, so
+   the heuristic does not reinterpret a local value as a type.
+5. Built a source-free method inventory in `DartWorkspaceResolutionContext` from parser-produced
+   declaration facts and refined exact owners to directly declared `DartDeclarationKind::Method`
+   candidates.
+6. Preserved library privacy, validated part-library membership, static-versus-instance separation,
+   ambiguity, conditional-compilation evidence, external-unindexed import URIs, and explicit owner
+   fallback for missing methods.
+7. Kept declaration facts out of reverse-reference results while attributing uniquely resolved method
+   invocation facts to their exact declaration target.
+8. Added fixtures for local `this` calls, prefixed static calls, private and missing methods, ambiguous
+   imports, conditional imports, external packages, part libraries, reverse references, and full-build
+   versus immutable-snapshot parity.
+
+The loop slices did not change public Rust types or serialized fields. The navigation foundation adds
+opt-in Rust library API types and snapshot accessors in `dartscope-index`. The direct-method slice adds
+only new variants to the opt-in serialized `DartIdentifierReferenceKind` enum; it does not add or
+rename fields, change command-facing v1 envelopes, or move parser/index ownership boundaries.
 
 ## Current Limits
 
@@ -153,23 +181,26 @@ The heuristic backend still defers:
 Snapshot-backed navigation reconstructs the lightweight project-reference projection and resolution
 context from immutable normalized facts. Exact constructor refinement currently consumes specialized
 parser-produced `ConstructorTarget` facts; keyword-free constructor syntax remains on the generic
-invocation path until constructor/member fact classification is broadened. Direct instance/static
-members, inherited members, extensions, patterns, and flow-sensitive behavior remain deferred.
+invocation path. Direct method resolution is intentionally limited to explicit `this.method()` calls
+and static calls whose named-type owner is syntactically exact. Arbitrary receiver type inference,
+unqualified instance calls, getters, setters, fields, operators, inherited members, extension
+selection, dynamic dispatch, patterns, and flow-sensitive behavior remain deferred.
 
 ## Next Ordered Slice
 
-Continue `DS-INDEX-006` with direct declared-member lookup:
+Continue `DS-INDEX-006` with direct property and operator targets:
 
-1. Define parser-produced member facts that distinguish a member name from its receiver/owner evidence
-   without treating import prefixes or constructor names as ordinary instance members.
-2. Resolve directly declared methods, getters, setters, fields, and operators only when receiver or
-   owning-type evidence is exact and indexed.
-3. Preserve library privacy, parts, static-versus-instance evidence, ambiguity, not-visible outcomes,
-   and external-unindexed URIs without claiming analyzer-equivalent type inference.
+1. Define parser-produced declaration and access facts for getters, setters, fields, and operators
+   while keeping member names, owner evidence, read/write/call mode, and static-versus-instance mode
+   explicit.
+2. Resolve only directly declared property/operator targets when the receiver or named-type owner is
+   exact and indexed; do not infer arbitrary receiver types.
+3. Preserve library privacy, validated parts, ambiguity, not-visible outcomes, conditional imports,
+   external-unindexed URIs, and immutable-snapshot parity.
 4. Keep inherited-member traversal, extension selection, dynamic dispatch, patterns, and flow-sensitive
    behavior behind later focused slices.
-5. Add local, imported, prefixed, private, missing, ambiguous, part-library, and external member
-   fixtures before expanding inheritance or extension lookup.
+5. Add local, imported, prefixed, private, missing, ambiguous, part-library, external, and snapshot
+   fixtures before broadening receiver inference.
 
 ## Verification Contract
 
