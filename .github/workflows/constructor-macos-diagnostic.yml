@@ -1,0 +1,36 @@
+name: Constructor macOS diagnostic
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    if: github.head_ref == 'agent/diagnose-constructor-macos'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: agent/diagnose-constructor-macos
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Run and retain portability checks
+        run: |
+          set +e
+          {
+            cargo +1.95.0 check --workspace --all-targets --locked
+            cargo +1.95.0 test --workspace --locked
+          } > constructor-macos-diagnostic.log 2>&1
+          status=$?
+          cat constructor-macos-diagnostic.log
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add constructor-macos-diagnostic.log
+          if ! git diff --cached --quiet; then
+            git commit -m "ci: retain constructor macOS diagnostic"
+            git push origin HEAD:agent/diagnose-constructor-macos
+          fi
+          exit "$status"
