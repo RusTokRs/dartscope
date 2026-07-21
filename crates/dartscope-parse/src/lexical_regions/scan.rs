@@ -35,20 +35,6 @@ pub(super) fn arrow_expression_end(source: &str, start: usize) -> usize {
     at
 }
 
-pub(super) fn following_statement_end(source: &str, start: usize) -> usize {
-    let bytes = source.as_bytes();
-    let Some(at) = next_non_whitespace(bytes, start) else {
-        return bytes.len();
-    };
-    if bytes[at] == b'{' {
-        return matching_delimiter(source, at, b'{', b'}', bytes.len())
-            .map_or(bytes.len(), |close| close + 1);
-    }
-    source[at..]
-        .find(';')
-        .map_or(bytes.len(), |relative| at + relative + 1)
-}
-
 pub(super) fn find_top_level_keyword(
     source: &str,
     start: usize,
