@@ -96,7 +96,7 @@ fn emits_normative_existing_for_in_writes_and_independent_reads() {
 }
 
 #[test]
-fn creates_no_new_binding_and_keeps_deferred_forms_suppressed() {
+fn creates_no_new_binding_and_supports_single_statement_target() {
     let analysis =
         analyze_file_with_references(DartFileInput::new("lib/existing_for_in.dart", SOURCE));
 
@@ -129,9 +129,18 @@ fn creates_no_new_binding_and_keeps_deferred_forms_suppressed() {
     assert!(variable_kinds_at(&analysis.references, declared_target).is_empty());
 
     let single_target = occurrence("for (value in values) value++", "value");
+    assert_eq!(
+        variable_kinds_at(&analysis.references, single_target),
+        vec![DartIdentifierReferenceKind::VariableWrite]
+    );
     let single_body = occurrence("value++", "value");
-    assert!(variable_kinds_at(&analysis.references, single_target).is_empty());
-    assert!(variable_kinds_at(&analysis.references, single_body).is_empty());
+    assert_eq!(
+        variable_kinds_at(&analysis.references, single_body),
+        vec![
+            DartIdentifierReferenceKind::VariableRead,
+            DartIdentifierReferenceKind::VariableWrite,
+        ]
+    );
 }
 
 fn occurrence(fragment: &str, token: &str) -> usize {
