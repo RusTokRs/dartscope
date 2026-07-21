@@ -119,10 +119,16 @@ fn keeps_self_later_and_unsupported_headers_out_of_resolution() {
         occurrence("var (left, right)", "left"),
         occurrence("var (left, right)", "right"),
     ] {
-        assert!(reads.iter().all(|resolution| resolution.query.byte_offset != offset));
-        assert!(writes
-            .iter()
-            .all(|resolution| resolution.query.byte_offset != offset));
+        assert!(
+            reads
+                .iter()
+                .all(|resolution| resolution.query.byte_offset != offset)
+        );
+        assert!(
+            writes
+                .iter()
+                .all(|resolution| resolution.query.byte_offset != offset)
+        );
     }
 
     let pending_call = occurrence("early = pendingCall()", "pendingCall");
