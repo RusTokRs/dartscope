@@ -179,8 +179,11 @@ fn binding_shadows_invocation(
         return true;
     }
     root.start < binding.scope_span.byte_start
-        && statement_start(source, root.start)
-            == statement_start(source, binding.declaration_span.byte_start)
+        && has_no_statement_boundary_between(
+            source,
+            root.start,
+            binding.declaration_span.byte_start,
+        )
 }
 
 fn callable_parameter_names(masked_source: &str, owner: &DartDeclaration) -> Vec<String> {
@@ -299,16 +302,17 @@ fn is_parameter_modifier(value: &str) -> bool {
     )
 }
 
-fn statement_start(source: &str, before: usize) -> usize {
-    let bytes = source.as_bytes();
-    let mut at = before.min(bytes.len());
-    while at > 0 {
-        at -= 1;
-        if matches!(bytes[at], b';' | b'{' | b'}') {
-            return at + 1;
-        }
-    }
-    0
+fn has_no_statement_boundary_between(source: &str, left: usize, right: usize) -> bool {
+    let (start, end) = if left <= right {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    source.as_bytes().get(start..end).is_some_and(|bytes| {
+        !bytes
+            .iter()
+            .any(|byte| matches!(*byte, b';' | b'{' | b'}'))
+    })
 }
 
 fn local_scope_contains(
