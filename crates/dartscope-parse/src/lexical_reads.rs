@@ -48,7 +48,7 @@ pub(crate) fn collect_lexical_read_references(
             || overlaps_existing_reference(existing_references, token)
             || is_binding_declaration(bindings, token)
             || is_deferred_local_initializer(masked_source, bindings, token)
-            || is_uninitialized_local_declaration(masked_source, bindings, token)
+            || is_local_declaration_prefix(masked_source, bindings, token)
             || !is_conservative_read_position(masked_source, token)
         {
             continue;
@@ -148,19 +148,53 @@ fn is_deferred_local_initializer(
     })
 }
 
-fn is_uninitialized_local_declaration(
+fn is_local_declaration_prefix(
     source: &str,
     bindings: &[DartLexicalBinding],
     token: IdentifierToken<'_>,
 ) -> bool {
     bindings.iter().any(|binding| {
-        if binding.kind != DartLexicalBindingKind::LocalVariable || binding.name != token.text {
+        if binding.kind != DartLexicalBindingKind::LocalVariable
+            || token.start >= binding.declaration_span.byte_start
+        {
             return false;
         }
-        let start = statement_start(source, binding.declaration_span.byte_start);
-        let end = binding.scope_span.byte_start;
-        start <= token.start && token.start < end && !range_contains_assignment(source, start, end)
+        let statement_start = statement_start(source, binding.declaration_span.byte_start);
+        let segment_start = declarator_segment_start(
+            source,
+            statement_start,
+            binding.declaration_span.byte_start,
+        );
+        segment_start <= token.start
     })
+}
+
+fn declarator_segment_start(source: &str, start: usize, end: usize) -> usize {
+    let bytes = source.as_bytes();
+    let mut segment_start = start;
+    let mut parens = 0usize;
+    let mut brackets = 0usize;
+    let mut braces = 0usize;
+    let mut angles = 0usize;
+    let mut at = start;
+    while at < end.min(bytes.len()) {
+        match bytes[at] {
+            b'(' => parens += 1,
+            b')' => parens = parens.saturating_sub(1),
+            b'[' => brackets += 1,
+            b']' => brackets = brackets.saturating_sub(1),
+            b'{' => braces += 1,
+            b'}' => braces = braces.saturating_sub(1),
+            b'<' => angles += 1,
+            b'>' => angles = angles.saturating_sub(1),
+            b',' if parens == 0 && brackets == 0 && braces == 0 && angles == 0 => {
+                segment_start = at + 1;
+            }
+            _ => {}
+        }
+        at += 1;
+    }
+    segment_start
 }
 
 fn is_conservative_read_position(source: &str, token: IdentifierToken<'_>) -> bool {
@@ -175,11 +209,6 @@ fn is_conservative_read_position(source: &str, token: IdentifierToken<'_>) -> bo
         && !precedes_assignment_in_statement(source, token.end)
         && !follows_type_keyword(source, token.start)
         && !is_inside_angle_pair(source, token.start)
-}
-
-fn range_contains_assignment(source: &str, start: usize, end: usize) -> bool {
-    let bytes = source.as_bytes();
-    (start..end.min(bytes.len())).any(|at| assignment_operator_at(bytes, at))
 }
 
 fn follows_type_keyword(source: &str, before: usize) -> bool {
