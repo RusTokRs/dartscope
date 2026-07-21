@@ -32,6 +32,10 @@ pub fn resolve_identifier_references_with_options(
                 reference.kind,
                 DartIdentifierReferenceKind::VariableRead
                     | DartIdentifierReferenceKind::VariableWrite
+                    | DartIdentifierReferenceKind::MemberDeclarationInstance
+                    | DartIdentifierReferenceKind::MemberDeclarationStatic
+                    | DartIdentifierReferenceKind::MemberInvocationInstance
+                    | DartIdentifierReferenceKind::MemberInvocationStatic
             )
         })
         .cloned()
