@@ -1,0 +1,27 @@
+name: Incremental navigation format
+
+on:
+  pull_request:
+    types: [synchronize]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.head_ref == 'agent/incremental-navigation-parity'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: agent/incremental-navigation-parity
+      - name: Format and commit
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+          cargo +1.95.0 fmt --all
+          git config user.name "dartscope-ci"
+          git config user.email "dartscope-ci@users.noreply.github.com"
+          git add crates/dartscope-index/src/incremental.rs crates/dartscope-index/src/navigation.rs crates/dartscope-index/tests/incremental_navigation_parity.rs
+          git diff --cached --quiet || git commit -m "style: format incremental navigation parity"
+          git push origin HEAD:agent/incremental-navigation-parity
