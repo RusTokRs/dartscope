@@ -17,16 +17,33 @@ jobs:
           ref: agent/fix-constructor-external-status
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
-      - name: Apply fix
-        run: python3 .github/scripts/fix_constructor_external_status.py
-      - name: Format and verify strictly
+      - name: Apply and format fix
         run: |
-          set -e
+          python3 .github/scripts/fix_constructor_external_status.py
           cargo +1.95.0 fmt --all
-          cargo +1.95.0 test -p dartscope-index --test navigation_constructors --locked
-          cargo +1.95.0 test -p dartscope-index --test navigation_batch --locked
-          cargo +1.95.0 test -p dartscope-index --test reference_resolution --locked
-          cargo +1.95.0 clippy -p dartscope-index --all-targets --locked -- -D warnings
+      - name: Verify strictly and retain output
+        run: |
+          set +e
+          : > constructor-external-status.log
+          cargo +1.95.0 test -p dartscope-index --test navigation_constructors --locked >> constructor-external-status.log 2>&1
+          constructor_status=$?
+          cargo +1.95.0 test -p dartscope-index --test navigation_batch --locked >> constructor-external-status.log 2>&1
+          navigation_status=$?
+          cargo +1.95.0 test -p dartscope-index --test reference_resolution --locked >> constructor-external-status.log 2>&1
+          reference_status=$?
+          cargo +1.95.0 clippy -p dartscope-index --all-targets --locked -- -D warnings >> constructor-external-status.log 2>&1
+          clippy_status=$?
+          cat constructor-external-status.log
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add constructor-external-status.log
+          if ! git diff --cached --quiet; then
+            git commit -m "ci: retain constructor external-status output"
+            git push origin HEAD:agent/fix-constructor-external-status
+          fi
+          if [ "$constructor_status" -ne 0 ] || [ "$navigation_status" -ne 0 ] || [ "$reference_status" -ne 0 ] || [ "$clippy_status" -ne 0 ]; then
+            exit 1
+          fi
       - name: Commit product fix
         run: |
           git config user.name github-actions[bot]
