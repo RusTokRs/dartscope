@@ -79,7 +79,7 @@ fn normative_compound_assignments_and_increments_emit_paired_access_facts() {
 }
 
 #[test]
-fn heuristic_combined_updates_remain_omitted_for_unmodeled_targets_and_patterns() {
+fn heuristic_combined_updates_support_loop_bindings_but_omit_members_indices_and_patterns() {
     let source = r#"
 void run(
   int value,
@@ -104,13 +104,34 @@ void run(
 "#;
     let analysis = analyze_file_with_references(DartFileInput::new("lib/deferred.dart", source));
 
-    assert!(!analysis.references.iter().any(|reference| {
-        reference.kind == DartIdentifierReferenceKind::VariableWrite
-            && matches!(
-                reference.name.as_str(),
-                "value" | "other" | "object" | "values" | "index"
-            )
-    }));
+    let unsupported_write_offsets = [
+        occurrence(source, "object.value += other", "value"),
+        occurrence(source, "++object.value", "value"),
+        occurrence(source, "values[index]++", "values"),
+        occurrence(source, "--values[index]", "values"),
+        occurrence(source, "(value, other) = pair", "value"),
+        occurrence(source, "(value, other) = pair", "other"),
+        occurrence(source, "value += other", "value"),
+    ];
+    for offset in unsupported_write_offsets {
+        assert!(!analysis.references.iter().any(|reference| {
+            reference.kind == DartIdentifierReferenceKind::VariableWrite
+                && reference.span.byte_start == offset
+        }));
+    }
+
+    for offset in [
+        source.rfind("value++").expect("classic loop update"),
+        source.rfind("other++").expect("classic loop body update"),
+    ] {
+        assert_eq!(
+            kinds_at(&analysis.references, offset),
+            vec![
+                DartIdentifierReferenceKind::VariableRead,
+                DartIdentifierReferenceKind::VariableWrite,
+            ]
+        );
+    }
 }
 
 #[test]
@@ -133,4 +154,30 @@ void run(int value, int other) {
         target_accesses,
         [DartIdentifierReferenceKind::VariableWrite]
     );
+}
+
+fn occurrence(source: &str, fragment: &str, token: &str) -> usize {
+    let start = source.find(fragment).expect("fragment");
+    start
+        + source[start..start + fragment.len()]
+            .find(token)
+            .expect("token")
+}
+
+fn kinds_at(
+    references: &[dartscope_core::DartIdentifierReference],
+    byte_start: usize,
+) -> Vec<DartIdentifierReferenceKind> {
+    references
+        .iter()
+        .filter(|reference| reference.span.byte_start == byte_start)
+        .filter(|reference| {
+            matches!(
+                reference.kind,
+                DartIdentifierReferenceKind::VariableRead
+                    | DartIdentifierReferenceKind::VariableWrite
+            )
+        })
+        .map(|reference| reference.kind)
+        .collect()
 }
