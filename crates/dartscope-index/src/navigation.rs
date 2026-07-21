@@ -118,9 +118,7 @@ impl DartWorkspaceResolutionContext {
         sort_references(&mut references);
         let mut resolutions = references
             .into_iter()
-            .map(|reference| {
-                resolve_reference(analysis, &namespace, &uri_graph, reference)
-            })
+            .map(|reference| resolve_reference(analysis, &namespace, &uri_graph, reference))
             .collect::<Vec<_>>();
         resolutions.sort_by(|left, right| compare_references(&left.reference, &right.reference));
         Self {
@@ -148,10 +146,7 @@ impl DartWorkspaceResolutionContext {
         }
     }
 
-    pub fn find_references(
-        &self,
-        targets: &[DartDefinitionTarget],
-    ) -> DartReferenceBatchAnalysis {
+    pub fn find_references(&self, targets: &[DartDefinitionTarget]) -> DartReferenceBatchAnalysis {
         let mut targets = targets.to_vec();
         targets.sort_by(compare_targets);
         targets.dedup_by(|left, right| same_target(left, right));
@@ -336,13 +331,9 @@ fn resolve_lexical_reference(
     }
     let resolution = resolve_lexical_binding(analysis, query);
     let status = match resolution.status {
-        DartLexicalBindingResolutionStatus::Resolved => {
-            DartDefinitionResolutionStatus::Resolved
-        }
+        DartLexicalBindingResolutionStatus::Resolved => DartDefinitionResolutionStatus::Resolved,
         DartLexicalBindingResolutionStatus::Missing => DartDefinitionResolutionStatus::Missing,
-        DartLexicalBindingResolutionStatus::Ambiguous => {
-            DartDefinitionResolutionStatus::Ambiguous
-        }
+        DartLexicalBindingResolutionStatus::Ambiguous => DartDefinitionResolutionStatus::Ambiguous,
         DartLexicalBindingResolutionStatus::SourceFileMissing => {
             DartDefinitionResolutionStatus::SourceFileMissing
         }
@@ -465,9 +456,7 @@ fn compare_targets(left: &DartDefinitionTarget, right: &DartDefinitionTarget) ->
     target_sort_key(left).cmp(&target_sort_key(right))
 }
 
-fn target_sort_key(
-    target: &DartDefinitionTarget,
-) -> (u8, &str, usize, usize, &str, Option<&str>) {
+fn target_sort_key(target: &DartDefinitionTarget) -> (u8, &str, usize, usize, &str, Option<&str>) {
     match target {
         DartDefinitionTarget::Namespace(candidate) => (
             0,
@@ -512,10 +501,7 @@ fn sort_references(references: &mut [DartIdentifierReference]) {
     references.sort_by(compare_references);
 }
 
-fn compare_references(
-    left: &DartIdentifierReference,
-    right: &DartIdentifierReference,
-) -> Ordering {
+fn compare_references(left: &DartIdentifierReference, right: &DartIdentifierReference) -> Ordering {
     (
         &left.source_path,
         left.span.byte_start,

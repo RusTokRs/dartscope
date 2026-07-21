@@ -163,8 +163,10 @@ fn finds_only_unambiguous_references_with_stable_target_and_fact_ordering() {
         DartDefinitionQuery::new("lib/b.dart", local),
         DartDefinitionQuery::new("lib/b.dart", helper),
     ]);
-    let helper_target = resolution_at(&definitions.resolutions, "lib/b.dart", helper).targets[0].clone();
-    let local_target = resolution_at(&definitions.resolutions, "lib/b.dart", local).targets[0].clone();
+    let helper_target =
+        resolution_at(&definitions.resolutions, "lib/b.dart", helper).targets[0].clone();
+    let local_target =
+        resolution_at(&definitions.resolutions, "lib/b.dart", local).targets[0].clone();
     let targets = [
         local_target.clone(),
         helper_target.clone(),
