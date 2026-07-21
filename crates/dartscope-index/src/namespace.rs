@@ -2,10 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use dartscope_core::{
-    DartDeclaration, DartFileAnalysis, DartNamespaceCombinatorKind, DartPartLinkAnalysis,
-    DartPartLinkStatus, DartProjectAnalysis, DartSymbolCandidate, DartSymbolQuery,
-    DartSymbolResolution, DartSymbolResolutionBasis, DartSymbolResolutionStatus, DartUriGraph,
-    DartUriReferenceKind, DartUriResolution, SourceSpan,
+    DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartNamespaceCombinatorKind,
+    DartPartLinkAnalysis, DartPartLinkStatus, DartProjectAnalysis, DartSymbolCandidate,
+    DartSymbolQuery, DartSymbolResolution, DartSymbolResolutionBasis, DartSymbolResolutionStatus,
+    DartUriGraph, DartUriReferenceKind, DartUriResolution, SourceSpan,
 };
 
 use crate::parts::analyze_part_links_with_graph;
@@ -122,6 +122,10 @@ impl<'source, 'options> NamespaceResolver<'source, 'options> {
                 .collect(),
             options,
         }
+    }
+
+    pub(crate) fn same_library(&self, left: &str, right: &str) -> bool {
+        self.library_membership.same_library(left, right)
     }
 
     pub(crate) fn resolve(
@@ -356,7 +360,29 @@ pub(crate) fn resolve_symbol_with_resolver(
     query: DartSymbolQuery,
     resolver: &NamespaceResolver<'_, '_>,
 ) -> DartSymbolResolution {
-    let declarations = collect_declarations(project, query.name.as_str());
+    resolve_symbol_with_resolver_filter(project, query, resolver, |_| true)
+}
+
+pub(crate) fn resolve_constructible_type_with_resolver(
+    project: &DartProjectAnalysis,
+    query: DartSymbolQuery,
+    resolver: &NamespaceResolver<'_, '_>,
+) -> DartSymbolResolution {
+    resolve_symbol_with_resolver_filter(project, query, resolver, |kind| {
+        matches!(
+            kind,
+            DartDeclarationKind::Class | DartDeclarationKind::ExtensionType
+        )
+    })
+}
+
+fn resolve_symbol_with_resolver_filter(
+    project: &DartProjectAnalysis,
+    query: DartSymbolQuery,
+    resolver: &NamespaceResolver<'_, '_>,
+    allowed_kind: impl Fn(DartDeclarationKind) -> bool,
+) -> DartSymbolResolution {
+    let declarations = collect_declarations(project, query.name.as_str(), &allowed_kind);
     let candidates: Vec<_> = declarations
         .iter()
         .map(|location| NamespaceCandidate {
@@ -411,11 +437,15 @@ fn finish_local_resolution(
 fn collect_declarations<'a>(
     project: &'a DartProjectAnalysis,
     name: &str,
+    allowed_kind: &impl Fn(DartDeclarationKind) -> bool,
 ) -> Vec<DeclarationLocation<'a>> {
     let mut candidates = Vec::new();
     for file in &project.files {
         for declaration in &file.declarations {
-            if declaration.parent_symbol_id.is_none() && declaration.name == name {
+            if declaration.parent_symbol_id.is_none()
+                && declaration.name == name
+                && allowed_kind(declaration.kind)
+            {
                 candidates.push(DeclarationLocation {
                     path: file.path.as_str(),
                     declaration,
