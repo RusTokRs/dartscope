@@ -258,8 +258,8 @@ fn snapshot_navigation_matches_full_method_resolution() {
         .find_definitions(std::slice::from_ref(&query));
     let index = DartWorkspaceIndex::from_reference_project(analysis);
     let snapshot = index.snapshot();
-    let actual = DartWorkspaceResolutionContext::from_snapshot(snapshot.as_ref())
-        .find_definitions(&[query]);
+    let actual =
+        DartWorkspaceResolutionContext::from_snapshot(snapshot.as_ref()).find_definitions(&[query]);
 
     assert_eq!(actual, expected);
 }
