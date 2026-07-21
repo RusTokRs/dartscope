@@ -1,0 +1,429 @@
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded arraydeque v0.5.1
+  Downloaded itoa v1.0.18
+  Downloaded foldhash v0.2.0
+  Downloaded percent-encoding v2.3.2
+  Downloaded lazy_static v1.5.0
+  Downloaded thiserror-impl v2.0.18
+  Downloaded quote v1.0.46
+  Downloaded zmij v1.0.21
+  Downloaded unicode-ident v1.0.24
+  Downloaded serde_core v1.0.228
+  Downloaded yaml-rust2 v0.11.0
+  Downloaded uriparse v0.6.4
+  Downloaded serde_derive v1.0.228
+  Downloaded serde v1.0.228
+  Downloaded hashbrown v0.16.1
+  Downloaded serde_json v1.0.150
+  Downloaded proc-macro2 v1.0.106
+  Downloaded thiserror v2.0.18
+  Downloaded hashlink v0.11.1
+  Downloaded memchr v2.8.2
+  Downloaded fnv v1.0.7
+  Downloaded syn v2.0.118
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.46
+   Compiling unicode-ident v1.0.24
+   Compiling serde_core v1.0.228
+   Compiling serde v1.0.228
+   Compiling thiserror v2.0.18
+   Compiling zmij v1.0.21
+   Compiling foldhash v0.2.0
+   Compiling serde_json v1.0.150
+   Compiling hashbrown v0.16.1
+   Compiling syn v2.0.118
+   Compiling itoa v1.0.18
+   Compiling fnv v1.0.7
+   Compiling memchr v2.8.2
+   Compiling lazy_static v1.5.0
+   Compiling uriparse v0.6.4
+   Compiling hashlink v0.11.1
+   Compiling percent-encoding v2.3.2
+   Compiling arraydeque v0.5.1
+   Compiling yaml-rust2 v0.11.0
+   Compiling thiserror-impl v2.0.18
+   Compiling serde_derive v1.0.228
+   Compiling dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+   Compiling dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+   Compiling dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.41s
+     Running unittests src/lib.rs (target/debug/deps/dartscope_parse-a1cdd856f0ea423c)
+
+running 85 tests
+test backend::tests::callers_can_inject_a_source_only_backend ... ok
+test backend::tests::heuristic_metadata_reports_member_inventory_support ... ok
+test invocations::arguments::tests::reads_raw_and_regular_string_values ... ok
+test backend::tests::default_backend_keeps_convenience_analysis_behavior ... ok
+test invocations::arguments::tests::captures_named_arguments_and_map_entries ... ok
+test lexical::tests::preserves_code_around_strings ... ok
+test lexical::tests::preserves_conditional_import_code ... ok
+test invocations::scanner::tests::scans_chained_and_result_member_calls ... ok
+test pubspec::tests::accepts_single_explicit_document_markers ... ok
+test pubspec::tests::deduplicates_shared_indentation_diagnostics ... ok
+test pubspec::tests::composes_dependencies_environment_and_flutter_configuration ... ok
+test pubspec::tests::ignores_additional_documents ... ok
+test pubspec::tests::diagnoses_duplicate_top_level_and_direct_mapping_keys ... ok
+test pubspec::tests::preserves_named_alias_diagnostics ... ok
+test pubspec::tests::preserves_bare_wildcard_without_alias_diagnostic ... ok
+test pubspec::tests::preserves_quoted_commas_in_dependency_flow_syntax ... ok
+test pubspec_configuration::tests::composes_complete_assets_with_legacy_paths ... ok
+test pubspec::tests::rejects_unbalanced_dependency_flow_syntax ... ok
+test pubspec_configuration::tests::accepts_custom_flavors_and_official_asset_platforms ... ok
+test pubspec_configuration::tests::ignores_configuration_from_additional_documents ... ok
+test pubspec_configuration::tests::diagnoses_empty_flavors_and_unknown_platforms ... ok
+test pubspec_configuration::tests::removes_legacy_warnings_for_supported_asset_metadata ... ok
+test pubspec_source::tests::exposes_typed_sources_from_legacy_normalized_values ... ok
+test pubspec_source::tests::keeps_direct_source_urls_with_query_values_intact ... ok
+test pubspec_source::tests::serializes_with_a_stable_kind_discriminator ... ok
+test pubspec_source::tests::exposes_every_parsed_dependency_source_variant ... ok
+test pubspec_source::tests::preserves_unknown_source_fields ... ok
+test pubspec_yaml_contract::preserves_crlf_and_unicode_asset_evidence ... ok
+test pubspec_yaml_contract::preserves_configuration_diagnostic_contract ... ok
+test pubspec_yaml_contract::preserves_dependency_source_and_section_contract ... ok
+test pubspec_yaml_marked::tests::builds_nested_marked_tree ... ok
+test pubspec_yaml_marked::tests::preserves_crlf_and_unicode_scalar_offsets ... ok
+test pubspec_yaml_contract::preserves_structured_configuration_contract ... ok
+test pubspec_yaml_marked::tests::reports_anchors_aliases_and_merge_keys ... ok
+test pubspec_yaml_contract::preserves_inline_wildcard_duplicate_and_unicode_contracts ... ok
+test pubspec_yaml_marked_analysis::tests::omits_alias_and_merge_dependency_values ... ok
+test pubspec_yaml_marked::tests::converts_scanner_failures_to_stable_diagnostics ... ok
+test pubspec_yaml_marked::tests::reports_duplicate_keys_and_additional_documents ... ok
+test pubspec_yaml_marked_analysis::tests::preserves_bare_wildcard_as_dependency_version ... ok
+test pubspec_yaml_marked_analysis::tests::omits_malformed_inline_dependency_mapping ... ok
+test pubspec_yaml_marked_configuration::tests::preserves_crlf_and_unicode_asset_byte_offsets ... ok
+test pubspec_yaml_marked_configuration::tests::parses_structured_environment_assets_transformers_and_fonts ... ok
+test pubspec_yaml_marked_configuration::tests::rejects_empty_or_non_scalar_default_flavors ... ok
+test pubspec_yaml_marked_configuration::tests::validates_asset_selectors_with_asset_line_evidence ... ok
+test pubspec_yaml_marked_dependencies::tests::preserves_duplicate_entries_and_unicode_key_bytes ... ok
+test pubspec_yaml_marked_dependencies::tests::parses_package_name_and_all_dependency_source_shapes ... ok
+test tests::analysis::analyzes_dart_imports_parts_and_declarations_without_flutter_conventions ... ok
+test tests::analysis::captures_material_app_routes_as_generic_named_argument_map_entries ... ok
+test tests::analysis::captures_generic_asset_and_localization_invocations ... ok
+test tests::analysis::captures_go_route_invocations_without_applying_ecosystem_semantics ... ok
+test tests::analysis::analyzes_pure_project_summary_from_files_and_pubspecs ... ok
+test tests::analysis::distinguishes_part_of_from_part_directives ... ok
+test tests::analysis::captures_multiple_single_line_route_invocations_and_named_arguments ... ok
+test tests::analysis::class_constructor_initializer_is_top_level_variable_not_function ... ok
+test tests::analysis::does_not_treat_indented_flutter_constructor_calls_as_declarations ... ok
+test tests::analysis::keeps_byte_spans_exact_for_crlf_sources_and_attributes_diagnostics ... ok
+test tests::analysis::ignores_invocation_markers_inside_comments_and_strings_for_lf_and_crlf_sources ... ok
+test tests::analysis::parses_import_and_export_namespace_controls ... ok
+test tests::analysis::inventories_normative_type_members_with_stable_parents_and_full_spans ... ok
+test tests::analysis::parses_conditional_imports_and_exports_without_selecting_a_platform ... ok
+test tests::analysis::parses_library_name_and_named_part_of_directive ... ok
+test tests::analysis::parses_indented_pubspec_dependencies_and_ignores_nested_source_fields ... ok
+test tests::analysis::project_analysis_is_sorted_and_project_diagnostics_keep_source_paths ... ok
+test tests::analysis::parses_modern_type_declarations_without_inventing_unnamed_extensions ... ok
+test tests::analysis::parses_pubspec_dependencies ... ok
+test tests::analysis::reports_dart_3_13_constructor_syntax_without_fabricating_members ... ok
+test tests::analysis::reports_unterminated_lexical_constructs_with_source_spans ... ok
+test tests::analysis::retains_riverpod_widget_declaration_as_generic_dart_fact ... ok
+test tests::graphql::extracts_graphql_operations_from_raw_string_constants ... ok
+test tests::pubspec_assets::parses_selectors_and_ordered_transformers ... ok
+test tests::graphql::links_graphql_operation_use_to_top_level_provider_initializer ... ok
+test tests::pubspec_assets::accepts_explicitly_empty_asset_lists ... ok
+test tests::pubspec_assets::preserves_plain_scalars_containing_colons ... ok
+test tests::pubspec_assets::sibling_fields_do_not_leak_nested_list_modes ... ok
+test tests::pubspec_assets::rejects_misindented_transformer_fields_and_items ... ok
+test tests::pubspec_syntax::accepts_nested_flow_mappings_with_quoted_commas ... ok
+test tests::pubspec_assets::rejects_metadata_attached_to_scalar_assets ... ok
+test tests::pubspec_syntax::accepts_yaml_single_quote_escaping ... ok
+test tests::pubspec_syntax::accepts_single_document_markers ... ok
+test tests::pubspec_syntax::detects_duplicate_top_level_and_direct_mapping_keys ... ok
+test tests::pubspec_syntax::identifies_bare_wildcards_but_not_named_aliases ... ok
+test tests::pubspec_syntax::masks_additional_documents_without_changing_offsets ... ok
+test tests::pubspec_syntax::retains_dependency_section_after_tab_indentation ... ok
+test tests::pubspec_syntax::rejects_unbalanced_flow_delimiters_and_quotes ... ok
+test tests::graphql::links_graphql_operation_constants_to_repository_methods ... ok
+
+test result: ok. 85 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+   Compiling dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+   Compiling dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+error[E0428]: the name `resolve_method_declaration_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:797:1
+    |
+421 | / fn resolve_method_declaration_reference(
+422 | |     member_index: &MemberIndex,
+423 | |     reference: DartIdentifierReference,
+424 | | ) -> ResolvedReference {
+...   |
+453 | | }
+    | |_- previous definition of the value `resolve_method_declaration_reference` here
+...
+797 | / fn resolve_method_declaration_reference(
+798 | |     member_index: &MemberIndex,
+799 | |     reference: DartIdentifierReference,
+800 | | ) -> ResolvedReference {
+...   |
+829 | | }
+    | |_^ `resolve_method_declaration_reference` redefined here
+    |
+    = note: `resolve_method_declaration_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `resolve_method_invocation_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:831:1
+    |
+455 | / fn resolve_method_invocation_reference(
+456 | |     analysis: &DartProjectReferenceAnalysis,
+457 | |     namespace: &NamespaceResolver<'_, '_>,
+458 | |     uri_graph: &DartUriGraph,
+...   |
+471 | | }
+    | |_- previous definition of the value `resolve_method_invocation_reference` here
+...
+831 | / fn resolve_method_invocation_reference(
+832 | |     analysis: &DartProjectReferenceAnalysis,
+833 | |     namespace: &NamespaceResolver<'_, '_>,
+834 | |     uri_graph: &DartUriGraph,
+...   |
+847 | | }
+    | |_^ `resolve_method_invocation_reference` redefined here
+    |
+    = note: `resolve_method_invocation_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `resolve_instance_method_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:849:1
+    |
+473 | / fn resolve_instance_method_reference(
+474 | |     analysis: &DartProjectReferenceAnalysis,
+475 | |     namespace: &NamespaceResolver<'_, '_>,
+476 | |     member_index: &MemberIndex,
+...   |
+512 | |     finish_method_resolution(reference, refinements, Vec::new())
+513 | | }
+    | |_- previous definition of the value `resolve_instance_method_reference` here
+...
+849 | / fn resolve_instance_method_reference(
+850 | |     analysis: &DartProjectReferenceAnalysis,
+851 | |     namespace: &NamespaceResolver<'_, '_>,
+852 | |     member_index: &MemberIndex,
+...   |
+888 | |     finish_method_resolution(reference, refinements, Vec::new())
+889 | | }
+    | |_^ `resolve_instance_method_reference` redefined here
+    |
+    = note: `resolve_instance_method_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `resolve_static_method_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:891:1
+    |
+515 | / fn resolve_static_method_reference(
+516 | |     analysis: &DartProjectReferenceAnalysis,
+517 | |     namespace: &NamespaceResolver<'_, '_>,
+518 | |     uri_graph: &DartUriGraph,
+...   |
+582 | | }
+    | |_- previous definition of the value `resolve_static_method_reference` here
+...
+891 | / fn resolve_static_method_reference(
+892 | |     analysis: &DartProjectReferenceAnalysis,
+893 | |     namespace: &NamespaceResolver<'_, '_>,
+894 | |     uri_graph: &DartUriGraph,
+...   |
+958 | | }
+    | |_^ `resolve_static_method_reference` redefined here
+    |
+    = note: `resolve_static_method_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `refine_method_target` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:966:1
+     |
+ 590 | / fn refine_method_target(
+ 591 | |     member_index: &MemberIndex,
+ 592 | |     namespace: &NamespaceResolver<'_, '_>,
+ 593 | |     source_path: &str,
+...    |
+ 656 | | }
+     | |_- previous definition of the value `refine_method_target` here
+...
+ 966 | / fn refine_method_target(
+ 967 | |     member_index: &MemberIndex,
+ 968 | |     namespace: &NamespaceResolver<'_, '_>,
+ 969 | |     source_path: &str,
+...    |
+1032 | | }
+     | |_^ `refine_method_target` redefined here
+     |
+     = note: `refine_method_target` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `missing_method_target` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1034:1
+     |
+ 658 | fn missing_method_target(owner: &DartSymbolCandidate) -> MethodRefinement {
+     | ------------------------------------------------------------------------- previous definition of the value `missing_method_target` here
+...
+1034 | fn missing_method_target(owner: &DartSymbolCandidate) -> MethodRefinement {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `missing_method_target` redefined here
+     |
+     = note: `missing_method_target` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `finish_method_resolution` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1041:1
+     |
+ 665 | / fn finish_method_resolution(
+ 666 | |     reference: DartIdentifierReference,
+ 667 | |     refinements: Vec<MethodRefinement>,
+ 668 | |     external_uris: Vec<String>,
+...    |
+ 691 | | }
+     | |_- previous definition of the value `finish_method_resolution` here
+...
+1041 | / fn finish_method_resolution(
+1042 | |     reference: DartIdentifierReference,
+1043 | |     refinements: Vec<MethodRefinement>,
+1044 | |     external_uris: Vec<String>,
+...    |
+1067 | | }
+     | |_^ `finish_method_resolution` redefined here
+     |
+     = note: `finish_method_resolution` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `static_member_owner` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1069:1
+     |
+ 693 | fn static_member_owner(reference: &DartIdentifierReference) -> Option<(Option<String>, String)> {
+     | ----------------------------------------------------------------------------------------------- previous definition of the value `static_member_owner` here
+...
+1069 | fn static_member_owner(reference: &DartIdentifierReference) -> Option<(Option<String>, String)> {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `static_member_owner` redefined here
+     |
+     = note: `static_member_owner` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `member_owner_candidates_by_symbol_id` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1080:1
+     |
+ 704 | / fn member_owner_candidates_by_symbol_id(
+ 705 | |     analysis: &DartProjectReferenceAnalysis,
+ 706 | |     namespace: &NamespaceResolver<'_, '_>,
+ 707 | |     source_path: &str,
+...    |
+ 732 | |     owners
+ 733 | | }
+     | |_- previous definition of the value `member_owner_candidates_by_symbol_id` here
+...
+1080 | / fn member_owner_candidates_by_symbol_id(
+1081 | |     analysis: &DartProjectReferenceAnalysis,
+1082 | |     namespace: &NamespaceResolver<'_, '_>,
+1083 | |     source_path: &str,
+...    |
+1108 | |     owners
+1109 | | }
+     | |_^ `member_owner_candidates_by_symbol_id` redefined here
+     |
+     = note: `member_owner_candidates_by_symbol_id` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `external_member_owner_uris` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1111:1
+     |
+ 735 | / fn external_member_owner_uris(
+ 736 | |     analysis: &DartProjectReferenceAnalysis,
+ 737 | |     uri_graph: &DartUriGraph,
+ 738 | |     reference: &DartIdentifierReference,
+...    |
+ 746 | |     external_namespace_uris(analysis, uri_graph, &owner_reference)
+ 747 | | }
+     | |_- previous definition of the value `external_member_owner_uris` here
+...
+1111 | / fn external_member_owner_uris(
+1112 | |     analysis: &DartProjectReferenceAnalysis,
+1113 | |     uri_graph: &DartUriGraph,
+1114 | |     reference: &DartIdentifierReference,
+...    |
+1122 | |     external_namespace_uris(analysis, uri_graph, &owner_reference)
+1123 | | }
+     | |_^ `external_member_owner_uris` redefined here
+     |
+     = note: `external_member_owner_uris` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `declaration_candidate` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1125:1
+     |
+ 749 | / fn declaration_candidate(
+ 750 | |     path: &str,
+ 751 | |     declaration: &DartDeclaration,
+ 752 | |     basis: DartSymbolResolutionBasis,
+...    |
+ 765 | | }
+     | |_- previous definition of the value `declaration_candidate` here
+...
+1125 | / fn declaration_candidate(
+1126 | |     path: &str,
+1127 | |     declaration: &DartDeclaration,
+1128 | |     basis: DartSymbolResolutionBasis,
+...    |
+1141 | | }
+     | |_^ `declaration_candidate` redefined here
+     |
+     = note: `declaration_candidate` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `declaration_span_contains` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1143:1
+     |
+ 767 | / fn declaration_span_contains(
+ 768 | |     declaration: &DartDeclaration,
+ 769 | |     span: &dartscope_core::SourceSpan,
+ 770 | | ) -> bool {
+...    |
+ 775 | |     declaration_span.byte_start <= span.byte_start && span.byte_end <= declaration_span.byte_end
+ 776 | | }
+     | |_- previous definition of the value `declaration_span_contains` here
+...
+1143 | / fn declaration_span_contains(
+1144 | |     declaration: &DartDeclaration,
+1145 | |     span: &dartscope_core::SourceSpan,
+1146 | | ) -> bool {
+...    |
+1151 | |     declaration_span.byte_start <= span.byte_start && span.byte_end <= declaration_span.byte_end
+1152 | | }
+     | |_^ `declaration_span_contains` redefined here
+     |
+     = note: `declaration_span_contains` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `is_member_owner_kind` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1154:1
+     |
+ 778 | fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
+     | ---------------------------------------------------------- previous definition of the value `is_member_owner_kind` here
+...
+1154 | fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `is_member_owner_kind` redefined here
+     |
+     = note: `is_member_owner_kind` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `is_member_declaration_kind` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1165:1
+     |
+ 789 | fn is_member_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
+     | ------------------------------------------------------------------------ previous definition of the value `is_member_declaration_kind` here
+...
+1165 | fn is_member_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `is_member_declaration_kind` redefined here
+     |
+     = note: `is_member_declaration_kind` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `MethodRefinement` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:961:1
+    |
+585 | struct MethodRefinement {
+    | ----------------------- previous definition of the type `MethodRefinement` here
+...
+961 | struct MethodRefinement {
+    | ^^^^^^^^^^^^^^^^^^^^^^^ `MethodRefinement` redefined here
+    |
+    = note: `MethodRefinement` must be defined only once in the type namespace of this module
+
+error[E0119]: conflicting implementations of trait `Debug` for type `navigation::MethodRefinement`
+   --> crates/dartscope-index/src/navigation.rs:960:10
+    |
+584 | #[derive(Debug)]
+    |          ----- first implementation here
+...
+960 | #[derive(Debug)]
+    |          ^^^^^ conflicting implementation for `navigation::MethodRefinement`
+
+Some errors have detailed explanations: E0119, E0428.
+For more information about an error, try `rustc --explain E0119`.
+error: could not compile `dartscope-index` (lib) due to 16 previous errors
+warning: build failed, waiting for other jobs to finish...
