@@ -115,7 +115,7 @@ heuristic fixture needs both a positive case and a nearby negative case.
 | --- | --- | --- | --- |
 | import, export, part, part-of | normative | implemented heuristic backend | not a full lexer/AST |
 | declarations and type members | normative | top-level declarations, traditional constructors, methods, fields, accessors, operators, and local ownership implemented | Dart 3.13 primary and concise constructors are diagnostic-only pending language-version-aware parsing |
-| lexical bindings and unqualified variable access | normative operator, for-in assignment, and local-declaration ordering semantics plus heuristic scope intervals | callable and supported parenthesized closure parameters, block and supported braced loop/catch locals, reads, plain writes, paired compound/increment facts, legal earlier-to-later same-statement accesses, and braced existing-variable `for-in` writes implemented | retroactive pre-declaration shadowing across earlier statements, flow analysis, single-statement/collection and pattern/multi-declarator loops, member/index writes, and destructuring remain deferred |
+| lexical bindings and unqualified variable access | normative operator, for-in assignment, single-statement loop, and local-declaration ordering semantics plus heuristic scope intervals | callable and supported parenthesized closure parameters, block locals, supported braced and simple-statement loop scopes, catch locals, reads, plain writes, paired compound/increment facts, legal earlier-to-later same-statement accesses, and braced or simple-statement existing-variable `for-in` writes implemented | retroactive pre-declaration shadowing, flow analysis, collection and pattern/multi-declarator loops, labels or local-declaration loop bodies, member/index writes, and destructuring remain deferred |
 | class modifiers and mixin class | normative | implemented | validity combinations not diagnosed |
 | pubspec dependency sections | normative YAML/pub behavior | typed model and hardened subset | `yaml-rust2` adapter selected but not integrated |
 | Flutter pubspec asset declarations | normative Flutter docs | paths, opaque flavors, validated platforms, ordered transformers implemented | selector item spans await marked-event adapter |
@@ -165,4 +165,3 @@ Theme construction and application support is normative and follows the official
 `MaterialApp`, `Theme`, and `AnimatedTheme` API documentation. The supported subset and explicit
 non-evaluation boundary are recorded in `docs/development/flutter-themes.md`. Ecosystem theme
 packages are not implied by this official support.
-
