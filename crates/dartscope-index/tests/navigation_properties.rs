@@ -162,10 +162,13 @@ fn resolves_exact_field_getter_and_setter_targets() {
     assert_eq!(references.results.len(), 1);
     assert_eq!(references.results[0].target, count_target);
     assert_eq!(references.results[0].references.len(), 2);
-    assert!(references.results[0]
-        .references
-        .iter()
-        .all(|reference| reference.span.byte_start == count_read || reference.span.byte_start == count_write));
+    assert!(
+        references.results[0]
+            .references
+            .iter()
+            .all(|reference| reference.span.byte_start == count_read
+                || reference.span.byte_start == count_write)
+    );
 }
 
 const FIRST: &str = r#"
@@ -256,11 +259,10 @@ fn preserves_ambiguous_conditional_and_external_property_evidence() {
     let options = DartIndexOptions::default().with_compilation_environment(
         DartCompilationEnvironment::from_pairs([("dart.library.io", "true")]),
     );
-    let resolved = DartWorkspaceResolutionContext::with_options(&analysis, &options)
-        .find_definitions(&[DartDefinitionQuery::new(
-            "lib/client.dart",
-            conditional.query.byte_offset,
-        )]);
+    let resolved =
+        DartWorkspaceResolutionContext::with_options(&analysis, &options).find_definitions(&[
+            DartDefinitionQuery::new("lib/client.dart", conditional.query.byte_offset),
+        ]);
     assert_property_target(
         &resolved.resolutions[0],
         DartDefinitionResolutionStatus::Resolved,
@@ -310,8 +312,8 @@ fn resolves_part_properties_and_preserves_snapshot_parity() {
 
     let index = DartWorkspaceIndex::from_reference_project(analysis);
     let snapshot = index.snapshot();
-    let actual = DartWorkspaceResolutionContext::from_snapshot(snapshot.as_ref())
-        .find_definitions(&[query]);
+    let actual =
+        DartWorkspaceResolutionContext::from_snapshot(snapshot.as_ref()).find_definitions(&[query]);
     assert_eq!(actual, expected);
 }
 

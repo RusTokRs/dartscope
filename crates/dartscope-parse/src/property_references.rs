@@ -88,13 +88,9 @@ fn property_access_references(
         if is_preceded_by_dot(masked_source, first_start) {
             continue;
         }
-        let Some(access) = property_access_at(
-            masked_source,
-            analysis,
-            bindings,
-            first_start,
-            first_end,
-        ) else {
+        let Some(access) =
+            property_access_at(masked_source, analysis, bindings, first_start, first_end)
+        else {
             continue;
         };
         at = access.member_end;
@@ -235,7 +231,10 @@ fn property_reference(
 }
 
 fn property_access_modes(source: &str, expression_start: usize, member_end: usize) -> (bool, bool) {
-    let before = source.get(..expression_start).unwrap_or_default().trim_end();
+    let before = source
+        .get(..expression_start)
+        .unwrap_or_default()
+        .trim_end();
     if before.ends_with("++") || before.ends_with("--") {
         return (true, true);
     }
@@ -264,7 +263,10 @@ fn dotted_identifier(source: &str, identifier_end: usize) -> Option<(usize, usiz
         return None;
     }
     let start = skip_whitespace(bytes, dot + 1);
-    if !bytes.get(start).is_some_and(|byte| is_identifier_start(*byte)) {
+    if !bytes
+        .get(start)
+        .is_some_and(|byte| is_identifier_start(*byte))
+    {
         return None;
     }
     Some((start, identifier_end_from(bytes, start)))
