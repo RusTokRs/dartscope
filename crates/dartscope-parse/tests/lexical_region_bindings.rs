@@ -72,7 +72,9 @@ fn enables_binding_backed_accesses_inside_supported_regions() {
         analyze_file_with_references(DartFileInput::new("lib/regions.dart", REGION_SOURCE));
     let read_only_offsets = [
         REGION_SOURCE.find("value + 1").expect("arrow body value"),
-        REGION_SOURCE.find("index < 2").expect("classic condition"),
+        REGION_SOURCE
+            .find("index < 2")
+            .expect("classic condition"),
         REGION_SOURCE
             .find("consume(stack)")
             .expect("catch stack read")
@@ -151,7 +153,7 @@ int choose(int value) => switch (value) {
 }
 
 #[test]
-fn keeps_pattern_and_multi_declarator_for_regions_deferred() {
+fn supports_multi_and_single_statement_loops_while_deferring_patterns_and_collections() {
     let source = r#"
 void run(
   int left,
@@ -171,26 +173,46 @@ void run(
 }
 "#;
     let analysis = analyze_file_with_references(DartFileInput::new("lib/deferred.dart", source));
-    let deferred_offsets = [
+    let loop_bindings: Vec<_> = analysis
+        .bindings
+        .iter()
+        .filter(|binding| binding.symbol_id.contains("/for_variable:"))
+        .collect();
+
+    assert_eq!(
+        loop_bindings
+            .iter()
+            .map(|binding| binding.name.as_str())
+            .collect::<Vec<_>>(),
+        ["left", "right", "single"]
+    );
+    for offset in [
         source.find("left++").expect("pattern left update"),
         source.find("right++").expect("pattern right update"),
+        source.rfind("item").expect("collection body item"),
+    ] {
+        assert!(kinds_at(&analysis.references, offset).is_empty());
+    }
+    assert_eq!(
+        kinds_at(
+            &analysis.references,
+            source.find("left < 1").expect("multi condition")
+        ),
+        vec![DartIdentifierReferenceKind::VariableRead]
+    );
+    for offset in [
         source.rfind("right++").expect("multi-declarator update"),
-        source
-            .rfind("single++")
-            .expect("single-statement loop update"),
-    ];
-
-    assert!(
-        analysis
-            .bindings
-            .iter()
-            .all(|binding| !binding.symbol_id.contains("/for_variable:"))
-    );
-    assert!(
-        deferred_offsets
-            .iter()
-            .all(|offset| kinds_at(&analysis.references, *offset).is_empty())
-    );
+        source.rfind("single++").expect("single-statement loop update"),
+    ] {
+        assert_eq!(
+            kinds_at(&analysis.references, offset),
+            vec![
+                DartIdentifierReferenceKind::VariableRead,
+                DartIdentifierReferenceKind::VariableWrite,
+            ]
+        );
+    }
+    assert!(analysis.bindings.iter().all(|binding| binding.name != "item"));
 }
 
 fn kinds_at(
