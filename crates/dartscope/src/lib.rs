@@ -18,14 +18,17 @@ pub use dartscope_resolve::{PackageUriResolutionError, parse_package_config, res
 
 #[cfg(feature = "index")]
 pub use dartscope_index::{
-    DartIndexOptions, DartLibraryDependencyFingerprint, DartWorkspaceIndex,
-    DartWorkspaceIndexCounters, DartWorkspaceIndexRetainedMetrics, DartWorkspaceSnapshot,
-    DartWorkspaceSubsystems, DartWorkspaceUpdate, analyze_graphql_contracts,
-    analyze_graphql_contracts_with_options, analyze_part_links, build_uri_graph,
-    build_uri_graph_with_options, resolve_identifier_references,
-    resolve_identifier_references_with_options, resolve_project_identifier_references,
-    resolve_project_identifier_references_with_options, resolve_symbol,
-    resolve_symbol_with_options,
+    DartDefinitionBatchAnalysis, DartDefinitionQuery, DartDefinitionResolution,
+    DartDefinitionResolutionStatus, DartDefinitionTarget, DartIndexOptions,
+    DartLibraryDependencyFingerprint, DartReferenceBatchAnalysis, DartReferenceSearchResult,
+    DartWorkspaceIndex, DartWorkspaceIndexCounters, DartWorkspaceIndexRetainedMetrics,
+    DartWorkspaceResolutionContext, DartWorkspaceSnapshot, DartWorkspaceSubsystems,
+    DartWorkspaceUpdate, analyze_graphql_contracts, analyze_graphql_contracts_with_options,
+    analyze_part_links, build_uri_graph, build_uri_graph_with_options, find_definitions,
+    find_definitions_with_options, find_references, find_references_with_options,
+    resolve_identifier_references, resolve_identifier_references_with_options,
+    resolve_project_identifier_references, resolve_project_identifier_references_with_options,
+    resolve_symbol, resolve_symbol_with_options,
 };
 
 #[cfg(feature = "lints")]
