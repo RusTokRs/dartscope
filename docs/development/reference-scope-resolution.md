@@ -141,11 +141,12 @@ inside the following braced body. Catch parameters are visible only in the catch
 headers are suppressed as lexical access positions, while iterable expressions, classic-loop
 conditions and updates, and executable bodies emit binding-backed reads and writes normally.
 
-Pattern and multi-declarator declarations, collection control-flow elements,
-unparenthesized/receiver/pattern/function-type closure parameters, and malformed regions remain fully
-deferred. Simple non-block loop bodies are enabled only by the later focused slice. Existing-variable
-`for-in` targets are enabled only by the later focused assignment slice. Invocation roots inside
-supported scopes are filtered by the same parser-produced binding intervals before namespace resolution.
+Pattern declarations, collection control-flow elements, unparenthesized/receiver/pattern/function-type
+closure parameters, and malformed regions remain fully deferred. Simple non-block loop bodies are
+enabled only by the later focused slice. Existing-variable `for-in` targets are enabled only by the
+later focused assignment slice. Multi-declarator classic loops are enabled only by their later focused
+slice. Invocation roots inside supported scopes are filtered by the same parser-produced binding
+intervals before namespace resolution.
 
 ## Initializer and declaration-order slice
 
@@ -203,6 +204,25 @@ These restrictions prevent a heuristic loop binding from leaking into a followin
 index fixtures assert exact spans, confidence, most-specific resolution, invocation-root filtering,
 namespace filtering, and nearby nested-control negatives.
 
+## Multi-declarator classic-loop slice
+
+The twelfth `DS-INDEX-006` slice extends classic-loop declarations to conservative comma-separated
+variable declarators. Every supported declarator retains its own exact identifier span and stable
+`for_variable` symbol ID. Its scope begins after the end of its own initializer, or immediately after the
+identifier when no initializer is present, and ends after the complete braced or supported simple body.
+
+Earlier declarators can therefore supply reads, plain writes, or combined updates to later initializers.
+Self and later-declarator accesses remain suppressed instead of resolving to outer parameters or namespace
+symbols. Invocation roots follow the same rule: a call that names a self or later declarator within the
+same declaration statement is omitted from namespace output, while a declaration does not retroactively
+shadow an earlier independent statement.
+
+Conditions, updates, braced bodies, and supported simple-statement bodies reuse the existing binding-backed
+reference collectors and lexical index entry points. Comma-separated expression initializers, pattern or
+destructuring declarations, malformed continuation declarators, collection control flow, and unsupported
+body forms remain fully deferred. Parser and index fixtures assert exact spans, stable IDs, initializer
+ordering, paired updates, invocation filtering, deterministic resolution, and namespace separation.
+
 ## Compatibility boundary
 
 - Existing non-shadowed invocation-target facts keep their kind, confidence, exact span, ordering,
@@ -220,9 +240,9 @@ namespace filtering, and nearby nested-control negatives.
 ## Deferred scope
 
 This slice does not claim analyzer-equivalent lexical semantics. Receiver formals;
-unparenthesized, pattern, or function-type closure parameter forms; pattern and multi-declarator loops;
-collection control-flow elements; labels, `try`, and local-declaration simple loop bodies;
-retroactive pre-declaration shadowing across earlier statements; definite-assignment and flow analysis;
-member/index writes; destructuring, inherited members, extension lookup, implicit constructor selection,
-nested generic internals, SDK/external namespaces, record and function-type internals, metadata
-annotations, type inference, and overload resolution remain explicit follow-up work.
+unparenthesized, pattern, or function-type closure parameter forms; pattern and destructuring loops;
+comma-separated classic-loop expression initializers; collection control-flow elements; labels, `try`,
+and local-declaration simple loop bodies; retroactive pre-declaration shadowing across separate statements;
+definite-assignment and flow analysis; member/index writes; inherited members, extension lookup, implicit
+constructor selection, nested generic internals, SDK/external namespaces, record and function-type
+internals, metadata annotations, type inference, and overload resolution remain explicit follow-up work.
