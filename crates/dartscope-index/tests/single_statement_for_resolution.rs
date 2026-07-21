@@ -105,10 +105,16 @@ fn keeps_nested_control_deferred_and_namespace_filtered() {
         occurrence("nested < 1", "nested"),
         occurrence("consume(nested)", "nested"),
     ] {
-        assert!(reads.iter().all(|resolution| resolution.query.byte_offset != offset));
-        assert!(writes
-            .iter()
-            .all(|resolution| resolution.query.byte_offset != offset));
+        assert!(
+            reads
+                .iter()
+                .all(|resolution| resolution.query.byte_offset != offset)
+        );
+        assert!(
+            writes
+                .iter()
+                .all(|resolution| resolution.query.byte_offset != offset)
+        );
     }
 
     let body_call = occurrence("index();", "index");
