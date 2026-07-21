@@ -171,30 +171,29 @@ fn is_local_declaration_prefix(
 
 fn declarator_segment_start(source: &str, start: usize, end: usize) -> usize {
     let bytes = source.as_bytes();
-    let mut segment_start = start;
     let mut parens = 0usize;
     let mut brackets = 0usize;
     let mut braces = 0usize;
     let mut angles = 0usize;
-    let mut at = start;
-    while at < end.min(bytes.len()) {
+    let mut at = end.min(bytes.len());
+    while at > start {
+        at -= 1;
         match bytes[at] {
-            b'(' => parens += 1,
-            b')' => parens = parens.saturating_sub(1),
-            b'[' => brackets += 1,
-            b']' => brackets = brackets.saturating_sub(1),
-            b'{' => braces += 1,
-            b'}' => braces = braces.saturating_sub(1),
-            b'<' => angles += 1,
-            b'>' => angles = angles.saturating_sub(1),
             b',' if parens == 0 && brackets == 0 && braces == 0 && angles == 0 => {
-                segment_start = at + 1;
+                return at + 1;
             }
+            b')' => parens += 1,
+            b'(' => parens = parens.saturating_sub(1),
+            b']' => brackets += 1,
+            b'[' => brackets = brackets.saturating_sub(1),
+            b'}' => braces += 1,
+            b'{' => braces = braces.saturating_sub(1),
+            b'>' => angles += 1,
+            b'<' => angles = angles.saturating_sub(1),
             _ => {}
         }
-        at += 1;
     }
-    segment_start
+    start
 }
 
 fn is_conservative_read_position(source: &str, token: IdentifierToken<'_>) -> bool {
