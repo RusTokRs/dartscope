@@ -1,0 +1,206 @@
+name: Incremental navigation patch
+
+on:
+  push:
+    branches:
+      - agent/incremental-navigation-parity
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: agent/incremental-navigation-parity
+      - name: Apply incremental navigation parity patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          incremental_path = Path("crates/dartscope-index/src/incremental.rs")
+          text = incremental_path.read_text()
+          text = replace_once(text, "    DartIdentifierReference, DartIdentifierReferenceResolution,\n", "    DartIdentifierReference, DartIdentifierReferenceResolution, DartLexicalBinding,\n", "import lexical binding")
+          text = replace_once(text, "    identifier_reference_resolutions: Arc<DartIdentifierReferenceResolutionAnalysis>,\n}", "    identifier_reference_resolutions: Arc<DartIdentifierReferenceResolutionAnalysis>,\n    identifier_references: Arc<Vec<DartIdentifierReference>>,\n    lexical_bindings: Arc<Vec<DartLexicalBinding>>,\n    options: DartIndexOptions,\n}", "snapshot fields")
+          text = replace_once(text, "    pub fn identifier_reference_resolutions(&self) -> &DartIdentifierReferenceResolutionAnalysis {\n        &self.identifier_reference_resolutions\n    }\n}", "    pub fn identifier_reference_resolutions(&self) -> &DartIdentifierReferenceResolutionAnalysis {\n        &self.identifier_reference_resolutions\n    }\n\n    pub fn identifier_references(&self) -> &[DartIdentifierReference] {\n        self.identifier_references.as_slice()\n    }\n\n    pub fn lexical_bindings(&self) -> &[DartLexicalBinding] {\n        self.lexical_bindings.as_slice()\n    }\n\n    pub fn options(&self) -> &DartIndexOptions {\n        &self.options\n    }\n\n    pub fn project_reference_analysis(&self) -> DartProjectReferenceAnalysis {\n        DartProjectReferenceAnalysis {\n            project: self.project.as_ref().clone(),\n            references: self.identifier_references.as_ref().clone(),\n            bindings: self.lexical_bindings.as_ref().clone(),\n        }\n    }\n}", "snapshot accessors")
+          text = replace_once(text, "    references_by_path: BTreeMap<String, Vec<DartIdentifierReference>>,\n", "    references_by_path: BTreeMap<String, Vec<DartIdentifierReference>>,\n    bindings_by_path: BTreeMap<String, Vec<DartLexicalBinding>>,\n", "index bindings field")
+          text = replace_once(text, "        Self::from_inputs(project, BTreeMap::new(), options)\n", "        Self::from_inputs(project, BTreeMap::new(), BTreeMap::new(), options)\n", "project constructor")
+          text = replace_once(text, "        let references_by_path = group_references(analysis.references);\n        Self::from_inputs(analysis.project, references_by_path, options)\n", "        let references_by_path = group_references(analysis.references);\n        let bindings_by_path = group_bindings(analysis.bindings);\n        Self::from_inputs(analysis.project, references_by_path, bindings_by_path, options)\n", "reference project constructor")
+          text = replace_once(text, "        references_by_path: BTreeMap<String, Vec<DartIdentifierReference>>,\n        options: DartIndexOptions,\n", "        references_by_path: BTreeMap<String, Vec<DartIdentifierReference>>,\n        bindings_by_path: BTreeMap<String, Vec<DartLexicalBinding>>,\n        options: DartIndexOptions,\n", "from inputs signature")
+          text = replace_once(text, "        let identifier_reference_resolutions = Arc::new(identifier_reference_resolutions);\n", "        let identifier_reference_resolutions = Arc::new(identifier_reference_resolutions);\n        let identifier_references = Arc::new(aggregate_references(&references_by_path));\n        let lexical_bindings = Arc::new(aggregate_bindings(&bindings_by_path));\n", "initial navigation facts")
+          text = replace_once(text, "            identifier_reference_resolutions,\n        });\n", "            identifier_reference_resolutions,\n            identifier_references,\n            lexical_bindings,\n            options: options.clone(),\n        });\n", "initial snapshot navigation facts")
+          text = replace_once(text, "            references_by_path,\n            uri_references_by_path,\n", "            references_by_path,\n            bindings_by_path,\n            uri_references_by_path,\n", "index bindings init")
+          text = replace_once(text, "        self.upsert_file_internal(file, None)\n", "        self.upsert_file_internal(file, None, None)\n", "plain upsert")
+          text = replace_once(text, "        self.upsert_file_internal(analysis.file, Some(analysis.references))\n", "        self.upsert_file_internal(\n            analysis.file,\n            Some(analysis.references),\n            Some(analysis.bindings),\n        )\n", "reference upsert")
+          text = replace_once(text, "        references: Option<Vec<DartIdentifierReference>>,\n    ) -> DartWorkspaceUpdate {\n", "        references: Option<Vec<DartIdentifierReference>>,\n        bindings: Option<Vec<DartLexicalBinding>>,\n    ) -> DartWorkspaceUpdate {\n", "upsert signature")
+          text = replace_once(text, "        let old_file = self.files.get(&path).cloned();\n", "        let new_bindings = bindings\n            .map(|bindings| normalize_bindings_for_path(&path, bindings))\n            .unwrap_or_default();\n        let old_file = self.files.get(&path).cloned();\n", "new bindings")
+          text = replace_once(text, "        let references_changed = old_references != new_references;\n\n        if old_file.as_ref() == Some(&file) && !references_changed {\n", "        let old_bindings = self\n            .bindings_by_path\n            .get(&path)\n            .cloned()\n            .unwrap_or_default();\n        let references_changed = old_references != new_references;\n        let bindings_changed = old_bindings != new_bindings;\n\n        if old_file.as_ref() == Some(&file) && !references_changed && !bindings_changed {\n", "bindings change detection")
+          text = replace_once(text, "            Some(old) => file_rebuild_plan(old, &file, references_changed),\n", "            Some(old) => file_rebuild_plan(old, &file, references_changed || bindings_changed),\n", "navigation rebuild plan")
+          text = replace_once(text, "        if new_references.is_empty() {\n            self.references_by_path.remove(&path);\n        } else {\n            self.references_by_path.insert(path.clone(), new_references);\n        }\n        self.rebuild(\n", "        if new_references.is_empty() {\n            self.references_by_path.remove(&path);\n        } else {\n            self.references_by_path.insert(path.clone(), new_references);\n        }\n        if new_bindings.is_empty() {\n            self.bindings_by_path.remove(&path);\n        } else {\n            self.bindings_by_path.insert(path.clone(), new_bindings);\n        }\n        self.rebuild(\n", "store bindings")
+          text = replace_once(text, "        self.references_by_path.remove(&path);\n        self.rebuild(\n", "        self.references_by_path.remove(&path);\n        self.bindings_by_path.remove(&path);\n        self.rebuild(\n", "remove bindings")
+          text = replace_once(text, "        self.counters.generations += 1;\n        let generation = old.generation + 1;\n", "        let identifier_references = Arc::new(aggregate_references(&self.references_by_path));\n        let lexical_bindings = Arc::new(aggregate_bindings(&self.bindings_by_path));\n\n        self.counters.generations += 1;\n        let generation = old.generation + 1;\n", "rebuild navigation facts")
+          text = replace_once(text, "            identifier_reference_resolutions,\n        });\n\n        DartWorkspaceUpdate {\n", "            identifier_reference_resolutions,\n            identifier_references,\n            lexical_bindings,\n            options: self.options.clone(),\n        });\n\n        DartWorkspaceUpdate {\n", "rebuilt snapshot navigation facts")
+          text = replace_once(text, "fn group_references(\n", "fn aggregate_references(\n    references_by_path: &BTreeMap<String, Vec<DartIdentifierReference>>,\n) -> Vec<DartIdentifierReference> {\n    references_by_path\n        .values()\n        .flat_map(|references| references.iter().cloned())\n        .collect()\n}\n\nfn aggregate_bindings(\n    bindings_by_path: &BTreeMap<String, Vec<DartLexicalBinding>>,\n) -> Vec<DartLexicalBinding> {\n    bindings_by_path\n        .values()\n        .flat_map(|bindings| bindings.iter().cloned())\n        .collect()\n}\n\nfn group_bindings(\n    bindings: Vec<DartLexicalBinding>,\n) -> BTreeMap<String, Vec<DartLexicalBinding>> {\n    let mut grouped: BTreeMap<String, Vec<DartLexicalBinding>> = BTreeMap::new();\n    for mut binding in bindings {\n        binding.source_path = normalize_path(binding.source_path);\n        grouped\n            .entry(binding.source_path.clone())\n            .or_default()\n            .push(binding);\n    }\n    for bindings in grouped.values_mut() {\n        sort_and_deduplicate_bindings(bindings);\n    }\n    grouped\n}\n\nfn group_references(\n", "aggregate and group bindings")
+          text = replace_once(text, "fn sort_and_deduplicate_references(references: &mut Vec<DartIdentifierReference>) {\n", "fn normalize_bindings_for_path(\n    path: &str,\n    bindings: Vec<DartLexicalBinding>,\n) -> Vec<DartLexicalBinding> {\n    let mut bindings: Vec<_> = bindings\n        .into_iter()\n        .map(|mut binding| {\n            binding.source_path = path.to_string();\n            binding\n        })\n        .collect();\n    sort_and_deduplicate_bindings(&mut bindings);\n    bindings\n}\n\nfn sort_and_deduplicate_bindings(bindings: &mut Vec<DartLexicalBinding>) {\n    bindings.sort_by(|left, right| {\n        (\n            &left.source_path,\n            left.declaration_span.byte_start,\n            left.declaration_span.byte_end,\n            left.kind,\n            &left.name,\n            &left.symbol_id,\n        )\n            .cmp(&(\n                &right.source_path,\n                right.declaration_span.byte_start,\n                right.declaration_span.byte_end,\n                right.kind,\n                &right.name,\n                &right.symbol_id,\n            ))\n    });\n    bindings.dedup_by(|left, right| {\n        left.source_path == right.source_path\n            && left.symbol_id == right.symbol_id\n            && left.declaration_span.byte_start == right.declaration_span.byte_start\n            && left.declaration_span.byte_end == right.declaration_span.byte_end\n    });\n}\n\nfn sort_and_deduplicate_references(references: &mut Vec<DartIdentifierReference>) {\n", "binding normalization")
+          incremental_path.write_text(text)
+
+          navigation_path = Path("crates/dartscope-index/src/navigation.rs")
+          text = navigation_path.read_text()
+          text = replace_once(text, "use crate::lexical_bindings::resolve_lexical_binding;\n", "use crate::incremental::DartWorkspaceSnapshot;\nuse crate::lexical_bindings::resolve_lexical_binding;\n", "snapshot import")
+          text = replace_once(text, "    pub fn with_options(\n        analysis: &DartProjectReferenceAnalysis,\n        options: &DartIndexOptions,\n    ) -> Self {\n        let uri_graph = Arc::new(build_uri_graph_with_options(&analysis.project, options));\n        let part_links = analyze_part_links_with_graph(&analysis.project, &uri_graph);\n        let namespace = NamespaceResolver::from_analyses(\n            &analysis.project,\n            options,\n            Arc::clone(&uri_graph),\n            &part_links,\n        );\n", "    pub fn with_options(\n        analysis: &DartProjectReferenceAnalysis,\n        options: &DartIndexOptions,\n    ) -> Self {\n        let uri_graph = Arc::new(build_uri_graph_with_options(&analysis.project, options));\n        let part_links = analyze_part_links_with_graph(&analysis.project, &uri_graph);\n        Self::from_components(analysis, options, uri_graph, &part_links)\n    }\n\n    pub fn from_snapshot(snapshot: &DartWorkspaceSnapshot) -> Self {\n        let analysis = snapshot.project_reference_analysis();\n        Self::from_components(\n            &analysis,\n            snapshot.options(),\n            Arc::new(snapshot.uri_graph().clone()),\n            snapshot.part_links(),\n        )\n    }\n\n    fn from_components(\n        analysis: &DartProjectReferenceAnalysis,\n        options: &DartIndexOptions,\n        uri_graph: Arc<DartUriGraph>,\n        part_links: &dartscope_core::DartPartLinkAnalysis,\n    ) -> Self {\n        let namespace = NamespaceResolver::from_analyses(\n            &analysis.project,\n            options,\n            Arc::clone(&uri_graph),\n            part_links,\n        );\n", "snapshot context constructor")
+          navigation_path.write_text(text)
+
+          test_path = Path("crates/dartscope-index/tests/navigation_batch.rs")
+          text = test_path.read_text()
+          text = replace_once(text, "use dartscope_core::{DartFileInput, DartIdentifierReferenceKind, DartProjectInput};\n", "use dartscope_core::{\n    DartFileInput, DartFileReferenceAnalysis, DartIdentifierReferenceKind, DartProjectInput,\n    DartProjectReferenceAnalysis,\n};\n", "test core imports")
+          text = replace_once(text, "    DartDefinitionTarget, DartWorkspaceResolutionContext, find_definitions, find_references,\n", "    DartDefinitionTarget, DartWorkspaceIndex, DartWorkspaceResolutionContext, find_definitions,\n    find_references,\n", "test index imports")
+          text = replace_once(text, "use dartscope_parse::analyze_project_with_references;\n", "use dartscope_parse::{analyze_file_with_references, analyze_project_with_references};\n", "test parser imports")
+          insertion = r'''
+
+#[test]
+fn snapshot_navigation_matches_full_build_across_incremental_updates() {
+    let analysis = project();
+    let helper = occurrence(B, "helper();", "helper");
+    let local = occurrence(B, "local++;", "local");
+    let queries = [
+        DartDefinitionQuery::new("lib/b.dart", helper),
+        DartDefinitionQuery::new("lib/b.dart", local),
+    ];
+    let full = DartWorkspaceResolutionContext::new(&analysis).find_definitions(&queries);
+    let mut index = DartWorkspaceIndex::from_reference_project(analysis.clone());
+    let initial_snapshot = index.snapshot();
+    assert_eq!(
+        DartWorkspaceResolutionContext::from_snapshot(&initial_snapshot)
+            .find_definitions(&queries),
+        full
+    );
+    assert_eq!(initial_snapshot.identifier_references(), analysis.references);
+    assert_eq!(initial_snapshot.lexical_bindings(), analysis.bindings);
+
+    let no_op = index.upsert_file_with_references(file_analysis(&analysis, "lib/b.dart"));
+    assert!(no_op.is_no_op());
+    assert_eq!(index.snapshot().generation(), initial_snapshot.generation());
+
+    const UPDATED_B: &str = r#"
+import 'a.dart';
+
+void consume(Object? input) {}
+
+void run(int seed) {
+  var renamed = seed;
+  helper();
+  renamed++;
+  consume(renamed);
+}
+"#;
+    let update = index.upsert_file_with_references(analyze_file_with_references(
+        DartFileInput::new("lib/b.dart", UPDATED_B),
+    ));
+    assert!(update.rebuilt.identifier_references);
+    let updated_snapshot = index.snapshot();
+    let updated_project = project_with_b(UPDATED_B);
+    let renamed = occurrence(UPDATED_B, "renamed++;", "renamed");
+    let updated_queries = [
+        DartDefinitionQuery::new("lib/b.dart", occurrence(UPDATED_B, "helper();", "helper")),
+        DartDefinitionQuery::new("lib/b.dart", renamed),
+    ];
+    assert_eq!(
+        DartWorkspaceResolutionContext::from_snapshot(&updated_snapshot)
+            .find_definitions(&updated_queries),
+        DartWorkspaceResolutionContext::new(&updated_project).find_definitions(&updated_queries)
+    );
+    assert_eq!(
+        DartWorkspaceResolutionContext::from_snapshot(&initial_snapshot)
+            .find_definitions(&queries),
+        full
+    );
+
+    let removal = index.remove_file("lib/a.dart");
+    assert!(removal.rebuilt.identifier_references);
+    let removed_snapshot = index.snapshot();
+    let removed_project = project_without_a(UPDATED_B);
+    assert_eq!(
+        DartWorkspaceResolutionContext::from_snapshot(&removed_snapshot)
+            .find_definitions(&updated_queries),
+        DartWorkspaceResolutionContext::new(&removed_project).find_definitions(&updated_queries)
+    );
+}
+'''
+          text = replace_once(text, "\nfn project() -> dartscope_core::DartProjectReferenceAnalysis {\n", insertion + "\nfn project() -> dartscope_core::DartProjectReferenceAnalysis {\n", "snapshot parity test")
+          helpers = r'''
+
+fn project_with_b(source: &str) -> DartProjectReferenceAnalysis {
+    analyze_project_with_references(DartProjectInput::new(
+        ".",
+        vec![
+            DartFileInput::new("lib/a.dart", A),
+            DartFileInput::new("lib/b.dart", source),
+            DartFileInput::new("lib/c.dart", C),
+            DartFileInput::new("lib/external.dart", EXTERNAL),
+            DartFileInput::new("lib/base.dart", BASE),
+            DartFileInput::new("lib/io.dart", IO),
+            DartFileInput::new("lib/conditional.dart", CONDITIONAL),
+        ],
+        vec![],
+    ))
+}
+
+fn project_without_a(source: &str) -> DartProjectReferenceAnalysis {
+    analyze_project_with_references(DartProjectInput::new(
+        ".",
+        vec![
+            DartFileInput::new("lib/b.dart", source),
+            DartFileInput::new("lib/c.dart", C),
+            DartFileInput::new("lib/external.dart", EXTERNAL),
+            DartFileInput::new("lib/base.dart", BASE),
+            DartFileInput::new("lib/io.dart", IO),
+            DartFileInput::new("lib/conditional.dart", CONDITIONAL),
+        ],
+        vec![],
+    ))
+}
+
+fn file_analysis(analysis: &DartProjectReferenceAnalysis, path: &str) -> DartFileReferenceAnalysis {
+    DartFileReferenceAnalysis {
+        file: analysis
+            .project
+            .files
+            .iter()
+            .find(|file| file.path == path)
+            .expect("file analysis")
+            .clone(),
+        references: analysis
+            .references
+            .iter()
+            .filter(|reference| reference.source_path == path)
+            .cloned()
+            .collect(),
+        bindings: analysis
+            .bindings
+            .iter()
+            .filter(|binding| binding.source_path == path)
+            .cloned()
+            .collect(),
+    }
+}
+'''
+          text = replace_once(text, "\nfn resolution_at<'a>(\n", helpers + "\nfn resolution_at<'a>(\n", "test helpers")
+          test_path.write_text(text)
+          PY
+      - name: Format and commit changes
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+          cargo +1.95.0 fmt --all
+          git config user.name "dartscope-ci"
+          git config user.email "dartscope-ci@users.noreply.github.com"
+          git add crates/dartscope-index/src/incremental.rs crates/dartscope-index/src/navigation.rs crates/dartscope-index/tests/navigation_batch.rs
+          git commit -m "feat: add incremental navigation snapshot parity"
+          git push origin HEAD:agent/incremental-navigation-parity
