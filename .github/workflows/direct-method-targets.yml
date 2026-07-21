@@ -38,13 +38,33 @@ jobs:
             git commit -m "feat: resolve direct method targets"
             git push origin HEAD:agent/direct-method-targets
           fi
-      - name: Verify strictly
+      - name: Verify and retain output
+        id: verify
+        continue-on-error: true
         run: |
-          set -euo pipefail
-          cargo +1.95.0 test -p dartscope-parse --lib --locked
-          cargo +1.95.0 test -p dartscope-index --test navigation_methods --locked
-          cargo +1.95.0 test -p dartscope-index --test navigation_constructors --locked
-          cargo +1.95.0 test -p dartscope-index --test navigation_batch --locked
-          cargo +1.95.0 test -p dartscope-index --test reference_resolution --locked
-          cargo +1.95.0 test -p dartscope-index --test incremental_navigation_parity --locked
-          cargo +1.95.0 clippy -p dartscope-core -p dartscope-parse -p dartscope-index --all-targets --locked -- -D warnings
+          set -o pipefail
+          {
+            cargo +1.95.0 test -p dartscope-parse --lib --locked
+            cargo +1.95.0 test -p dartscope-index --test navigation_methods --locked
+            cargo +1.95.0 test -p dartscope-index --test navigation_constructors --locked
+            cargo +1.95.0 test -p dartscope-index --test navigation_batch --locked
+            cargo +1.95.0 test -p dartscope-index --test reference_resolution --locked
+            cargo +1.95.0 test -p dartscope-index --test incremental_navigation_parity --locked
+            cargo +1.95.0 clippy -p dartscope-core -p dartscope-parse -p dartscope-index --all-targets --locked -- -D warnings
+          } 2>&1 | tee .github/direct-method-verify.log
+          status=${PIPESTATUS[0]}
+          echo "status=${status}" >> "${GITHUB_OUTPUT}"
+          exit "${status}"
+      - name: Commit diagnostic output
+        if: always()
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/direct-method-verify.log
+          if ! git diff --cached --quiet; then
+            git commit -m "ci: retain direct method verification log"
+            git push origin HEAD:agent/direct-method-targets
+          fi
+      - name: Fail on verification error
+        if: steps.verify.outputs.status != '0'
+        run: exit 1
