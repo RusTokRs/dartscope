@@ -4,9 +4,10 @@ use std::sync::Arc;
 use dartscope_core::{
     DartDiagnostic, DartFileAnalysis, DartFileReferenceAnalysis, DartGraphqlContractAnalysis,
     DartIdentifierReference, DartIdentifierReferenceResolution,
-    DartIdentifierReferenceResolutionAnalysis, DartPartLinkAnalysis, DartPartLinkStatus,
-    DartProjectAnalysis, DartProjectReferenceAnalysis, DartProjectSummary, DartUriGraph,
-    DartUriReference, DartUriReferenceKind, PackageConfigAnalysis, PubspecAnalysis, normalize_path,
+    DartIdentifierReferenceResolutionAnalysis, DartLexicalBinding, DartPartLinkAnalysis,
+    DartPartLinkStatus, DartProjectAnalysis, DartProjectReferenceAnalysis, DartProjectSummary,
+    DartUriGraph, DartUriReference, DartUriReferenceKind, PackageConfigAnalysis, PubspecAnalysis,
+    normalize_path,
 };
 
 use crate::graphql::{GraphqlContractAnalyzer, sort_contract_analysis};
@@ -37,6 +38,9 @@ pub struct DartWorkspaceSnapshot {
     library_dependency_fingerprints: Arc<Vec<DartLibraryDependencyFingerprint>>,
     graphql_contracts: Arc<DartGraphqlContractAnalysis>,
     identifier_reference_resolutions: Arc<DartIdentifierReferenceResolutionAnalysis>,
+    identifier_references: Arc<Vec<DartIdentifierReference>>,
+    lexical_bindings: Arc<Vec<DartLexicalBinding>>,
+    options: DartIndexOptions,
 }
 
 impl DartWorkspaceSnapshot {
@@ -77,6 +81,26 @@ impl DartWorkspaceSnapshot {
 
     pub fn identifier_reference_resolutions(&self) -> &DartIdentifierReferenceResolutionAnalysis {
         &self.identifier_reference_resolutions
+    }
+
+    pub fn identifier_references(&self) -> &[DartIdentifierReference] {
+        self.identifier_references.as_slice()
+    }
+
+    pub fn lexical_bindings(&self) -> &[DartLexicalBinding] {
+        self.lexical_bindings.as_slice()
+    }
+
+    pub fn options(&self) -> &DartIndexOptions {
+        &self.options
+    }
+
+    pub fn project_reference_analysis(&self) -> DartProjectReferenceAnalysis {
+        DartProjectReferenceAnalysis {
+            project: self.project.as_ref().clone(),
+            references: self.identifier_references.as_ref().clone(),
+            bindings: self.lexical_bindings.as_ref().clone(),
+        }
     }
 }
 
@@ -170,6 +194,7 @@ pub struct DartWorkspaceIndex {
     package_configs: BTreeMap<String, PackageConfigAnalysis>,
     project_diagnostics: Vec<DartDiagnostic>,
     references_by_path: BTreeMap<String, Vec<DartIdentifierReference>>,
+    bindings_by_path: BTreeMap<String, Vec<DartLexicalBinding>>,
     uri_references_by_path: BTreeMap<String, Arc<Vec<DartUriReference>>>,
     library_paths_by_owner: BTreeMap<String, Arc<Vec<String>>>,
     library_dependency_fingerprints_by_owner:
@@ -192,7 +217,7 @@ impl DartWorkspaceIndex {
         project: DartProjectAnalysis,
         options: DartIndexOptions,
     ) -> Self {
-        Self::from_inputs(project, BTreeMap::new(), options)
+        Self::from_inputs(project, BTreeMap::new(), BTreeMap::new(), options)
     }
 
     /// Builds a stateful index including opt-in parser-produced identifier references.
@@ -206,12 +231,19 @@ impl DartWorkspaceIndex {
         options: DartIndexOptions,
     ) -> Self {
         let references_by_path = group_references(analysis.references);
-        Self::from_inputs(analysis.project, references_by_path, options)
+        let bindings_by_path = group_bindings(analysis.bindings);
+        Self::from_inputs(
+            analysis.project,
+            references_by_path,
+            bindings_by_path,
+            options,
+        )
     }
 
     fn from_inputs(
         project: DartProjectAnalysis,
         references_by_path: BTreeMap<String, Vec<DartIdentifierReference>>,
+        bindings_by_path: BTreeMap<String, Vec<DartLexicalBinding>>,
         options: DartIndexOptions,
     ) -> Self {
         let project_diagnostics = additional_project_diagnostics(&project);
@@ -261,6 +293,8 @@ impl DartWorkspaceIndex {
         let (reference_resolutions_by_path, identifier_reference_resolutions) =
             build_reference_resolution_cache(&project, &references_by_path, &options);
         let identifier_reference_resolutions = Arc::new(identifier_reference_resolutions);
+        let identifier_references = Arc::new(aggregate_references(&references_by_path));
+        let lexical_bindings = Arc::new(aggregate_bindings(&bindings_by_path));
         let initial_uri_files = uri_references_by_path.len() as u64;
         let initial_namespace_libraries = library_paths_by_owner.len() as u64;
         let initial_dependency_fingerprints = library_dependency_fingerprints_by_owner.len() as u64;
@@ -274,6 +308,9 @@ impl DartWorkspaceIndex {
             library_dependency_fingerprints,
             graphql_contracts,
             identifier_reference_resolutions,
+            identifier_references,
+            lexical_bindings,
+            options: options.clone(),
         });
 
         Self {
@@ -283,6 +320,7 @@ impl DartWorkspaceIndex {
             package_configs,
             project_diagnostics,
             references_by_path,
+            bindings_by_path,
             uri_references_by_path,
             library_paths_by_owner,
             library_dependency_fingerprints_by_owner,
@@ -421,7 +459,7 @@ impl DartWorkspaceIndex {
 
     /// Inserts or replaces a normalized file analysis and clears stale reference facts for that path.
     pub fn upsert_file(&mut self, file: DartFileAnalysis) -> DartWorkspaceUpdate {
-        self.upsert_file_internal(file, None)
+        self.upsert_file_internal(file, None, None)
     }
 
     /// Inserts or replaces a file together with parser-produced identifier-reference facts.
@@ -429,18 +467,26 @@ impl DartWorkspaceIndex {
         &mut self,
         analysis: DartFileReferenceAnalysis,
     ) -> DartWorkspaceUpdate {
-        self.upsert_file_internal(analysis.file, Some(analysis.references))
+        self.upsert_file_internal(
+            analysis.file,
+            Some(analysis.references),
+            Some(analysis.bindings),
+        )
     }
 
     fn upsert_file_internal(
         &mut self,
         file: DartFileAnalysis,
         references: Option<Vec<DartIdentifierReference>>,
+        bindings: Option<Vec<DartLexicalBinding>>,
     ) -> DartWorkspaceUpdate {
         let file = normalize_file(file);
         let path = file.path.clone();
         let new_references = references
             .map(|references| normalize_references_for_path(&path, references))
+            .unwrap_or_default();
+        let new_bindings = bindings
+            .map(|bindings| normalize_bindings_for_path(&path, bindings))
             .unwrap_or_default();
         let old_file = self.files.get(&path).cloned();
         let old_references = self
@@ -448,14 +494,20 @@ impl DartWorkspaceIndex {
             .get(&path)
             .cloned()
             .unwrap_or_default();
+        let old_bindings = self
+            .bindings_by_path
+            .get(&path)
+            .cloned()
+            .unwrap_or_default();
         let references_changed = old_references != new_references;
+        let bindings_changed = old_bindings != new_bindings;
 
-        if old_file.as_ref() == Some(&file) && !references_changed {
+        if old_file.as_ref() == Some(&file) && !references_changed && !bindings_changed {
             return self.no_op_update();
         }
 
         let plan = match old_file.as_ref() {
-            Some(old) => file_rebuild_plan(old, &file, references_changed),
+            Some(old) => file_rebuild_plan(old, &file, references_changed || bindings_changed),
             None => RebuildPlan::all(),
         };
         let changed_declaration_names =
@@ -467,6 +519,11 @@ impl DartWorkspaceIndex {
             self.references_by_path.remove(&path);
         } else {
             self.references_by_path.insert(path.clone(), new_references);
+        }
+        if new_bindings.is_empty() {
+            self.bindings_by_path.remove(&path);
+        } else {
+            self.bindings_by_path.insert(path.clone(), new_bindings);
         }
         self.rebuild(
             plan,
@@ -487,6 +544,7 @@ impl DartWorkspaceIndex {
         let changed_declaration_names = changed_top_level_declaration_names(Some(&removed), None);
         let changed_graphql_operation_names = changed_graphql_operation_names(Some(&removed), None);
         self.references_by_path.remove(&path);
+        self.bindings_by_path.remove(&path);
         self.rebuild(
             RebuildPlan::all(),
             BTreeSet::from([path]),
@@ -837,6 +895,9 @@ impl DartWorkspaceIndex {
             Arc::clone(&old.identifier_reference_resolutions)
         };
 
+        let identifier_references = Arc::new(aggregate_references(&self.references_by_path));
+        let lexical_bindings = Arc::new(aggregate_bindings(&self.bindings_by_path));
+
         self.counters.generations += 1;
         let generation = old.generation + 1;
         self.snapshot = Arc::new(DartWorkspaceSnapshot {
@@ -847,6 +908,9 @@ impl DartWorkspaceIndex {
             library_dependency_fingerprints,
             graphql_contracts,
             identifier_reference_resolutions,
+            identifier_references,
+            lexical_bindings,
+            options: self.options.clone(),
         });
 
         DartWorkspaceUpdate {
@@ -1639,6 +1703,39 @@ fn normalize_package_config(mut config: PackageConfigAnalysis) -> PackageConfigA
     config
 }
 
+fn aggregate_references(
+    references_by_path: &BTreeMap<String, Vec<DartIdentifierReference>>,
+) -> Vec<DartIdentifierReference> {
+    references_by_path
+        .values()
+        .flat_map(|references| references.iter().cloned())
+        .collect()
+}
+
+fn aggregate_bindings(
+    bindings_by_path: &BTreeMap<String, Vec<DartLexicalBinding>>,
+) -> Vec<DartLexicalBinding> {
+    bindings_by_path
+        .values()
+        .flat_map(|bindings| bindings.iter().cloned())
+        .collect()
+}
+
+fn group_bindings(bindings: Vec<DartLexicalBinding>) -> BTreeMap<String, Vec<DartLexicalBinding>> {
+    let mut grouped: BTreeMap<String, Vec<DartLexicalBinding>> = BTreeMap::new();
+    for mut binding in bindings {
+        binding.source_path = normalize_path(binding.source_path);
+        grouped
+            .entry(binding.source_path.clone())
+            .or_default()
+            .push(binding);
+    }
+    for bindings in grouped.values_mut() {
+        sort_and_deduplicate_bindings(bindings);
+    }
+    grouped
+}
+
 fn group_references(
     references: Vec<DartIdentifierReference>,
 ) -> BTreeMap<String, Vec<DartIdentifierReference>> {
@@ -1669,6 +1766,48 @@ fn normalize_references_for_path(
         .collect();
     sort_and_deduplicate_references(&mut references);
     references
+}
+
+fn normalize_bindings_for_path(
+    path: &str,
+    bindings: Vec<DartLexicalBinding>,
+) -> Vec<DartLexicalBinding> {
+    let mut bindings: Vec<_> = bindings
+        .into_iter()
+        .map(|mut binding| {
+            binding.source_path = path.to_string();
+            binding
+        })
+        .collect();
+    sort_and_deduplicate_bindings(&mut bindings);
+    bindings
+}
+
+fn sort_and_deduplicate_bindings(bindings: &mut Vec<DartLexicalBinding>) {
+    bindings.sort_by(|left, right| {
+        (
+            &left.source_path,
+            left.declaration_span.byte_start,
+            left.declaration_span.byte_end,
+            left.kind,
+            &left.name,
+            &left.symbol_id,
+        )
+            .cmp(&(
+                &right.source_path,
+                right.declaration_span.byte_start,
+                right.declaration_span.byte_end,
+                right.kind,
+                &right.name,
+                &right.symbol_id,
+            ))
+    });
+    bindings.dedup_by(|left, right| {
+        left.source_path == right.source_path
+            && left.symbol_id == right.symbol_id
+            && left.declaration_span.byte_start == right.declaration_span.byte_start
+            && left.declaration_span.byte_end == right.declaration_span.byte_end
+    });
 }
 
 fn sort_and_deduplicate_references(references: &mut Vec<DartIdentifierReference>) {

@@ -9,6 +9,7 @@ use dartscope_core::{
     DartUriGraph, DartUriReferenceKind, DartUriResolution, normalize_path,
 };
 
+use crate::incremental::DartWorkspaceSnapshot;
 use crate::lexical_bindings::resolve_lexical_binding;
 use crate::namespace::{NamespaceResolver, resolve_symbol_with_resolver};
 use crate::parts::analyze_part_links_with_graph;
@@ -108,11 +109,30 @@ impl DartWorkspaceResolutionContext {
     ) -> Self {
         let uri_graph = Arc::new(build_uri_graph_with_options(&analysis.project, options));
         let part_links = analyze_part_links_with_graph(&analysis.project, &uri_graph);
+        Self::from_components(analysis, options, uri_graph, &part_links)
+    }
+
+    pub fn from_snapshot(snapshot: &DartWorkspaceSnapshot) -> Self {
+        let analysis = snapshot.project_reference_analysis();
+        Self::from_components(
+            &analysis,
+            snapshot.options(),
+            Arc::new(snapshot.uri_graph().clone()),
+            snapshot.part_links(),
+        )
+    }
+
+    fn from_components(
+        analysis: &DartProjectReferenceAnalysis,
+        options: &DartIndexOptions,
+        uri_graph: Arc<DartUriGraph>,
+        part_links: &dartscope_core::DartPartLinkAnalysis,
+    ) -> Self {
         let namespace = NamespaceResolver::from_analyses(
             &analysis.project,
             options,
             Arc::clone(&uri_graph),
-            &part_links,
+            part_links,
         );
         let mut references = analysis.references.clone();
         sort_references(&mut references);
