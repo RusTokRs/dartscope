@@ -103,10 +103,26 @@ fn resolves_exact_prefixed_constructors_and_preserves_owner_fallback_evidence() 
     );
 }
 
-const FIRST: &str = "class Shared { Shared.named(); }\n";
-const SECOND: &str = "class Shared { Shared.named(); }\n";
-const SERVICE_STUB: &str = "class Service { Service.named(); }\n";
-const SERVICE_IO: &str = "class Service { Service.named(); }\n";
+const FIRST: &str = r#"
+class Shared {
+  Shared.named();
+}
+"#;
+const SECOND: &str = r#"
+class Shared {
+  Shared.named();
+}
+"#;
+const SERVICE_STUB: &str = r#"
+class Service {
+  Service.named();
+}
+"#;
+const SERVICE_IO: &str = r#"
+class Service {
+  Service.named();
+}
+"#;
 const ENV_CLIENT: &str = r#"
 import 'first.dart';
 import 'second.dart';
