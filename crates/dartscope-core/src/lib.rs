@@ -188,6 +188,10 @@ pub struct DartIdentifierReference {
 pub enum DartIdentifierReferenceKind {
     InvocationTarget,
     ConstructorTarget,
+    MemberDeclarationInstance,
+    MemberDeclarationStatic,
+    MemberInvocationInstance,
+    MemberInvocationStatic,
     TypeAnnotation,
     ParameterType,
     ReturnType,
