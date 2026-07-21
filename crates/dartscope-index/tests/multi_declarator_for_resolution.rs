@@ -16,7 +16,6 @@ void run(
   int seed,
   int self,
   int laterName,
-  Object? Function() future,
 ) {
   for (
     var first = seed, second = first, third;
@@ -34,7 +33,7 @@ void run(
   ) consume(result);
   for (var self = self, copy = self; copy != null; ) consume(copy);
   for (var before = laterName, laterName = seed; before < seed; before++) consume(before);
-  for (var early = future(), future = topLevel; early != null; ) consume(early);
+  for (var early = pendingCall(), pendingCall = topLevel; early != null; ) consume(early);
   for (seed = 0, laterName = seed; seed < 1; seed++) consume(seed);
   for (var (left, right) = values; seed < 1; seed++) consume(seed);
   consume(seed);
@@ -114,7 +113,7 @@ fn keeps_self_later_and_unsupported_headers_out_of_resolution() {
     for offset in [
         occurrence("var self = self", "self = self") + "self = ".len(),
         occurrence("before = laterName", "laterName"),
-        occurrence("early = future()", "future"),
+        occurrence("early = pendingCall()", "pendingCall"),
         occurrence("seed = 0, laterName", "seed"),
         occurrence("laterName = seed; seed < 1", "laterName"),
         occurrence("var (left, right)", "left"),
@@ -125,6 +124,12 @@ fn keeps_self_later_and_unsupported_headers_out_of_resolution() {
             .iter()
             .all(|resolution| resolution.query.byte_offset != offset));
     }
+
+    let pending_call = occurrence("early = pendingCall()", "pendingCall");
+    assert!(analysis.references.iter().all(|reference| {
+        reference.kind != DartIdentifierReferenceKind::InvocationTarget
+            || reference.span.byte_start != pending_call
+    }));
 
     let callback = occurrence("result = callback()", "callback");
     assert!(analysis.references.iter().all(|reference| {
