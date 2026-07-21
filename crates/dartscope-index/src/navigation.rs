@@ -343,7 +343,15 @@ fn resolve_constructor_reference(
     };
     let resolution = resolve_constructible_type_with_resolver(&analysis.project, query, namespace);
     let external_uris = external_namespace_uris(analysis, uri_graph, &reference);
-    let base_status = definition_status(resolution.status, !external_uris.is_empty());
+    let base_status = if resolution.status
+        == DartSymbolResolutionStatus::ConditionalEnvironmentRequired
+        && resolution.candidates.is_empty()
+        && !external_uris.is_empty()
+    {
+        DartDefinitionResolutionStatus::ExternalUnindexed
+    } else {
+        definition_status(resolution.status, !external_uris.is_empty())
+    };
     let constructor_name = constructor_declaration_name(analysis, &reference);
     let refinements = resolution
         .candidates
