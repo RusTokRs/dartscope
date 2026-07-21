@@ -3,7 +3,8 @@ use dartscope_core::{DartDeclarationKind, DartFileAnalysis, DartLexicalBindingKi
 use super::scan::{
     contains_top_level_pattern_start, find_keyword, find_top_level_keyword, has_top_level_byte,
     identifier_at, is_binding_name, matching_delimiter, next_non_whitespace,
-    top_level_assignment, top_level_byte_positions, top_level_identifiers, trim_range,
+    top_level_assignment, top_level_byte_positions, top_level_identifiers, top_level_segments,
+    trim_range,
 };
 use super::{LexicalRegionAnalysis, binding_for_token, innermost_callable_symbol, write_for_token};
 
@@ -206,6 +207,20 @@ fn contains_local_declaration(
     })
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ClassicForDeclarator<'source> {
+    token: super::IdentifierToken<'source>,
+    declaration_start: usize,
+    declaration_end: usize,
+    scope_start: usize,
+}
+
+#[derive(Debug)]
+enum ClassicForInitializer<'source> {
+    Expression,
+    Declaration(Vec<ClassicForDeclarator<'source>>),
+}
+
 fn parse_for_header(
     source: &str,
     start: usize,
@@ -228,34 +243,105 @@ fn parse_for_header(
     let Some((init_start, init_end)) = trim_range(source, start, semicolons[0]) else {
         return Some(Vec::new());
     };
-    if has_top_level_byte(source, init_start, init_end, b',')
-        || contains_top_level_pattern_start(source, init_start, init_end)
+    let initializer = parse_classic_for_initializer(source, init_start, init_end)?;
+    let ClassicForInitializer::Declaration(declarators) = initializer else {
+        return Some(Vec::new());
+    };
+    let bindings = declarators
+        .iter()
+        .map(|declarator| {
+            binding_for_token(
+                declarator.token,
+                DartLexicalBindingKind::LocalVariable,
+                "for_variable",
+                declarator.scope_start,
+                body_end,
+                owner_id,
+            )
+        })
+        .collect::<Option<Vec<_>>>()?;
+    outputs.0.extend(
+        declarators
+            .iter()
+            .map(|declarator| (declarator.declaration_start, declarator.declaration_end)),
+    );
+    Some(bindings)
+}
+
+fn parse_classic_for_initializer<'source>(
+    source: &'source str,
+    start: usize,
+    end: usize,
+) -> Option<ClassicForInitializer<'source>> {
+    let segments = top_level_segments(source, start, end, b',');
+    let (first_start, first_end) = *segments.first()?;
+    let (first_start, first_end) = trim_range(source, first_start, first_end)?;
+    let declaration_end = top_level_assignment(source, first_start, first_end).unwrap_or(first_end);
+    if contains_top_level_pattern_start(source, first_start, declaration_end) {
+        return None;
+    }
+    let tokens = top_level_identifiers(source, first_start, declaration_end);
+    let declares = !tokens.is_empty()
+        && !source[first_start..declaration_end].contains('.')
+        && (is_declaration_prefix(tokens[0].text) || tokens.len() >= 2);
+    if !declares {
+        return (segments.len() == 1
+            && !contains_top_level_pattern_start(source, first_start, first_end))
+        .then_some(ClassicForInitializer::Expression);
+    }
+
+    let mut declarators = Vec::with_capacity(segments.len());
+    declarators.push(parse_classic_for_declarator(
+        source,
+        first_start,
+        first_end,
+        true,
+    )?);
+    for (segment_start, segment_end) in segments.into_iter().skip(1) {
+        declarators.push(parse_classic_for_declarator(
+            source,
+            segment_start,
+            segment_end,
+            false,
+        )?);
+    }
+    Some(ClassicForInitializer::Declaration(declarators))
+}
+
+fn parse_classic_for_declarator<'source>(
+    source: &'source str,
+    start: usize,
+    end: usize,
+    first: bool,
+) -> Option<ClassicForDeclarator<'source>> {
+    let (start, end) = trim_range(source, start, end)?;
+    let assignment = top_level_assignment(source, start, end);
+    let declaration_end = assignment.unwrap_or(end);
+    if contains_top_level_pattern_start(source, start, declaration_end)
+        || source[start..declaration_end].contains('.')
     {
         return None;
     }
-    let declaration_end = top_level_assignment(source, init_start, init_end).unwrap_or(init_end);
-    let tokens = top_level_identifiers(source, init_start, declaration_end);
-    if tokens.is_empty() || source[init_start..declaration_end].contains('.') {
-        return Some(Vec::new());
-    }
-    let declares = is_declaration_prefix(tokens[0].text) || tokens.len() >= 2;
-    if !declares {
-        return Some(Vec::new());
-    }
-    let name = *tokens.last()?;
-    if !is_binding_name(name.text) {
+    let tokens = top_level_identifiers(source, start, declaration_end);
+    let token = *tokens.last()?;
+    if !is_binding_name(token.text) {
         return None;
     }
-    outputs.0.push((init_start, declaration_end));
-    binding_for_token(
-        name,
-        DartLexicalBindingKind::LocalVariable,
-        "for_variable",
-        semicolons[0] + 1,
-        body_end,
-        owner_id,
-    )
-    .map(|binding| vec![binding])
+    if !first
+        && (tokens.len() != 1 || token.start != start || token.end != declaration_end)
+    {
+        return None;
+    }
+    let scope_start = match assignment {
+        Some(assignment) => trim_range(source, assignment + 1, end)?.1,
+        None => token.end,
+    };
+    Some(ClassicForDeclarator {
+        token,
+        declaration_start: start,
+        declaration_end,
+        scope_start,
+    })
 }
 
 fn parse_for_in_header(
