@@ -20,6 +20,7 @@ jobs:
       - name: Apply and format constructor resolution slice
         run: |
           python3 .github/scripts/apply_constructor_target_resolution.py
+          python3 .github/scripts/fix_constructor_duplicate_facts.py
           cargo +1.95.0 fmt --all
       - name: Commit product changes
         run: |
@@ -27,7 +28,7 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add crates/dartscope-index/src/namespace.rs crates/dartscope-index/src/navigation.rs crates/dartscope-index/tests/navigation_constructors.rs
           if ! git diff --cached --quiet; then
-            git commit -m "feat: resolve exact constructor targets"
+            git commit -m "fix: prefer constructor facts over invocation facts"
             git push origin HEAD:agent/constructor-target-resolution
           fi
       - name: Verify focused slice and retain output
