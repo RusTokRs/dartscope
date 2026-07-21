@@ -1,0 +1,451 @@
+=== format ===
+=== parser property facts ===
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded lazy_static v1.5.0
+  Downloaded foldhash v0.2.0
+  Downloaded percent-encoding v2.3.2
+  Downloaded itoa v1.0.18
+  Downloaded hashlink v0.11.1
+  Downloaded fnv v1.0.7
+  Downloaded arraydeque v0.5.1
+  Downloaded zmij v1.0.21
+  Downloaded thiserror v2.0.18
+  Downloaded uriparse v0.6.4
+  Downloaded unicode-ident v1.0.24
+  Downloaded proc-macro2 v1.0.106
+  Downloaded yaml-rust2 v0.11.0
+  Downloaded serde v1.0.228
+  Downloaded serde_json v1.0.150
+  Downloaded hashbrown v0.16.1
+  Downloaded serde_core v1.0.228
+  Downloaded memchr v2.8.2
+  Downloaded thiserror-impl v2.0.18
+  Downloaded serde_derive v1.0.228
+  Downloaded quote v1.0.46
+  Downloaded syn v2.0.118
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.46
+   Compiling unicode-ident v1.0.24
+   Compiling serde_core v1.0.228
+   Compiling serde v1.0.228
+   Compiling thiserror v2.0.18
+   Compiling zmij v1.0.21
+   Compiling serde_json v1.0.150
+   Compiling foldhash v0.2.0
+   Compiling hashbrown v0.16.1
+   Compiling fnv v1.0.7
+   Compiling itoa v1.0.18
+   Compiling syn v2.0.118
+   Compiling memchr v2.8.2
+   Compiling lazy_static v1.5.0
+   Compiling uriparse v0.6.4
+   Compiling hashlink v0.11.1
+   Compiling arraydeque v0.5.1
+   Compiling percent-encoding v2.3.2
+   Compiling yaml-rust2 v0.11.0
+   Compiling serde_derive v1.0.228
+   Compiling thiserror-impl v2.0.18
+   Compiling dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+   Compiling dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+   Compiling dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.97s
+     Running tests/property_references.rs (target/debug/deps/property_references-ba9a67106367092c)
+
+running 1 test
+test emits_exact_property_declaration_and_access_facts ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+=== navigation properties ===
+   Compiling dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.68s
+     Running tests/navigation_properties.rs (target/debug/deps/navigation_properties-7f353f93aba18828)
+
+running 3 tests
+test preserves_ambiguous_conditional_and_external_property_evidence ... ok
+test resolves_exact_field_getter_and_setter_targets ... ok
+test resolves_part_properties_and_preserves_snapshot_parity ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+=== workspace all-targets ===
+ Downloading crates ...
+  Downloaded serde_spanned v1.1.1
+  Downloaded toml_parser v1.1.2+spec-1.1.0
+  Downloaded toml_datetime v1.1.1+spec-1.1.0
+  Downloaded toml v1.1.3+spec-1.1.0
+  Downloaded winnow v1.0.4
+   Compiling serde_core v1.0.228
+    Checking zmij v1.0.21
+    Checking thiserror v2.0.18
+    Checking itoa v1.0.18
+    Checking memchr v2.8.2
+    Checking fnv v1.0.7
+    Checking lazy_static v1.5.0
+    Checking uriparse v0.6.4
+    Checking percent-encoding v2.3.2
+    Checking foldhash v0.2.0
+    Checking hashbrown v0.16.1
+    Checking arraydeque v0.5.1
+    Checking winnow v1.0.4
+    Checking toml_parser v1.1.2+spec-1.1.0
+    Checking hashlink v0.11.1
+    Checking yaml-rust2 v0.11.0
+    Checking serde v1.0.228
+    Checking serde_json v1.0.150
+    Checking serde_spanned v1.1.1
+    Checking toml_datetime v1.1.1+spec-1.1.0
+    Checking toml v1.1.3+spec-1.1.0
+    Checking dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+    Checking dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+    Checking dartscope-flutter v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-flutter)
+    Checking dartscope-json v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-json)
+    Checking dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+    Checking dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+    Checking dartscope-lints v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-lints)
+    Checking dartscope v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope)
+    Checking dartscope-cli v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.54s
+=== umbrella all-features ===
+    Checking serde_core v1.0.228
+    Checking serde v1.0.228
+    Checking serde_json v1.0.150
+    Checking dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+    Checking dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+    Checking dartscope-json v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-json)
+    Checking dartscope-flutter v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-flutter)
+    Checking dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+    Checking dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+    Checking dartscope-lints v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-lints)
+    Checking dartscope v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.76s
+=== workspace tests ===
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+.......
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 5 tests
+.....
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+......
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 17 tests
+.................
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+.....
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+....
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 52 tests
+....................................................
+test result: ok. 52 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+....
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+....
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+....
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 85 tests
+.....................................................................................
+test result: ok. 85 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+....
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+......
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+....
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 12 tests
+............
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+i
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.10s; merged doctests compilation took 0.10s
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+=== workspace clippy ===
+    Checking dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+    Checking dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+    Checking dartscope-flutter v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-flutter)
+    Checking dartscope-json v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-json)
+    Checking dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+    Checking dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+    Checking dartscope-lints v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-lints)
+    Checking dartscope v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope)
+    Checking dartscope-cli v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.65s
+FINAL_STATUS=0
