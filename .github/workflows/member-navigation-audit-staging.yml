@@ -18,10 +18,33 @@ jobs:
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
       - name: Apply audited member fixes and operator slice
-        run: python3 tools/agent/apply-member-audit-operators.py
+        id: apply
+        shell: bash
+        run: |
+          set +e
+          python3 tools/agent/apply-member-audit-operators.py > member-audit-patch.log 2>&1
+          status=$?
+          cat member-audit-patch.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Retain patch traceback
+        if: steps.apply.outputs.status != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add member-audit-patch.log
+          git commit -m "build: retain member audit patch traceback"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+      - name: Fail patch application
+        if: steps.apply.outputs.status != '0'
+        run: exit 1
       - name: Format product files
+        if: steps.apply.outputs.status == '0'
         run: cargo +1.95.0 fmt --all
       - name: Commit formatted product files
+        if: steps.apply.outputs.status == '0'
         shell: bash
         run: |
           set -euo pipefail
@@ -48,6 +71,7 @@ jobs:
             git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
           fi
       - name: Verify Rust 1.95 contracts
+        if: steps.apply.outputs.status == '0'
         shell: bash
         env:
           RUSTDOCFLAGS: -D warnings
