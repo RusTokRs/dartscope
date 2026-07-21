@@ -49,10 +49,7 @@ fn supports_single_statement_classic_loop_scope() {
             "binding scope should contain offset {offset}"
         );
     }
-    assert_eq!(
-        binding.scope_span.byte_end,
-        occurrence("index();", ";") + 1
-    );
+    assert_eq!(binding.scope_span.byte_end, occurrence("index();", ";") + 1);
 
     for offset in [
         occurrence("var index = seed", "seed"),
@@ -71,7 +68,10 @@ fn supports_single_statement_classic_loop_scope() {
         vec![DartIdentifierReferenceKind::VariableRead]
     );
     assert_eq!(
-        variable_kinds_at(&analysis.references, occurrence("index++) index()", "index")),
+        variable_kinds_at(
+            &analysis.references,
+            occurrence("index++) index()", "index")
+        ),
         vec![
             DartIdentifierReferenceKind::VariableRead,
             DartIdentifierReferenceKind::VariableWrite,
@@ -96,9 +96,7 @@ fn supports_declared_and_existing_single_statement_for_in() {
     let item_binding = analysis
         .bindings
         .iter()
-        .find(|binding| {
-            binding.name == "item" && binding.symbol_id.contains("/for_variable:item@")
-        })
+        .find(|binding| binding.name == "item" && binding.symbol_id.contains("/for_variable:item@"))
         .expect("for-in binding");
     let item_target = occurrence("final item in choose", "item");
     assert!(variable_kinds_at(&analysis.references, item_target).is_empty());
@@ -144,10 +142,7 @@ fn supports_declared_and_existing_single_statement_for_in() {
         "seed"
     );
     assert_eq!(
-        variable_kinds_at(
-            &analysis.references,
-            occurrence("seed += 1", "seed")
-        ),
+        variable_kinds_at(&analysis.references, occurrence("seed += 1", "seed")),
         vec![
             DartIdentifierReferenceKind::VariableRead,
             DartIdentifierReferenceKind::VariableWrite,
@@ -160,9 +155,12 @@ fn defers_nested_control_and_preserves_following_boundary() {
     let analysis =
         analyze_file_with_references(DartFileInput::new("lib/single_statement_for.dart", SOURCE));
 
-    assert!(analysis.bindings.iter().all(|binding| {
-        !matches!(binding.name.as_str(), "deferred" | "nested")
-    }));
+    assert!(
+        analysis
+            .bindings
+            .iter()
+            .all(|binding| { !matches!(binding.name.as_str(), "deferred" | "nested") })
+    );
     for offset in [
         occurrence("var deferred = seed", "seed"),
         occurrence("deferred < 1", "deferred"),
@@ -174,7 +172,10 @@ fn defers_nested_control_and_preserves_following_boundary() {
     }
 
     assert_eq!(
-        variable_kinds_at(&analysis.references, last_occurrence("consume(seed)", "seed")),
+        variable_kinds_at(
+            &analysis.references,
+            last_occurrence("consume(seed)", "seed")
+        ),
         vec![DartIdentifierReferenceKind::VariableRead]
     );
 }
