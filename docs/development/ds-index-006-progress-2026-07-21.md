@@ -35,37 +35,62 @@ Implemented on `main`:
    declaration or target lies inside a deferred lexical region. A focused regression fixture prevents
    a supported nested target from leaking out of an unsupported outer loop region.
 
+## Completed Slice: Multi-Declarator Classic Loops
+
+Implemented on `main`:
+
+1. Added conservative comma-separated classic-loop declarations with one exact declaration span,
+   stable `for_variable` symbol ID, and half-open scope interval per declarator.
+2. An initialized declarator becomes visible after its own initializer; an uninitialized declarator
+   becomes visible immediately after its identifier. Earlier declarators can therefore be read or
+   written from later initializers, while self and later-declarator accesses remain suppressed.
+3. Reused the existing read, plain-write, combined-update, invocation-shadowing, and lexical-index
+   paths for conditions, updates, braced bodies, and supported simple-statement bodies.
+4. Kept comma-separated expression initializers, pattern/destructuring declarations, malformed
+   continuation declarators, and unsupported body forms deferred instead of fabricating bindings.
+5. Added parser and index fixtures for exact spans, stable IDs, initializer ordering, condition and
+   update access, body resolution, namespace filtering, and parser/index parity.
+6. Fixed whitespace normalization before `=` in continuation declarators; ordinary forms such as
+   `second = first` no longer cause the complete loop to be deferred.
+7. Suppressed invocation roots that refer to a self or later declarator inside the same declaration
+   statement. The guard is bounded by statement delimiters, so a declaration still does not
+   retroactively shadow an earlier independent statement.
+
 No public Rust type, serialized field, reference kind, confidence rule, or index/parser boundary was
-changed.
+changed by either loop slice.
 
 ## Current Limits
 
 The heuristic backend still defers:
 
-- pattern and multi-declarator loop headers;
+- pattern and destructuring loop headers;
+- comma-separated classic-loop expression initializers;
 - collection control-flow elements;
 - labels and local declarations used as an unbraced loop body;
 - `try` statements and malformed nested control statements as unbraced loop bodies;
-- retroactive pre-declaration shadowing, definite-assignment and flow analysis;
-- member/index writes and destructuring.
+- retroactive pre-declaration shadowing across separate statements;
+- definite-assignment and flow analysis;
+- member/index writes, inherited-member lookup, and extension lookup.
 
 ## Next Ordered Slice
 
-Continue `DS-INDEX-006` with conservative multi-declarator classic-loop bindings.
+Continue `DS-INDEX-006` with deterministic find-definition and find-references batch APIs over the
+existing parser-produced namespace and lexical facts.
 
 Required evidence before enabling the slice:
 
-1. Per-declarator exact declaration spans and stable symbol IDs.
-2. Initializer-order intervals where an earlier declarator can be read by a later initializer, but
-   self and later-declarator references remain suppressed.
-3. Condition, update, braced-body, and simple-statement-body read/write resolution fixtures.
-4. Nearby negatives for patterns, destructuring, member/index targets, malformed headers, and
-   collection control flow.
-5. Parser/index parity proving that the index consumes only parser-produced facts.
+1. One reusable workspace resolution context shared by a batch of queries.
+2. Stable deterministic ordering and exact source/declaration spans for every result.
+3. Explicit unresolved, ambiguous, not-visible, and external-unindexed evidence rather than guessed
+   targets.
+4. Definition and reference queries for both namespace facts and lexical binding facts without raw
+   source reparsing inside `dartscope-index`.
+5. Full-rebuild and incremental-snapshot parity where the existing workspace index can provide the
+   same normalized inputs.
 
 ## Verification Contract
 
 Run the repository-pinned Rust 1.95.0 checks from `AGENTS.md`, including formatting, workspace tests,
 Clippy with warnings denied, rustdoc with warnings denied, umbrella feature checks, and the hosted
-Linux/Windows matrix. Do not mark this slice verified until the final feature commit publishes a
+Linux/Windows matrix. Do not mark the new slice verified until the final feature commit publishes a
 successful aggregate `dartscope/ci` status.
