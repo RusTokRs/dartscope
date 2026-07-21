@@ -17,22 +17,33 @@ jobs:
           ref: agent/constructor-target-resolution
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
-      - name: Apply constructor resolution slice
-        run: python3 .github/scripts/apply_constructor_target_resolution.py
-      - name: Format and verify focused slice
+      - name: Apply and format constructor resolution slice
         run: |
+          python3 .github/scripts/apply_constructor_target_resolution.py
           cargo +1.95.0 fmt --all
-          cargo +1.95.0 test -p dartscope-index --test navigation_constructors --locked
-          cargo +1.95.0 test -p dartscope-index --test navigation_batch --locked
-          cargo +1.95.0 test -p dartscope-index --test reference_resolution --locked
-          cargo +1.95.0 clippy -p dartscope-index --all-targets --locked -- -D warnings
       - name: Commit product changes
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add crates/dartscope-index/src/namespace.rs crates/dartscope-index/src/navigation.rs crates/dartscope-index/tests/navigation_constructors.rs
-          if git diff --cached --quiet; then
-            exit 0
+          if ! git diff --cached --quiet; then
+            git commit -m "feat: resolve exact constructor targets"
+            git push origin HEAD:agent/constructor-target-resolution
           fi
-          git commit -m "feat: resolve exact constructor targets"
-          git push origin HEAD:agent/constructor-target-resolution
+      - name: Verify focused slice and retain output
+        run: |
+          set +e
+          {
+            cargo +1.95.0 test -p dartscope-index --test navigation_constructors --locked
+            cargo +1.95.0 test -p dartscope-index --test navigation_batch --locked
+            cargo +1.95.0 test -p dartscope-index --test reference_resolution --locked
+            cargo +1.95.0 clippy -p dartscope-index --all-targets --locked -- -D warnings
+          } > constructor-target-verify.log 2>&1
+          status=$?
+          cat constructor-target-verify.log
+          git add constructor-target-verify.log
+          if ! git diff --cached --quiet; then
+            git commit -m "ci: retain constructor verification output"
+            git push origin HEAD:agent/constructor-target-resolution
+          fi
+          exit "$status"
