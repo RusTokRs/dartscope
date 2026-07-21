@@ -94,8 +94,9 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Continue `DS-INDEX-006` with deterministic find-definition and find-references batch APIs over
-current parser-produced namespace and lexical facts. Reuse one workspace context, return stable
-exact-span results with unresolved and ambiguous evidence, and prove that index code never reparses
-raw source. Keep pattern and collection control flow, retroactive pre-declaration shadowing, flow
-analysis, member and extension lookup, and member/index writes behind focused slices.
+Continue `DS-INDEX-006` with incremental navigation parity. Retain normalized lexical bindings per
+path in `DartWorkspaceIndex` and immutable snapshots, rebuild only affected navigation facts, and
+expose snapshot-backed definition/reference batches with the same deterministic results as
+`DartWorkspaceResolutionContext` built from a full `DartProjectReferenceAnalysis`. Cover no-op,
+local update, declaration update, removal, and options-update parity before expanding constructor,
+member, extension, pattern, or flow-sensitive lookup.
