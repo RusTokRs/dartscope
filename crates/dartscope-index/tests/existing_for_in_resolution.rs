@@ -111,24 +111,42 @@ fn resolves_targets_iterables_and_bodies_to_existing_bindings() {
 }
 
 #[test]
-fn emits_no_declared_or_single_statement_target_and_filters_namespace() {
+fn keeps_declared_target_omitted_and_resolves_single_statement() {
     let analysis = analyze_project_with_references(DartProjectInput::new(
         ".",
         vec![DartFileInput::new("lib/main.dart", SOURCE)],
         vec![],
     ));
+    let reads = resolve_project_variable_read_references(&analysis);
     let writes = resolve_project_variable_write_references(&analysis);
-    for offset in [
-        occurrence("final declared in values", "declared"),
-        occurrence("for (value in values) value++", "value"),
-        occurrence("value++", "value"),
-    ] {
-        assert!(
-            writes
-                .iter()
-                .all(|resolution| resolution.query.byte_offset != offset)
-        );
-    }
+
+    let declared = occurrence("final declared in values", "declared");
+    assert!(
+        writes
+            .iter()
+            .all(|resolution| resolution.query.byte_offset != declared)
+    );
+
+    let single_target = occurrence("for (value in values) value++", "value");
+    assert_resolution(
+        &writes,
+        single_target,
+        DartLexicalBindingKind::Parameter,
+        "/parameter:value",
+    );
+    let single_body = occurrence("value++", "value");
+    assert_resolution(
+        &reads,
+        single_body,
+        DartLexicalBindingKind::Parameter,
+        "/parameter:value",
+    );
+    assert_resolution(
+        &writes,
+        single_body,
+        DartLexicalBindingKind::Parameter,
+        "/parameter:value",
+    );
 
     let local_call = occurrence("value();", "value");
     assert!(analysis.references.iter().all(|reference| {
