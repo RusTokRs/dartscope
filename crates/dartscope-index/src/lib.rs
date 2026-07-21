@@ -4,6 +4,7 @@ mod graphql;
 mod incremental;
 mod lexical_bindings;
 mod namespace;
+mod navigation;
 mod parts;
 mod paths;
 mod references;
@@ -20,6 +21,12 @@ pub use lexical_bindings::{
     resolve_project_variable_write_references,
 };
 pub use namespace::{resolve_symbol, resolve_symbol_with_options};
+pub use navigation::{
+    DartDefinitionBatchAnalysis, DartDefinitionQuery, DartDefinitionResolution,
+    DartDefinitionResolutionStatus, DartDefinitionTarget, DartReferenceBatchAnalysis,
+    DartReferenceSearchResult, DartWorkspaceResolutionContext, find_definitions,
+    find_definitions_with_options, find_references, find_references_with_options,
+};
 pub use parts::analyze_part_links;
 pub use references::{
     resolve_identifier_references, resolve_identifier_references_with_options,
