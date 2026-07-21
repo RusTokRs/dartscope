@@ -94,9 +94,9 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Continue `DS-INDEX-006` with direct declared-member lookup. Define parser-produced member facts that
-separate the member name from receiver or owning-type evidence, then resolve directly declared methods,
-getters, setters, fields, and operators only when that evidence is exact and indexed. Preserve privacy,
-parts, static-versus-instance evidence, ambiguity, not-visible results, and external-unindexed URIs.
-Keep inheritance, extension selection, dynamic dispatch, patterns, and flow-sensitive behavior behind
-later focused slices.
+Continue `DS-INDEX-006` with direct property and operator targets. Add parser-produced facts for
+getter and field reads, setter and field writes, and operator invocations while keeping exact owner
+evidence and static-versus-instance mode explicit. Preserve privacy, validated parts, ambiguity,
+conditional imports, not-visible outcomes, external-unindexed URIs, and snapshot parity. Keep
+arbitrary receiver inference, inheritance, extension selection, dynamic dispatch, patterns, and
+flow-sensitive behavior behind later focused slices.
