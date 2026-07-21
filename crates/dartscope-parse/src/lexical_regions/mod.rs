@@ -56,6 +56,11 @@ pub(crate) fn analyze_lexical_regions(
             *start <= binding.declaration_start && binding.declaration_start < *end
         })
     });
+    result.write_targets.retain(|target| {
+        !deferred_regions
+            .iter()
+            .any(|(start, end)| *start <= target.start && target.start < *end)
+    });
     result.bindings.sort_by(|left, right| {
         (
             left.declaration_start,
