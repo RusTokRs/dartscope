@@ -2,9 +2,8 @@ use dartscope_core::{DartDeclarationKind, DartFileAnalysis, DartLexicalBindingKi
 
 use super::scan::{
     contains_top_level_pattern_start, find_keyword, find_top_level_keyword, has_top_level_byte,
-    identifier_at, is_binding_name, matching_delimiter, next_non_whitespace,
-    top_level_assignment, top_level_byte_positions, top_level_identifiers, top_level_segments,
-    trim_range,
+    identifier_at, is_binding_name, matching_delimiter, next_non_whitespace, top_level_assignment,
+    top_level_byte_positions, top_level_identifiers, top_level_segments, trim_range,
 };
 use super::{LexicalRegionAnalysis, binding_for_token, innermost_callable_symbol, write_for_token};
 
@@ -31,9 +30,10 @@ pub(super) fn collect_for_regions(
             continue;
         };
         let Some((scope_start, scope_end, region_end)) = for_body_region(source, body_start) else {
-            result
-                .deferred_regions
-                .push((found, statement_end(source, body_start).unwrap_or(bytes.len())));
+            result.deferred_regions.push((
+                found,
+                statement_end(source, body_start).unwrap_or(bytes.len()),
+            ));
             continue;
         };
         if contains_local_declaration(analysis, scope_start, scope_end) {
@@ -75,9 +75,7 @@ fn simple_statement_end(source: &str, start: usize) -> Option<usize> {
     let token = identifier_at(source, start);
     if bytes.get(start) == Some(&b'{')
         || token.is_some_and(|token| {
-            is_control_keyword(token.text)
-                || is_await_for(source, token)
-                || is_label(source, token)
+            is_control_keyword(token.text) || is_await_for(source, token) || is_label(source, token)
         })
     {
         return None;
@@ -201,9 +199,10 @@ fn contains_local_declaration(
 ) -> bool {
     analysis.declarations.iter().any(|declaration| {
         declaration.kind == DartDeclarationKind::LocalVariable
-            && declaration.declaration_span.as_ref().is_some_and(|span| {
-                body_start <= span.byte_start && span.byte_start < body_end
-            })
+            && declaration
+                .declaration_span
+                .as_ref()
+                .is_some_and(|span| body_start <= span.byte_start && span.byte_start < body_end)
     })
 }
 
@@ -424,12 +423,14 @@ pub(super) fn collect_catch_regions(
             continue;
         };
         if bytes.get(body_open) != Some(&b'{') {
-            result
-                .deferred_regions
-                .push((found, statement_end(source, body_open).unwrap_or(bytes.len())));
+            result.deferred_regions.push((
+                found,
+                statement_end(source, body_open).unwrap_or(bytes.len()),
+            ));
             continue;
         }
-        let Some(body_close) = matching_delimiter(source, body_open, b'{', b'}', bytes.len()) else {
+        let Some(body_close) = matching_delimiter(source, body_open, b'{', b'}', bytes.len())
+        else {
             result.deferred_regions.push((found, bytes.len()));
             continue;
         };
