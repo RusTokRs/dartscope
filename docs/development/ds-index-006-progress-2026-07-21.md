@@ -186,10 +186,49 @@ Implemented on `main`:
    and missing properties, ambiguous and conditional imports, external packages, part libraries,
    reverse references, and full-build versus immutable-snapshot parity.
 
+## Completed Audit: Direct Member Navigation
+
+Rechecked and corrected on `main`:
+
+1. Replaced whole-header last-match declaration scanning with kind-aware member-name extraction.
+   Methods, getters, setters, fields, and operators now anchor the declared identifier or operator
+   token rather than an equal parameter name or initializer use later in the declaration.
+2. Recognized private named-type roots such as `_Service` while preserving the lexical-binding guard;
+   exact same-library static methods and properties on private owners no longer disappear.
+3. Added a member-owner namespace path covering classes, mixins, enums, extensions, and extension
+   types. Static method/property lookup no longer reuses the constructor-only class/extension-type
+   filter.
+4. Resolved method tear-offs and callable field/getter values through direct read/call evidence, and
+   refined exact named/unnamed constructor tear-offs plus keyword-free named constructor calls when
+   no directly declared member wins.
+5. Added cross-platform regression fixtures for declaration spans, private owner names, enum and
+   extension static members, method and constructor tear-offs, callable values, and keyword-free
+   constructor calls.
+6. Split member inventory and resolution from the oversized `navigation.rs` root into
+   `navigation/members.rs` before adding more behavior, satisfying the mandatory refactor trigger
+   without changing source-free ownership.
+
+## Completed Slice: Direct Binary Operator Targets
+
+Implemented on `main`:
+
+1. Added additive opt-in reference kinds for operator declarations and instance operator invocations;
+   no serialized field or command-facing v1 envelope changed.
+2. Added parser-owned exact declaration facts for `DartDeclarationKind::Operator` and bounded
+   invocation facts for overloadable binary operators whose left receiver is explicitly `this`.
+3. Kept the operator token, owner symbol ID, exact span, enclosing callable evidence, and confidence
+   separate rather than encoding an operator as a generic method or property name.
+4. Built exact source-free operator inventory/refinement in the member navigation module. Missing
+   operators preserve owner fallback evidence instead of fabricating an overload target.
+5. Preserved validated part-library ownership, deterministic definition and reverse-reference results,
+   and full-build versus immutable-snapshot parity.
+6. Added focused parser and index fixtures for declaration/invocation spans, direct targets, missing
+   targets, reverse references, part libraries, and snapshot parity.
+
 The loop slices did not change public Rust types or serialized fields. The navigation foundation adds
-opt-in Rust library API types and snapshot accessors in `dartscope-index`. The direct method/property
-slices add only new variants to the opt-in serialized `DartIdentifierReferenceKind` enum; they do not
-add or rename fields, change command-facing v1 envelopes, or move parser/index ownership boundaries.
+opt-in Rust library API types and snapshot accessors in `dartscope-index`. The direct member slices add
+only new variants to the opt-in serialized `DartIdentifierReferenceKind` enum; they do not add or
+rename fields, change command-facing v1 envelopes, or move parser/index ownership boundaries.
 
 ## Current Limits
 
@@ -202,32 +241,30 @@ The heuristic backend still defers:
 - `try` statements and malformed nested control statements as unbraced loop bodies;
 - retroactive pre-declaration shadowing across separate statements;
 - definite-assignment and flow analysis;
-- index operators, operator invocations, inherited-member lookup, and extension lookup.
+- unary operator invocations, index/index-assignment operators, inherited-member lookup, and extension
+  selection.
 
 Snapshot-backed navigation reconstructs the lightweight project-reference projection and resolution
-context from immutable normalized facts. Exact constructor refinement currently consumes specialized
-parser-produced `ConstructorTarget` facts; keyword-free constructor syntax remains on the generic
-invocation path. Direct method resolution is intentionally limited to explicit `this.method()` calls
-and static calls whose named-type owner is syntactically exact. Direct property resolution is limited
-to explicit `this.property`, `Type.property`, and `prefix.Type.property` accesses with bounded
-read/write/update classification. Arbitrary receiver type inference, unqualified instance accesses,
-null-aware or cascade member forms, operators, inherited members, extension selection, dynamic
-dispatch, patterns, and flow-sensitive behavior remain deferred.
+context from immutable normalized facts. Direct member resolution is intentionally limited to exact
+parser-produced owner evidence: explicit `this` accesses and syntactically exact named-type owners.
+Method/property reads may resolve directly declared method tear-offs or callable fields/getters, while
+constructor fallback is attempted only when no direct member candidate survives. Binary operator
+resolution currently covers only overloadable operators whose left receiver is explicitly `this`.
+Arbitrary receiver type inference, unqualified instance accesses, null-aware or cascade member forms,
+unary and index operators, inherited members, extension selection, dynamic dispatch, patterns, and
+flow-sensitive behavior remain deferred.
 
 ## Next Ordered Slice
 
-Continue `DS-INDEX-006` with direct operator targets:
+Continue `DS-INDEX-006` with the remaining explicit-`this` operator forms:
 
-1. Add parser-produced declaration facts for `DartDeclarationKind::Operator` and bounded invocation
-   facts for operators whose left receiver is explicitly `this`, keeping the operator token and owning
-   type evidence separate.
-2. Resolve only directly declared operator targets from exact indexed owner evidence. Do not infer the
-   types of arbitrary left-hand expressions or claim analyzer-equivalent overload selection.
-3. Cover prefix, infix, equality, index, and index-assignment syntax in focused increments rather than
-   broadening all operator forms at once.
-4. Preserve validated parts, exact declaration spans, ambiguity where multiple exact facts survive,
-   reverse references, and immutable-snapshot parity.
-5. Keep inherited-member traversal, extension selection, dynamic dispatch, arbitrary receiver
+1. Add bounded parser-produced invocation facts for unary `-` and `~`, index `this[index]`, and index
+   assignment `this[index] = value`, retaining exact operator-token spans and owning-type evidence.
+2. Resolve only directly declared `operator -`, `operator ~`, `operator []`, and `operator []=` targets
+   from exact indexed owners; do not infer arbitrary receiver types or overload selection.
+3. Preserve validated parts, missing-owner fallback, deterministic reverse references, and immutable-
+   snapshot parity.
+4. Keep inherited-member traversal, extension selection, dynamic dispatch, arbitrary receiver
    inference, patterns, and flow-sensitive behavior behind later focused slices.
 
 ## Verification Contract
