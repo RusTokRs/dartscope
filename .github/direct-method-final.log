@@ -1,0 +1,1237 @@
+=== cargo fmt ===
+Diff in /home/runner/work/dartscope/dartscope/crates/dartscope-index/tests/navigation_methods.rs:258:
+         .find_definitions(std::slice::from_ref(&query));
+     let index = DartWorkspaceIndex::from_reference_project(analysis);
+     let snapshot = index.snapshot();
+-    let actual = DartWorkspaceResolutionContext::from_snapshot(snapshot.as_ref())
+-        .find_definitions(&[query]);
++    let actual =
++        DartWorkspaceResolutionContext::from_snapshot(snapshot.as_ref()).find_definitions(&[query]);
+ 
+     assert_eq!(actual, expected);
+ }
+=== workspace all-targets ===
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded serde v1.0.228
+  Downloaded zmij v1.0.21
+  Downloaded toml_parser v1.1.2+spec-1.1.0
+  Downloaded arraydeque v0.5.1
+  Downloaded toml_datetime v1.1.1+spec-1.1.0
+  Downloaded proc-macro2 v1.0.106
+  Downloaded unicode-ident v1.0.24
+  Downloaded serde_spanned v1.1.1
+  Downloaded serde_json v1.0.150
+  Downloaded toml v1.1.3+spec-1.1.0
+  Downloaded uriparse v0.6.4
+  Downloaded yaml-rust2 v0.11.0
+  Downloaded itoa v1.0.18
+  Downloaded hashlink v0.11.1
+  Downloaded serde_derive v1.0.228
+  Downloaded percent-encoding v2.3.2
+  Downloaded thiserror v2.0.18
+  Downloaded lazy_static v1.5.0
+  Downloaded memchr v2.8.2
+  Downloaded serde_core v1.0.228
+  Downloaded syn v2.0.118
+  Downloaded quote v1.0.46
+  Downloaded thiserror-impl v2.0.18
+  Downloaded hashbrown v0.16.1
+  Downloaded foldhash v0.2.0
+  Downloaded fnv v1.0.7
+  Downloaded winnow v1.0.4
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling serde_core v1.0.228
+   Compiling quote v1.0.46
+   Compiling thiserror v2.0.18
+   Compiling serde v1.0.228
+   Compiling zmij v1.0.21
+   Compiling serde_json v1.0.150
+    Checking memchr v2.8.2
+    Checking itoa v1.0.18
+   Compiling syn v2.0.118
+    Checking fnv v1.0.7
+    Checking lazy_static v1.5.0
+    Checking foldhash v0.2.0
+    Checking uriparse v0.6.4
+    Checking percent-encoding v2.3.2
+    Checking hashbrown v0.16.1
+    Checking arraydeque v0.5.1
+    Checking hashlink v0.11.1
+    Checking winnow v1.0.4
+    Checking yaml-rust2 v0.11.0
+    Checking toml_parser v1.1.2+spec-1.1.0
+    Checking serde_spanned v1.1.1
+    Checking toml_datetime v1.1.1+spec-1.1.0
+    Checking toml v1.1.3+spec-1.1.0
+   Compiling serde_derive v1.0.228
+   Compiling thiserror-impl v2.0.18
+    Checking dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+    Checking dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+    Checking dartscope-flutter v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-flutter)
+    Checking dartscope-json v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-json)
+    Checking dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+    Checking dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+error[E0428]: the name `resolve_method_declaration_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:797:1
+    |
+421 | / fn resolve_method_declaration_reference(
+422 | |     member_index: &MemberIndex,
+423 | |     reference: DartIdentifierReference,
+424 | | ) -> ResolvedReference {
+...   |
+453 | | }
+    | |_- previous definition of the value `resolve_method_declaration_reference` here
+...
+797 | / fn resolve_method_declaration_reference(
+798 | |     member_index: &MemberIndex,
+799 | |     reference: DartIdentifierReference,
+800 | | ) -> ResolvedReference {
+...   |
+829 | | }
+    | |_^ `resolve_method_declaration_reference` redefined here
+    |
+    = note: `resolve_method_declaration_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `resolve_method_invocation_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:831:1
+    |
+455 | / fn resolve_method_invocation_reference(
+456 | |     analysis: &DartProjectReferenceAnalysis,
+457 | |     namespace: &NamespaceResolver<'_, '_>,
+458 | |     uri_graph: &DartUriGraph,
+...   |
+471 | | }
+    | |_- previous definition of the value `resolve_method_invocation_reference` here
+...
+831 | / fn resolve_method_invocation_reference(
+832 | |     analysis: &DartProjectReferenceAnalysis,
+833 | |     namespace: &NamespaceResolver<'_, '_>,
+834 | |     uri_graph: &DartUriGraph,
+...   |
+847 | | }
+    | |_^ `resolve_method_invocation_reference` redefined here
+    |
+    = note: `resolve_method_invocation_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `resolve_instance_method_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:849:1
+    |
+473 | / fn resolve_instance_method_reference(
+474 | |     analysis: &DartProjectReferenceAnalysis,
+475 | |     namespace: &NamespaceResolver<'_, '_>,
+476 | |     member_index: &MemberIndex,
+...   |
+512 | |     finish_method_resolution(reference, refinements, Vec::new())
+513 | | }
+    | |_- previous definition of the value `resolve_instance_method_reference` here
+...
+849 | / fn resolve_instance_method_reference(
+850 | |     analysis: &DartProjectReferenceAnalysis,
+851 | |     namespace: &NamespaceResolver<'_, '_>,
+852 | |     member_index: &MemberIndex,
+...   |
+888 | |     finish_method_resolution(reference, refinements, Vec::new())
+889 | | }
+    | |_^ `resolve_instance_method_reference` redefined here
+    |
+    = note: `resolve_instance_method_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `resolve_static_method_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:891:1
+    |
+515 | / fn resolve_static_method_reference(
+516 | |     analysis: &DartProjectReferenceAnalysis,
+517 | |     namespace: &NamespaceResolver<'_, '_>,
+518 | |     uri_graph: &DartUriGraph,
+...   |
+582 | | }
+    | |_- previous definition of the value `resolve_static_method_reference` here
+...
+891 | / fn resolve_static_method_reference(
+892 | |     analysis: &DartProjectReferenceAnalysis,
+893 | |     namespace: &NamespaceResolver<'_, '_>,
+894 | |     uri_graph: &DartUriGraph,
+...   |
+958 | | }
+    | |_^ `resolve_static_method_reference` redefined here
+    |
+    = note: `resolve_static_method_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `refine_method_target` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:966:1
+     |
+ 590 | / fn refine_method_target(
+ 591 | |     member_index: &MemberIndex,
+ 592 | |     namespace: &NamespaceResolver<'_, '_>,
+ 593 | |     source_path: &str,
+...    |
+ 656 | | }
+     | |_- previous definition of the value `refine_method_target` here
+...
+ 966 | / fn refine_method_target(
+ 967 | |     member_index: &MemberIndex,
+ 968 | |     namespace: &NamespaceResolver<'_, '_>,
+ 969 | |     source_path: &str,
+...    |
+1032 | | }
+     | |_^ `refine_method_target` redefined here
+     |
+     = note: `refine_method_target` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `missing_method_target` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1034:1
+     |
+ 658 | fn missing_method_target(owner: &DartSymbolCandidate) -> MethodRefinement {
+     | ------------------------------------------------------------------------- previous definition of the value `missing_method_target` here
+...
+1034 | fn missing_method_target(owner: &DartSymbolCandidate) -> MethodRefinement {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `missing_method_target` redefined here
+     |
+     = note: `missing_method_target` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `finish_method_resolution` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1041:1
+     |
+ 665 | / fn finish_method_resolution(
+ 666 | |     reference: DartIdentifierReference,
+ 667 | |     refinements: Vec<MethodRefinement>,
+ 668 | |     external_uris: Vec<String>,
+...    |
+ 691 | | }
+     | |_- previous definition of the value `finish_method_resolution` here
+...
+1041 | / fn finish_method_resolution(
+1042 | |     reference: DartIdentifierReference,
+1043 | |     refinements: Vec<MethodRefinement>,
+1044 | |     external_uris: Vec<String>,
+...    |
+1067 | | }
+     | |_^ `finish_method_resolution` redefined here
+     |
+     = note: `finish_method_resolution` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `static_member_owner` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1069:1
+     |
+ 693 | fn static_member_owner(reference: &DartIdentifierReference) -> Option<(Option<String>, String)> {
+     | ----------------------------------------------------------------------------------------------- previous definition of the value `static_member_owner` here
+...
+1069 | fn static_member_owner(reference: &DartIdentifierReference) -> Option<(Option<String>, String)> {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `static_member_owner` redefined here
+     |
+     = note: `static_member_owner` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `member_owner_candidates_by_symbol_id` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1080:1
+     |
+ 704 | / fn member_owner_candidates_by_symbol_id(
+ 705 | |     analysis: &DartProjectReferenceAnalysis,
+ 706 | |     namespace: &NamespaceResolver<'_, '_>,
+ 707 | |     source_path: &str,
+...    |
+ 732 | |     owners
+ 733 | | }
+     | |_- previous definition of the value `member_owner_candidates_by_symbol_id` here
+...
+1080 | / fn member_owner_candidates_by_symbol_id(
+1081 | |     analysis: &DartProjectReferenceAnalysis,
+1082 | |     namespace: &NamespaceResolver<'_, '_>,
+1083 | |     source_path: &str,
+...    |
+1108 | |     owners
+1109 | | }
+     | |_^ `member_owner_candidates_by_symbol_id` redefined here
+     |
+     = note: `member_owner_candidates_by_symbol_id` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `external_member_owner_uris` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1111:1
+     |
+ 735 | / fn external_member_owner_uris(
+ 736 | |     analysis: &DartProjectReferenceAnalysis,
+ 737 | |     uri_graph: &DartUriGraph,
+ 738 | |     reference: &DartIdentifierReference,
+...    |
+ 746 | |     external_namespace_uris(analysis, uri_graph, &owner_reference)
+ 747 | | }
+     | |_- previous definition of the value `external_member_owner_uris` here
+...
+1111 | / fn external_member_owner_uris(
+1112 | |     analysis: &DartProjectReferenceAnalysis,
+1113 | |     uri_graph: &DartUriGraph,
+1114 | |     reference: &DartIdentifierReference,
+...    |
+1122 | |     external_namespace_uris(analysis, uri_graph, &owner_reference)
+1123 | | }
+     | |_^ `external_member_owner_uris` redefined here
+     |
+     = note: `external_member_owner_uris` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `declaration_candidate` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1125:1
+     |
+ 749 | / fn declaration_candidate(
+ 750 | |     path: &str,
+ 751 | |     declaration: &DartDeclaration,
+ 752 | |     basis: DartSymbolResolutionBasis,
+...    |
+ 765 | | }
+     | |_- previous definition of the value `declaration_candidate` here
+...
+1125 | / fn declaration_candidate(
+1126 | |     path: &str,
+1127 | |     declaration: &DartDeclaration,
+1128 | |     basis: DartSymbolResolutionBasis,
+...    |
+1141 | | }
+     | |_^ `declaration_candidate` redefined here
+     |
+     = note: `declaration_candidate` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `declaration_span_contains` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1143:1
+     |
+ 767 | / fn declaration_span_contains(
+ 768 | |     declaration: &DartDeclaration,
+ 769 | |     span: &dartscope_core::SourceSpan,
+ 770 | | ) -> bool {
+...    |
+ 775 | |     declaration_span.byte_start <= span.byte_start && span.byte_end <= declaration_span.byte_end
+ 776 | | }
+     | |_- previous definition of the value `declaration_span_contains` here
+...
+1143 | / fn declaration_span_contains(
+1144 | |     declaration: &DartDeclaration,
+1145 | |     span: &dartscope_core::SourceSpan,
+1146 | | ) -> bool {
+...    |
+1151 | |     declaration_span.byte_start <= span.byte_start && span.byte_end <= declaration_span.byte_end
+1152 | | }
+     | |_^ `declaration_span_contains` redefined here
+     |
+     = note: `declaration_span_contains` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `is_member_owner_kind` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1154:1
+     |
+ 778 | fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
+     | ---------------------------------------------------------- previous definition of the value `is_member_owner_kind` here
+...
+1154 | fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `is_member_owner_kind` redefined here
+     |
+     = note: `is_member_owner_kind` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `is_member_declaration_kind` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1165:1
+     |
+ 789 | fn is_member_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
+     | ------------------------------------------------------------------------ previous definition of the value `is_member_declaration_kind` here
+...
+1165 | fn is_member_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `is_member_declaration_kind` redefined here
+     |
+     = note: `is_member_declaration_kind` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `MethodRefinement` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:961:1
+    |
+585 | struct MethodRefinement {
+    | ----------------------- previous definition of the type `MethodRefinement` here
+...
+961 | struct MethodRefinement {
+    | ^^^^^^^^^^^^^^^^^^^^^^^ `MethodRefinement` redefined here
+    |
+    = note: `MethodRefinement` must be defined only once in the type namespace of this module
+
+error[E0119]: conflicting implementations of trait `Debug` for type `navigation::MethodRefinement`
+   --> crates/dartscope-index/src/navigation.rs:960:10
+    |
+584 | #[derive(Debug)]
+    |          ----- first implementation here
+...
+960 | #[derive(Debug)]
+    |          ^^^^^ conflicting implementation for `navigation::MethodRefinement`
+
+Some errors have detailed explanations: E0119, E0428.
+For more information about an error, try `rustc --explain E0119`.
+error: could not compile `dartscope-index` (lib) due to 16 previous errors
+warning: build failed, waiting for other jobs to finish...
+=== umbrella all-features ===
+   Compiling serde_core v1.0.228
+    Checking serde v1.0.228
+    Checking serde_json v1.0.150
+    Checking dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+    Checking dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+    Checking dartscope-json v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-json)
+    Checking dartscope-flutter v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-flutter)
+    Checking dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+    Checking dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+error[E0428]: the name `resolve_method_declaration_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:797:1
+    |
+421 | / fn resolve_method_declaration_reference(
+422 | |     member_index: &MemberIndex,
+423 | |     reference: DartIdentifierReference,
+424 | | ) -> ResolvedReference {
+...   |
+453 | | }
+    | |_- previous definition of the value `resolve_method_declaration_reference` here
+...
+797 | / fn resolve_method_declaration_reference(
+798 | |     member_index: &MemberIndex,
+799 | |     reference: DartIdentifierReference,
+800 | | ) -> ResolvedReference {
+...   |
+829 | | }
+    | |_^ `resolve_method_declaration_reference` redefined here
+    |
+    = note: `resolve_method_declaration_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `resolve_method_invocation_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:831:1
+    |
+455 | / fn resolve_method_invocation_reference(
+456 | |     analysis: &DartProjectReferenceAnalysis,
+457 | |     namespace: &NamespaceResolver<'_, '_>,
+458 | |     uri_graph: &DartUriGraph,
+...   |
+471 | | }
+    | |_- previous definition of the value `resolve_method_invocation_reference` here
+...
+831 | / fn resolve_method_invocation_reference(
+832 | |     analysis: &DartProjectReferenceAnalysis,
+833 | |     namespace: &NamespaceResolver<'_, '_>,
+834 | |     uri_graph: &DartUriGraph,
+...   |
+847 | | }
+    | |_^ `resolve_method_invocation_reference` redefined here
+    |
+    = note: `resolve_method_invocation_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `resolve_instance_method_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:849:1
+    |
+473 | / fn resolve_instance_method_reference(
+474 | |     analysis: &DartProjectReferenceAnalysis,
+475 | |     namespace: &NamespaceResolver<'_, '_>,
+476 | |     member_index: &MemberIndex,
+...   |
+512 | |     finish_method_resolution(reference, refinements, Vec::new())
+513 | | }
+    | |_- previous definition of the value `resolve_instance_method_reference` here
+...
+849 | / fn resolve_instance_method_reference(
+850 | |     analysis: &DartProjectReferenceAnalysis,
+851 | |     namespace: &NamespaceResolver<'_, '_>,
+852 | |     member_index: &MemberIndex,
+...   |
+888 | |     finish_method_resolution(reference, refinements, Vec::new())
+889 | | }
+    | |_^ `resolve_instance_method_reference` redefined here
+    |
+    = note: `resolve_instance_method_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `resolve_static_method_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:891:1
+    |
+515 | / fn resolve_static_method_reference(
+516 | |     analysis: &DartProjectReferenceAnalysis,
+517 | |     namespace: &NamespaceResolver<'_, '_>,
+518 | |     uri_graph: &DartUriGraph,
+...   |
+582 | | }
+    | |_- previous definition of the value `resolve_static_method_reference` here
+...
+891 | / fn resolve_static_method_reference(
+892 | |     analysis: &DartProjectReferenceAnalysis,
+893 | |     namespace: &NamespaceResolver<'_, '_>,
+894 | |     uri_graph: &DartUriGraph,
+...   |
+958 | | }
+    | |_^ `resolve_static_method_reference` redefined here
+    |
+    = note: `resolve_static_method_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `refine_method_target` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:966:1
+     |
+ 590 | / fn refine_method_target(
+ 591 | |     member_index: &MemberIndex,
+ 592 | |     namespace: &NamespaceResolver<'_, '_>,
+ 593 | |     source_path: &str,
+...    |
+ 656 | | }
+     | |_- previous definition of the value `refine_method_target` here
+...
+ 966 | / fn refine_method_target(
+ 967 | |     member_index: &MemberIndex,
+ 968 | |     namespace: &NamespaceResolver<'_, '_>,
+ 969 | |     source_path: &str,
+...    |
+1032 | | }
+     | |_^ `refine_method_target` redefined here
+     |
+     = note: `refine_method_target` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `missing_method_target` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1034:1
+     |
+ 658 | fn missing_method_target(owner: &DartSymbolCandidate) -> MethodRefinement {
+     | ------------------------------------------------------------------------- previous definition of the value `missing_method_target` here
+...
+1034 | fn missing_method_target(owner: &DartSymbolCandidate) -> MethodRefinement {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `missing_method_target` redefined here
+     |
+     = note: `missing_method_target` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `finish_method_resolution` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1041:1
+     |
+ 665 | / fn finish_method_resolution(
+ 666 | |     reference: DartIdentifierReference,
+ 667 | |     refinements: Vec<MethodRefinement>,
+ 668 | |     external_uris: Vec<String>,
+...    |
+ 691 | | }
+     | |_- previous definition of the value `finish_method_resolution` here
+...
+1041 | / fn finish_method_resolution(
+1042 | |     reference: DartIdentifierReference,
+1043 | |     refinements: Vec<MethodRefinement>,
+1044 | |     external_uris: Vec<String>,
+...    |
+1067 | | }
+     | |_^ `finish_method_resolution` redefined here
+     |
+     = note: `finish_method_resolution` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `static_member_owner` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1069:1
+     |
+ 693 | fn static_member_owner(reference: &DartIdentifierReference) -> Option<(Option<String>, String)> {
+     | ----------------------------------------------------------------------------------------------- previous definition of the value `static_member_owner` here
+...
+1069 | fn static_member_owner(reference: &DartIdentifierReference) -> Option<(Option<String>, String)> {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `static_member_owner` redefined here
+     |
+     = note: `static_member_owner` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `member_owner_candidates_by_symbol_id` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1080:1
+     |
+ 704 | / fn member_owner_candidates_by_symbol_id(
+ 705 | |     analysis: &DartProjectReferenceAnalysis,
+ 706 | |     namespace: &NamespaceResolver<'_, '_>,
+ 707 | |     source_path: &str,
+...    |
+ 732 | |     owners
+ 733 | | }
+     | |_- previous definition of the value `member_owner_candidates_by_symbol_id` here
+...
+1080 | / fn member_owner_candidates_by_symbol_id(
+1081 | |     analysis: &DartProjectReferenceAnalysis,
+1082 | |     namespace: &NamespaceResolver<'_, '_>,
+1083 | |     source_path: &str,
+...    |
+1108 | |     owners
+1109 | | }
+     | |_^ `member_owner_candidates_by_symbol_id` redefined here
+     |
+     = note: `member_owner_candidates_by_symbol_id` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `external_member_owner_uris` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1111:1
+     |
+ 735 | / fn external_member_owner_uris(
+ 736 | |     analysis: &DartProjectReferenceAnalysis,
+ 737 | |     uri_graph: &DartUriGraph,
+ 738 | |     reference: &DartIdentifierReference,
+...    |
+ 746 | |     external_namespace_uris(analysis, uri_graph, &owner_reference)
+ 747 | | }
+     | |_- previous definition of the value `external_member_owner_uris` here
+...
+1111 | / fn external_member_owner_uris(
+1112 | |     analysis: &DartProjectReferenceAnalysis,
+1113 | |     uri_graph: &DartUriGraph,
+1114 | |     reference: &DartIdentifierReference,
+...    |
+1122 | |     external_namespace_uris(analysis, uri_graph, &owner_reference)
+1123 | | }
+     | |_^ `external_member_owner_uris` redefined here
+     |
+     = note: `external_member_owner_uris` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `declaration_candidate` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1125:1
+     |
+ 749 | / fn declaration_candidate(
+ 750 | |     path: &str,
+ 751 | |     declaration: &DartDeclaration,
+ 752 | |     basis: DartSymbolResolutionBasis,
+...    |
+ 765 | | }
+     | |_- previous definition of the value `declaration_candidate` here
+...
+1125 | / fn declaration_candidate(
+1126 | |     path: &str,
+1127 | |     declaration: &DartDeclaration,
+1128 | |     basis: DartSymbolResolutionBasis,
+...    |
+1141 | | }
+     | |_^ `declaration_candidate` redefined here
+     |
+     = note: `declaration_candidate` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `declaration_span_contains` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1143:1
+     |
+ 767 | / fn declaration_span_contains(
+ 768 | |     declaration: &DartDeclaration,
+ 769 | |     span: &dartscope_core::SourceSpan,
+ 770 | | ) -> bool {
+...    |
+ 775 | |     declaration_span.byte_start <= span.byte_start && span.byte_end <= declaration_span.byte_end
+ 776 | | }
+     | |_- previous definition of the value `declaration_span_contains` here
+...
+1143 | / fn declaration_span_contains(
+1144 | |     declaration: &DartDeclaration,
+1145 | |     span: &dartscope_core::SourceSpan,
+1146 | | ) -> bool {
+...    |
+1151 | |     declaration_span.byte_start <= span.byte_start && span.byte_end <= declaration_span.byte_end
+1152 | | }
+     | |_^ `declaration_span_contains` redefined here
+     |
+     = note: `declaration_span_contains` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `is_member_owner_kind` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1154:1
+     |
+ 778 | fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
+     | ---------------------------------------------------------- previous definition of the value `is_member_owner_kind` here
+...
+1154 | fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `is_member_owner_kind` redefined here
+     |
+     = note: `is_member_owner_kind` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `is_member_declaration_kind` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1165:1
+     |
+ 789 | fn is_member_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
+     | ------------------------------------------------------------------------ previous definition of the value `is_member_declaration_kind` here
+...
+1165 | fn is_member_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `is_member_declaration_kind` redefined here
+     |
+     = note: `is_member_declaration_kind` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `MethodRefinement` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:961:1
+    |
+585 | struct MethodRefinement {
+    | ----------------------- previous definition of the type `MethodRefinement` here
+...
+961 | struct MethodRefinement {
+    | ^^^^^^^^^^^^^^^^^^^^^^^ `MethodRefinement` redefined here
+    |
+    = note: `MethodRefinement` must be defined only once in the type namespace of this module
+
+error[E0119]: conflicting implementations of trait `Debug` for type `navigation::MethodRefinement`
+   --> crates/dartscope-index/src/navigation.rs:960:10
+    |
+584 | #[derive(Debug)]
+    |          ----- first implementation here
+...
+960 | #[derive(Debug)]
+    |          ^^^^^ conflicting implementation for `navigation::MethodRefinement`
+
+Some errors have detailed explanations: E0119, E0428.
+For more information about an error, try `rustc --explain E0119`.
+error: could not compile `dartscope-index` (lib) due to 16 previous errors
+warning: build failed, waiting for other jobs to finish...
+=== workspace tests ===
+error[E0428]: the name `resolve_method_declaration_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:797:1
+    |
+421 | / fn resolve_method_declaration_reference(
+422 | |     member_index: &MemberIndex,
+423 | |     reference: DartIdentifierReference,
+424 | | ) -> ResolvedReference {
+...   |
+453 | | }
+    | |_- previous definition of the value `resolve_method_declaration_reference` here
+...
+797 | / fn resolve_method_declaration_reference(
+798 | |     member_index: &MemberIndex,
+799 | |     reference: DartIdentifierReference,
+800 | | ) -> ResolvedReference {
+...   |
+829 | | }
+    | |_^ `resolve_method_declaration_reference` redefined here
+    |
+    = note: `resolve_method_declaration_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `resolve_method_invocation_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:831:1
+    |
+455 | / fn resolve_method_invocation_reference(
+456 | |     analysis: &DartProjectReferenceAnalysis,
+457 | |     namespace: &NamespaceResolver<'_, '_>,
+458 | |     uri_graph: &DartUriGraph,
+...   |
+471 | | }
+    | |_- previous definition of the value `resolve_method_invocation_reference` here
+...
+831 | / fn resolve_method_invocation_reference(
+832 | |     analysis: &DartProjectReferenceAnalysis,
+833 | |     namespace: &NamespaceResolver<'_, '_>,
+834 | |     uri_graph: &DartUriGraph,
+...   |
+847 | | }
+    | |_^ `resolve_method_invocation_reference` redefined here
+    |
+    = note: `resolve_method_invocation_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `resolve_instance_method_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:849:1
+    |
+473 | / fn resolve_instance_method_reference(
+474 | |     analysis: &DartProjectReferenceAnalysis,
+475 | |     namespace: &NamespaceResolver<'_, '_>,
+476 | |     member_index: &MemberIndex,
+...   |
+512 | |     finish_method_resolution(reference, refinements, Vec::new())
+513 | | }
+    | |_- previous definition of the value `resolve_instance_method_reference` here
+...
+849 | / fn resolve_instance_method_reference(
+850 | |     analysis: &DartProjectReferenceAnalysis,
+851 | |     namespace: &NamespaceResolver<'_, '_>,
+852 | |     member_index: &MemberIndex,
+...   |
+888 | |     finish_method_resolution(reference, refinements, Vec::new())
+889 | | }
+    | |_^ `resolve_instance_method_reference` redefined here
+    |
+    = note: `resolve_instance_method_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `resolve_static_method_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:891:1
+    |
+515 | / fn resolve_static_method_reference(
+516 | |     analysis: &DartProjectReferenceAnalysis,
+517 | |     namespace: &NamespaceResolver<'_, '_>,
+518 | |     uri_graph: &DartUriGraph,
+...   |
+582 | | }
+    | |_- previous definition of the value `resolve_static_method_reference` here
+...
+891 | / fn resolve_static_method_reference(
+892 | |     analysis: &DartProjectReferenceAnalysis,
+893 | |     namespace: &NamespaceResolver<'_, '_>,
+894 | |     uri_graph: &DartUriGraph,
+...   |
+958 | | }
+    | |_^ `resolve_static_method_reference` redefined here
+    |
+    = note: `resolve_static_method_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `refine_method_target` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:966:1
+     |
+ 590 | / fn refine_method_target(
+ 591 | |     member_index: &MemberIndex,
+ 592 | |     namespace: &NamespaceResolver<'_, '_>,
+ 593 | |     source_path: &str,
+...    |
+ 656 | | }
+     | |_- previous definition of the value `refine_method_target` here
+...
+ 966 | / fn refine_method_target(
+ 967 | |     member_index: &MemberIndex,
+ 968 | |     namespace: &NamespaceResolver<'_, '_>,
+ 969 | |     source_path: &str,
+...    |
+1032 | | }
+     | |_^ `refine_method_target` redefined here
+     |
+     = note: `refine_method_target` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `missing_method_target` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1034:1
+     |
+ 658 | fn missing_method_target(owner: &DartSymbolCandidate) -> MethodRefinement {
+     | ------------------------------------------------------------------------- previous definition of the value `missing_method_target` here
+...
+1034 | fn missing_method_target(owner: &DartSymbolCandidate) -> MethodRefinement {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `missing_method_target` redefined here
+     |
+     = note: `missing_method_target` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `finish_method_resolution` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1041:1
+     |
+ 665 | / fn finish_method_resolution(
+ 666 | |     reference: DartIdentifierReference,
+ 667 | |     refinements: Vec<MethodRefinement>,
+ 668 | |     external_uris: Vec<String>,
+...    |
+ 691 | | }
+     | |_- previous definition of the value `finish_method_resolution` here
+...
+1041 | / fn finish_method_resolution(
+1042 | |     reference: DartIdentifierReference,
+1043 | |     refinements: Vec<MethodRefinement>,
+1044 | |     external_uris: Vec<String>,
+...    |
+1067 | | }
+     | |_^ `finish_method_resolution` redefined here
+     |
+     = note: `finish_method_resolution` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `static_member_owner` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1069:1
+     |
+ 693 | fn static_member_owner(reference: &DartIdentifierReference) -> Option<(Option<String>, String)> {
+     | ----------------------------------------------------------------------------------------------- previous definition of the value `static_member_owner` here
+...
+1069 | fn static_member_owner(reference: &DartIdentifierReference) -> Option<(Option<String>, String)> {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `static_member_owner` redefined here
+     |
+     = note: `static_member_owner` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `member_owner_candidates_by_symbol_id` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1080:1
+     |
+ 704 | / fn member_owner_candidates_by_symbol_id(
+ 705 | |     analysis: &DartProjectReferenceAnalysis,
+ 706 | |     namespace: &NamespaceResolver<'_, '_>,
+ 707 | |     source_path: &str,
+...    |
+ 732 | |     owners
+ 733 | | }
+     | |_- previous definition of the value `member_owner_candidates_by_symbol_id` here
+...
+1080 | / fn member_owner_candidates_by_symbol_id(
+1081 | |     analysis: &DartProjectReferenceAnalysis,
+1082 | |     namespace: &NamespaceResolver<'_, '_>,
+1083 | |     source_path: &str,
+...    |
+1108 | |     owners
+1109 | | }
+     | |_^ `member_owner_candidates_by_symbol_id` redefined here
+     |
+     = note: `member_owner_candidates_by_symbol_id` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `external_member_owner_uris` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1111:1
+     |
+ 735 | / fn external_member_owner_uris(
+ 736 | |     analysis: &DartProjectReferenceAnalysis,
+ 737 | |     uri_graph: &DartUriGraph,
+ 738 | |     reference: &DartIdentifierReference,
+...    |
+ 746 | |     external_namespace_uris(analysis, uri_graph, &owner_reference)
+ 747 | | }
+     | |_- previous definition of the value `external_member_owner_uris` here
+...
+1111 | / fn external_member_owner_uris(
+1112 | |     analysis: &DartProjectReferenceAnalysis,
+1113 | |     uri_graph: &DartUriGraph,
+1114 | |     reference: &DartIdentifierReference,
+...    |
+1122 | |     external_namespace_uris(analysis, uri_graph, &owner_reference)
+1123 | | }
+     | |_^ `external_member_owner_uris` redefined here
+     |
+     = note: `external_member_owner_uris` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `declaration_candidate` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1125:1
+     |
+ 749 | / fn declaration_candidate(
+ 750 | |     path: &str,
+ 751 | |     declaration: &DartDeclaration,
+ 752 | |     basis: DartSymbolResolutionBasis,
+...    |
+ 765 | | }
+     | |_- previous definition of the value `declaration_candidate` here
+...
+1125 | / fn declaration_candidate(
+1126 | |     path: &str,
+1127 | |     declaration: &DartDeclaration,
+1128 | |     basis: DartSymbolResolutionBasis,
+...    |
+1141 | | }
+     | |_^ `declaration_candidate` redefined here
+     |
+     = note: `declaration_candidate` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `declaration_span_contains` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1143:1
+     |
+ 767 | / fn declaration_span_contains(
+ 768 | |     declaration: &DartDeclaration,
+ 769 | |     span: &dartscope_core::SourceSpan,
+ 770 | | ) -> bool {
+...    |
+ 775 | |     declaration_span.byte_start <= span.byte_start && span.byte_end <= declaration_span.byte_end
+ 776 | | }
+     | |_- previous definition of the value `declaration_span_contains` here
+...
+1143 | / fn declaration_span_contains(
+1144 | |     declaration: &DartDeclaration,
+1145 | |     span: &dartscope_core::SourceSpan,
+1146 | | ) -> bool {
+...    |
+1151 | |     declaration_span.byte_start <= span.byte_start && span.byte_end <= declaration_span.byte_end
+1152 | | }
+     | |_^ `declaration_span_contains` redefined here
+     |
+     = note: `declaration_span_contains` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `is_member_owner_kind` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1154:1
+     |
+ 778 | fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
+     | ---------------------------------------------------------- previous definition of the value `is_member_owner_kind` here
+...
+1154 | fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `is_member_owner_kind` redefined here
+     |
+     = note: `is_member_owner_kind` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `is_member_declaration_kind` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1165:1
+     |
+ 789 | fn is_member_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
+     | ------------------------------------------------------------------------ previous definition of the value `is_member_declaration_kind` here
+...
+1165 | fn is_member_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `is_member_declaration_kind` redefined here
+     |
+     = note: `is_member_declaration_kind` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `MethodRefinement` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:961:1
+    |
+585 | struct MethodRefinement {
+    | ----------------------- previous definition of the type `MethodRefinement` here
+...
+961 | struct MethodRefinement {
+    | ^^^^^^^^^^^^^^^^^^^^^^^ `MethodRefinement` redefined here
+    |
+    = note: `MethodRefinement` must be defined only once in the type namespace of this module
+
+error[E0119]: conflicting implementations of trait `Debug` for type `navigation::MethodRefinement`
+   --> crates/dartscope-index/src/navigation.rs:960:10
+    |
+584 | #[derive(Debug)]
+    |          ----- first implementation here
+...
+960 | #[derive(Debug)]
+    |          ^^^^^ conflicting implementation for `navigation::MethodRefinement`
+
+Some errors have detailed explanations: E0119, E0428.
+For more information about an error, try `rustc --explain E0119`.
+error: could not compile `dartscope-index` (lib) due to 16 previous errors
+=== workspace clippy ===
+    Checking dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+    Checking dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+    Checking dartscope-flutter v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-flutter)
+    Checking dartscope-json v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-json)
+    Checking dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+    Checking dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+error[E0428]: the name `resolve_method_declaration_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:797:1
+    |
+421 | / fn resolve_method_declaration_reference(
+422 | |     member_index: &MemberIndex,
+423 | |     reference: DartIdentifierReference,
+424 | | ) -> ResolvedReference {
+...   |
+453 | | }
+    | |_- previous definition of the value `resolve_method_declaration_reference` here
+...
+797 | / fn resolve_method_declaration_reference(
+798 | |     member_index: &MemberIndex,
+799 | |     reference: DartIdentifierReference,
+800 | | ) -> ResolvedReference {
+...   |
+829 | | }
+    | |_^ `resolve_method_declaration_reference` redefined here
+    |
+    = note: `resolve_method_declaration_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `resolve_method_invocation_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:831:1
+    |
+455 | / fn resolve_method_invocation_reference(
+456 | |     analysis: &DartProjectReferenceAnalysis,
+457 | |     namespace: &NamespaceResolver<'_, '_>,
+458 | |     uri_graph: &DartUriGraph,
+...   |
+471 | | }
+    | |_- previous definition of the value `resolve_method_invocation_reference` here
+...
+831 | / fn resolve_method_invocation_reference(
+832 | |     analysis: &DartProjectReferenceAnalysis,
+833 | |     namespace: &NamespaceResolver<'_, '_>,
+834 | |     uri_graph: &DartUriGraph,
+...   |
+847 | | }
+    | |_^ `resolve_method_invocation_reference` redefined here
+    |
+    = note: `resolve_method_invocation_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `resolve_instance_method_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:849:1
+    |
+473 | / fn resolve_instance_method_reference(
+474 | |     analysis: &DartProjectReferenceAnalysis,
+475 | |     namespace: &NamespaceResolver<'_, '_>,
+476 | |     member_index: &MemberIndex,
+...   |
+512 | |     finish_method_resolution(reference, refinements, Vec::new())
+513 | | }
+    | |_- previous definition of the value `resolve_instance_method_reference` here
+...
+849 | / fn resolve_instance_method_reference(
+850 | |     analysis: &DartProjectReferenceAnalysis,
+851 | |     namespace: &NamespaceResolver<'_, '_>,
+852 | |     member_index: &MemberIndex,
+...   |
+888 | |     finish_method_resolution(reference, refinements, Vec::new())
+889 | | }
+    | |_^ `resolve_instance_method_reference` redefined here
+    |
+    = note: `resolve_instance_method_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `resolve_static_method_reference` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:891:1
+    |
+515 | / fn resolve_static_method_reference(
+516 | |     analysis: &DartProjectReferenceAnalysis,
+517 | |     namespace: &NamespaceResolver<'_, '_>,
+518 | |     uri_graph: &DartUriGraph,
+...   |
+582 | | }
+    | |_- previous definition of the value `resolve_static_method_reference` here
+...
+891 | / fn resolve_static_method_reference(
+892 | |     analysis: &DartProjectReferenceAnalysis,
+893 | |     namespace: &NamespaceResolver<'_, '_>,
+894 | |     uri_graph: &DartUriGraph,
+...   |
+958 | | }
+    | |_^ `resolve_static_method_reference` redefined here
+    |
+    = note: `resolve_static_method_reference` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `refine_method_target` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:966:1
+     |
+ 590 | / fn refine_method_target(
+ 591 | |     member_index: &MemberIndex,
+ 592 | |     namespace: &NamespaceResolver<'_, '_>,
+ 593 | |     source_path: &str,
+...    |
+ 656 | | }
+     | |_- previous definition of the value `refine_method_target` here
+...
+ 966 | / fn refine_method_target(
+ 967 | |     member_index: &MemberIndex,
+ 968 | |     namespace: &NamespaceResolver<'_, '_>,
+ 969 | |     source_path: &str,
+...    |
+1032 | | }
+     | |_^ `refine_method_target` redefined here
+     |
+     = note: `refine_method_target` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `missing_method_target` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1034:1
+     |
+ 658 | fn missing_method_target(owner: &DartSymbolCandidate) -> MethodRefinement {
+     | ------------------------------------------------------------------------- previous definition of the value `missing_method_target` here
+...
+1034 | fn missing_method_target(owner: &DartSymbolCandidate) -> MethodRefinement {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `missing_method_target` redefined here
+     |
+     = note: `missing_method_target` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `finish_method_resolution` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1041:1
+     |
+ 665 | / fn finish_method_resolution(
+ 666 | |     reference: DartIdentifierReference,
+ 667 | |     refinements: Vec<MethodRefinement>,
+ 668 | |     external_uris: Vec<String>,
+...    |
+ 691 | | }
+     | |_- previous definition of the value `finish_method_resolution` here
+...
+1041 | / fn finish_method_resolution(
+1042 | |     reference: DartIdentifierReference,
+1043 | |     refinements: Vec<MethodRefinement>,
+1044 | |     external_uris: Vec<String>,
+...    |
+1067 | | }
+     | |_^ `finish_method_resolution` redefined here
+     |
+     = note: `finish_method_resolution` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `static_member_owner` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1069:1
+     |
+ 693 | fn static_member_owner(reference: &DartIdentifierReference) -> Option<(Option<String>, String)> {
+     | ----------------------------------------------------------------------------------------------- previous definition of the value `static_member_owner` here
+...
+1069 | fn static_member_owner(reference: &DartIdentifierReference) -> Option<(Option<String>, String)> {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `static_member_owner` redefined here
+     |
+     = note: `static_member_owner` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `member_owner_candidates_by_symbol_id` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1080:1
+     |
+ 704 | / fn member_owner_candidates_by_symbol_id(
+ 705 | |     analysis: &DartProjectReferenceAnalysis,
+ 706 | |     namespace: &NamespaceResolver<'_, '_>,
+ 707 | |     source_path: &str,
+...    |
+ 732 | |     owners
+ 733 | | }
+     | |_- previous definition of the value `member_owner_candidates_by_symbol_id` here
+...
+1080 | / fn member_owner_candidates_by_symbol_id(
+1081 | |     analysis: &DartProjectReferenceAnalysis,
+1082 | |     namespace: &NamespaceResolver<'_, '_>,
+1083 | |     source_path: &str,
+...    |
+1108 | |     owners
+1109 | | }
+     | |_^ `member_owner_candidates_by_symbol_id` redefined here
+     |
+     = note: `member_owner_candidates_by_symbol_id` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `external_member_owner_uris` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1111:1
+     |
+ 735 | / fn external_member_owner_uris(
+ 736 | |     analysis: &DartProjectReferenceAnalysis,
+ 737 | |     uri_graph: &DartUriGraph,
+ 738 | |     reference: &DartIdentifierReference,
+...    |
+ 746 | |     external_namespace_uris(analysis, uri_graph, &owner_reference)
+ 747 | | }
+     | |_- previous definition of the value `external_member_owner_uris` here
+...
+1111 | / fn external_member_owner_uris(
+1112 | |     analysis: &DartProjectReferenceAnalysis,
+1113 | |     uri_graph: &DartUriGraph,
+1114 | |     reference: &DartIdentifierReference,
+...    |
+1122 | |     external_namespace_uris(analysis, uri_graph, &owner_reference)
+1123 | | }
+     | |_^ `external_member_owner_uris` redefined here
+     |
+     = note: `external_member_owner_uris` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `declaration_candidate` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1125:1
+     |
+ 749 | / fn declaration_candidate(
+ 750 | |     path: &str,
+ 751 | |     declaration: &DartDeclaration,
+ 752 | |     basis: DartSymbolResolutionBasis,
+...    |
+ 765 | | }
+     | |_- previous definition of the value `declaration_candidate` here
+...
+1125 | / fn declaration_candidate(
+1126 | |     path: &str,
+1127 | |     declaration: &DartDeclaration,
+1128 | |     basis: DartSymbolResolutionBasis,
+...    |
+1141 | | }
+     | |_^ `declaration_candidate` redefined here
+     |
+     = note: `declaration_candidate` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `declaration_span_contains` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1143:1
+     |
+ 767 | / fn declaration_span_contains(
+ 768 | |     declaration: &DartDeclaration,
+ 769 | |     span: &dartscope_core::SourceSpan,
+ 770 | | ) -> bool {
+...    |
+ 775 | |     declaration_span.byte_start <= span.byte_start && span.byte_end <= declaration_span.byte_end
+ 776 | | }
+     | |_- previous definition of the value `declaration_span_contains` here
+...
+1143 | / fn declaration_span_contains(
+1144 | |     declaration: &DartDeclaration,
+1145 | |     span: &dartscope_core::SourceSpan,
+1146 | | ) -> bool {
+...    |
+1151 | |     declaration_span.byte_start <= span.byte_start && span.byte_end <= declaration_span.byte_end
+1152 | | }
+     | |_^ `declaration_span_contains` redefined here
+     |
+     = note: `declaration_span_contains` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `is_member_owner_kind` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1154:1
+     |
+ 778 | fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
+     | ---------------------------------------------------------- previous definition of the value `is_member_owner_kind` here
+...
+1154 | fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `is_member_owner_kind` redefined here
+     |
+     = note: `is_member_owner_kind` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `is_member_declaration_kind` is defined multiple times
+    --> crates/dartscope-index/src/navigation.rs:1165:1
+     |
+ 789 | fn is_member_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
+     | ------------------------------------------------------------------------ previous definition of the value `is_member_declaration_kind` here
+...
+1165 | fn is_member_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `is_member_declaration_kind` redefined here
+     |
+     = note: `is_member_declaration_kind` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `MethodRefinement` is defined multiple times
+   --> crates/dartscope-index/src/navigation.rs:961:1
+    |
+585 | struct MethodRefinement {
+    | ----------------------- previous definition of the type `MethodRefinement` here
+...
+961 | struct MethodRefinement {
+    | ^^^^^^^^^^^^^^^^^^^^^^^ `MethodRefinement` redefined here
+    |
+    = note: `MethodRefinement` must be defined only once in the type namespace of this module
+
+error[E0119]: conflicting implementations of trait `std::fmt::Debug` for type `navigation::MethodRefinement`
+   --> crates/dartscope-index/src/navigation.rs:960:10
+    |
+584 | #[derive(Debug)]
+    |          ----- first implementation here
+...
+960 | #[derive(Debug)]
+    |          ^^^^^ conflicting implementation for `navigation::MethodRefinement`
+
+Some errors have detailed explanations: E0119, E0428.
+For more information about an error, try `rustc --explain E0119`.
+error: could not compile `dartscope-index` (lib) due to 16 previous errors
+warning: build failed, waiting for other jobs to finish...
+FINAL_STATUS=1
