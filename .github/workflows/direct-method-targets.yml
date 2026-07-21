@@ -1,0 +1,50 @@
+name: Direct method target staging
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.head_ref == 'agent/direct-method-targets'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: agent/direct-method-targets
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Apply and format product patch
+        run: |
+          set -e
+          python3 .github/scripts/apply_direct_method_targets.py
+          cargo +1.95.0 fmt --all
+      - name: Commit formatted product files
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            crates/dartscope-core/src/lib.rs \
+            crates/dartscope-parse/src/lib.rs \
+            crates/dartscope-parse/src/analysis.rs \
+            crates/dartscope-parse/src/member_references.rs \
+            crates/dartscope-index/src/references.rs \
+            crates/dartscope-index/src/navigation.rs \
+            crates/dartscope-index/tests/navigation_methods.rs
+          if ! git diff --cached --quiet; then
+            git commit -m "feat: resolve direct method targets"
+            git push origin HEAD:agent/direct-method-targets
+          fi
+      - name: Verify strictly
+        run: |
+          set -euo pipefail
+          cargo +1.95.0 test -p dartscope-parse --lib --locked
+          cargo +1.95.0 test -p dartscope-index --test navigation_methods --locked
+          cargo +1.95.0 test -p dartscope-index --test navigation_constructors --locked
+          cargo +1.95.0 test -p dartscope-index --test navigation_batch --locked
+          cargo +1.95.0 test -p dartscope-index --test reference_resolution --locked
+          cargo +1.95.0 test -p dartscope-index --test incremental_navigation_parity --locked
+          cargo +1.95.0 clippy -p dartscope-core -p dartscope-parse -p dartscope-index --all-targets --locked -- -D warnings
