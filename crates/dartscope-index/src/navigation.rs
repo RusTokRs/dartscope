@@ -430,9 +430,7 @@ fn combine_statuses(
             DartDefinitionResolutionStatus::Missing
         };
     }
-    if statuses
-        .iter()
-        .any(|status| *status == DartDefinitionResolutionStatus::Resolved)
+    if statuses.contains(&DartDefinitionResolutionStatus::Resolved)
     {
         return DartDefinitionResolutionStatus::Ambiguous;
     }
@@ -445,7 +443,7 @@ fn combine_statuses(
         DartDefinitionResolutionStatus::Missing,
         DartDefinitionResolutionStatus::ReferenceMissing,
     ] {
-        if statuses.iter().any(|candidate| *candidate == status) {
+        if statuses.contains(&status) {
             return status;
         }
     }
