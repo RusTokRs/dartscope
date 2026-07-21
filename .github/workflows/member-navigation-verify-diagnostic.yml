@@ -1,0 +1,66 @@
+name: Member navigation verification diagnostic
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.head_ref == 'agent/audit-member-navigation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          persist-credentials: true
+      - name: Skip retained diagnostic
+        id: retained
+        shell: bash
+        run: |
+          if test -f member-audit-verify.log; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install Rust 1.95
+        if: steps.retained.outputs.skip == 'false'
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Run verification and retain output
+        if: steps.retained.outputs.skip == 'false'
+        id: verify
+        shell: bash
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          set +e
+          status=0
+          {
+            cargo +1.95.0 fmt --all -- --check || status=$?
+            cargo +1.95.0 test -p dartscope-parse --test member_reference_regressions --locked || status=$?
+            cargo +1.95.0 test -p dartscope-parse --test operator_references --locked || status=$?
+            cargo +1.95.0 test -p dartscope-index --test navigation_member_regressions --locked || status=$?
+            cargo +1.95.0 test -p dartscope-index --test navigation_operators --locked || status=$?
+            cargo +1.95.0 check --workspace --all-targets --locked || status=$?
+            cargo +1.95.0 check -p dartscope --all-features --locked || status=$?
+            cargo +1.95.0 test --workspace --locked --quiet || status=$?
+            cargo +1.95.0 clippy --workspace --all-targets --locked -- -D warnings || status=$?
+            cargo +1.95.0 doc --workspace --no-deps --locked || status=$?
+          } > member-audit-verify.log 2>&1
+          cat member-audit-verify.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Retain failed verification output
+        if: steps.retained.outputs.skip == 'false' && steps.verify.outputs.status != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add member-audit-verify.log
+          git commit -m "build: retain member audit verification output"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+      - name: Fail verification
+        if: steps.retained.outputs.skip == 'false' && steps.verify.outputs.status != '0'
+        run: exit 1
