@@ -63,8 +63,34 @@ Implemented on `main`:
 9. Applied the pinned Rust 1.95 formatter to every touched Rust file and removed the obsolete
    statement-boundary helper exposed by warnings during hosted verification.
 
-No public Rust type, serialized field, reference kind, confidence rule, or index/parser boundary was
-changed by either loop slice.
+## Completed Slice: Navigation Batch API Foundation
+
+Implemented on `main`:
+
+1. Added `DartWorkspaceResolutionContext`, which builds one URI graph, part-link view, namespace
+   resolver, and lexical-resolution set for one normalized `DartProjectReferenceAnalysis`.
+2. Added deterministic position-based `find_definitions` and `find_definitions_with_options` batches
+   plus reusable-context methods. Queries are normalized, sorted, deduplicated, and resolved only from
+   parser-produced reference and binding facts.
+3. Unified namespace and lexical results through `DartDefinitionTarget` while retaining the original
+   parser references, exact declaration spans, symbol IDs, namespace basis, and lexical intervals.
+4. Added explicit `resolved`, `reference_missing`, `missing`, `ambiguous`, `not_visible`,
+   `conditional_environment_required`, `external_unindexed`, and `source_file_missing` outcomes.
+   External-unindexed results retain the relevant import URI evidence instead of guessing a target.
+5. Added deterministic reverse `find_references` batches. Reverse lookup includes only facts whose
+   definition is uniquely resolved to the selected target; ambiguous and not-visible facts are not
+   attributed to a symbol.
+6. Re-exported the API from `dartscope-index` and the umbrella `dartscope` crate without changing the
+   command-facing v1 JSON envelopes.
+7. Added integration fixtures for namespace and lexical definitions, paired lexical updates,
+   not-visible and missing references, conditional imports, unindexed package imports, duplicate query
+   elimination, stable ordering, reverse lookup, and stateless/reusable-context parity.
+8. Kept all index work source-free: the context consumes normalized project/reference analysis and
+   never reads or reparses raw Dart text.
+
+The loop slices did not change public Rust types or serialized fields. The navigation slice adds
+opt-in Rust library API types in `dartscope-index`; it does not alter stable serialized command
+payloads, reference kinds, confidence rules, or parser/index ownership boundaries.
 
 ## Current Limits
 
@@ -79,25 +105,28 @@ The heuristic backend still defers:
 - definite-assignment and flow analysis;
 - member/index writes, inherited-member lookup, and extension lookup.
 
+The stateful workspace index does not yet retain parser-produced lexical bindings in snapshots, so
+navigation parity is currently available from a full `DartProjectReferenceAnalysis` context only.
+
 ## Next Ordered Slice
 
-Continue `DS-INDEX-006` with deterministic find-definition and find-references batch APIs over the
-existing parser-produced namespace and lexical facts.
+Continue `DS-INDEX-006` with incremental navigation parity:
 
-Required evidence before enabling the slice:
+1. Retain normalized lexical bindings per path in `DartWorkspaceIndex` and immutable snapshots.
+2. Rebuild only affected navigation facts after reference-file updates while preserving old snapshot
+   validity and deterministic counters.
+3. Expose a snapshot-backed `DartWorkspaceResolutionContext` or equivalent batch entrypoint with the
+   same full-rebuild definition/reference results.
+4. Add full-build versus no-op, local-update, declaration-update, removal, and options-update parity
+   fixtures.
+5. Preserve the current source-free boundary and explicit unresolved/external evidence.
 
-1. One reusable workspace resolution context shared by a batch of queries.
-2. Stable deterministic ordering and exact source/declaration spans for every result.
-3. Explicit unresolved, ambiguous, not-visible, and external-unindexed evidence rather than guessed
-   targets.
-4. Definition and reference queries for both namespace facts and lexical binding facts without raw
-   source reparsing inside `dartscope-index`.
-5. Full-rebuild and incremental-snapshot parity where the existing workspace index can provide the
-   same normalized inputs.
+After parity, continue the remaining `DS-INDEX-006` lookup slices for constructor/member/extension
+resolution and the still-deferred pattern/reference forms.
 
 ## Verification Contract
 
 Run the repository-pinned Rust 1.95.0 checks from `AGENTS.md`, including formatting, workspace tests,
 Clippy with warnings denied, rustdoc with warnings denied, umbrella feature checks, and the hosted
-Linux/Windows matrix. Do not mark the new slice verified until the final feature commit publishes a
-successful aggregate `dartscope/ci` status.
+Linux/Windows matrix. Do not mark a new navigation sub-slice verified until its final feature commit
+publishes a successful aggregate `dartscope/ci` status.
