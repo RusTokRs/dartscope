@@ -88,9 +88,30 @@ Implemented on `main`:
 8. Kept all index work source-free: the context consumes normalized project/reference analysis and
    never reads or reparses raw Dart text.
 
-The loop slices did not change public Rust types or serialized fields. The navigation slice adds
-opt-in Rust library API types in `dartscope-index`; it does not alter stable serialized command
-payloads, reference kinds, confidence rules, or parser/index ownership boundaries.
+## Completed Slice: Incremental Navigation Snapshot Parity
+
+Implemented on `main`:
+
+1. Retained normalized parser-produced identifier references and lexical bindings per path in
+   `DartWorkspaceIndex` and aggregated them into every immutable `DartWorkspaceSnapshot`.
+2. Stored the exact `DartIndexOptions` used for each snapshot and exposed source-free accessors for
+   references, bindings, options, and a normalized `DartProjectReferenceAnalysis` projection.
+3. Added `DartWorkspaceResolutionContext::from_snapshot`, reusing the snapshot URI graph, part-link
+   analysis, compilation environment, project facts, references, and binding intervals.
+4. Updated reference-aware file replacement to compare and replace bindings together with reference
+   facts. Plain file replacement and file removal clear stale bindings for the affected path.
+5. Preserved deterministic no-op behavior: an identical file/reference/binding update does not create
+   a new generation or increment reference-rebuild counters.
+6. Preserved old snapshot validity after later local updates and removals; navigation queries against
+   an earlier generation retain their earlier project, reference, binding, URI, and option evidence.
+7. Added full-build versus snapshot parity fixtures for initial construction, no-op replacement, local
+   binding rename, declaration-file removal, and conditional-compilation option updates.
+8. Kept the incremental boundary source-free. Neither the stateful index nor snapshot-backed
+   navigation reads or reparses Dart source.
+
+The loop slices did not change public Rust types or serialized fields. The navigation slices add
+opt-in Rust library API types and snapshot accessors in `dartscope-index`; they do not alter stable
+serialized command payloads, reference kinds, confidence rules, or parser/index ownership boundaries.
 
 ## Current Limits
 
@@ -105,24 +126,25 @@ The heuristic backend still defers:
 - definite-assignment and flow analysis;
 - member/index writes, inherited-member lookup, and extension lookup.
 
-The stateful workspace index does not yet retain parser-produced lexical bindings in snapshots, so
-navigation parity is currently available from a full `DartProjectReferenceAnalysis` context only.
+Snapshot-backed navigation currently reconstructs the lightweight project-reference projection and
+resolution context from immutable normalized facts. It does not retain parser ASTs or raw source, and
+it does not yet provide constructor-as-member, instance/static member, inherited-member, extension, or
+pattern-reference resolution.
 
 ## Next Ordered Slice
 
-Continue `DS-INDEX-006` with incremental navigation parity:
+Continue `DS-INDEX-006` with constructor-target resolution:
 
-1. Retain normalized lexical bindings per path in `DartWorkspaceIndex` and immutable snapshots.
-2. Rebuild only affected navigation facts after reference-file updates while preserving old snapshot
-   validity and deterministic counters.
-3. Expose a snapshot-backed `DartWorkspaceResolutionContext` or equivalent batch entrypoint with the
-   same full-rebuild definition/reference results.
-4. Add full-build versus no-op, local-update, declaration-update, removal, and options-update parity
-   fixtures.
-5. Preserve the current source-free boundary and explicit unresolved/external evidence.
-
-After parity, continue the remaining `DS-INDEX-006` lookup slices for constructor/member/extension
-resolution and the still-deferred pattern/reference forms.
+1. Distinguish type declarations from constructor declarations without treating `Type.named()` as an
+   ordinary prefixed import reference.
+2. Resolve unnamed and named constructors to exact constructor declaration spans when indexed, while
+   retaining the owning type as explicit evidence when constructor declarations are incomplete.
+3. Preserve import prefixes, library privacy, show/hide combinators, conditional environments, parts,
+   ambiguity, not-visible evidence, and external-unindexed URIs.
+4. Keep instance/static member, inherited-member, extension lookup, patterns, and flow-sensitive
+   behavior deferred behind later focused slices.
+5. Add parser/index fixtures for local, imported, prefixed, named, missing, private, ambiguous,
+   conditional, part-library, and external constructor targets before broadening member lookup.
 
 ## Verification Contract
 
