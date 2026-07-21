@@ -1,0 +1,701 @@
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded serde_core v1.0.228
+  Downloaded thiserror v2.0.18
+  Downloaded itoa v1.0.18
+  Downloaded lazy_static v1.5.0
+  Downloaded fnv v1.0.7
+  Downloaded percent-encoding v2.3.2
+  Downloaded hashlink v0.11.1
+  Downloaded thiserror-impl v2.0.18
+  Downloaded quote v1.0.46
+  Downloaded zmij v1.0.21
+  Downloaded arraydeque v0.5.1
+  Downloaded foldhash v0.2.0
+  Downloaded unicode-ident v1.0.24
+  Downloaded serde_derive v1.0.228
+  Downloaded yaml-rust2 v0.11.0
+  Downloaded uriparse v0.6.4
+  Downloaded serde v1.0.228
+  Downloaded memchr v2.8.2
+  Downloaded hashbrown v0.16.1
+  Downloaded serde_json v1.0.150
+  Downloaded proc-macro2 v1.0.106
+  Downloaded syn v2.0.118
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.46
+   Compiling serde_core v1.0.228
+   Compiling thiserror v2.0.18
+   Compiling serde v1.0.228
+   Compiling zmij v1.0.21
+   Compiling foldhash v0.2.0
+   Compiling serde_json v1.0.150
+   Compiling hashbrown v0.16.1
+   Compiling itoa v1.0.18
+   Compiling syn v2.0.118
+   Compiling fnv v1.0.7
+   Compiling memchr v2.8.2
+   Compiling lazy_static v1.5.0
+   Compiling uriparse v0.6.4
+   Compiling hashlink v0.11.1
+   Compiling percent-encoding v2.3.2
+   Compiling arraydeque v0.5.1
+   Compiling yaml-rust2 v0.11.0
+   Compiling thiserror-impl v2.0.18
+   Compiling serde_derive v1.0.228
+   Compiling dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+   Compiling dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+   Compiling dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+warning: unused import: `DartDeclaration`
+ --> crates/dartscope-parse/src/member_references.rs:2:17
+  |
+2 |     Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
+  |                 ^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `identifier_end` is never used
+   --> crates/dartscope-parse/src/member_references.rs:207:4
+    |
+207 | fn identifier_end(bytes: &[u8], mut at: usize) -> usize {
+    |    ^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `is_identifier_start` is never used
+   --> crates/dartscope-parse/src/member_references.rs:217:4
+    |
+217 | fn is_identifier_start(byte: u8) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: `dartscope-parse` (lib) generated 3 warnings (run `cargo fix --lib -p dartscope-parse` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.35s
+     Running tests/member_reference_regressions.rs (target/debug/deps/member_reference_regressions-873e9c45f86c4df8)
+
+running 2 tests
+test declaration_facts_anchor_the_declared_member_name ... ok
+test private_named_types_emit_static_member_facts ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+warning: unused import: `DartDeclaration`
+ --> crates/dartscope-parse/src/member_references.rs:2:17
+  |
+2 |     Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
+  |                 ^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `identifier_end` is never used
+   --> crates/dartscope-parse/src/member_references.rs:207:4
+    |
+207 | fn identifier_end(bytes: &[u8], mut at: usize) -> usize {
+    |    ^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `is_identifier_start` is never used
+   --> crates/dartscope-parse/src/member_references.rs:217:4
+    |
+217 | fn is_identifier_start(byte: u8) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: `dartscope-parse` (lib) generated 3 warnings (run `cargo fix --lib -p dartscope-parse` to apply 1 suggestion)
+   Compiling dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.18s
+     Running tests/operator_references.rs (target/debug/deps/operator_references-98a2a2d456afc2a4)
+
+running 1 test
+test emits_exact_operator_declaration_and_invocation_facts ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Compiling dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+warning: unused import: `DartDeclaration`
+ --> crates/dartscope-parse/src/member_references.rs:2:17
+  |
+2 |     Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
+  |                 ^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `identifier_end` is never used
+   --> crates/dartscope-parse/src/member_references.rs:207:4
+    |
+207 | fn identifier_end(bytes: &[u8], mut at: usize) -> usize {
+    |    ^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `is_identifier_start` is never used
+   --> crates/dartscope-parse/src/member_references.rs:217:4
+    |
+217 | fn is_identifier_start(byte: u8) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: `dartscope-parse` (lib) generated 3 warnings (run `cargo fix --lib -p dartscope-parse` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.76s
+     Running tests/navigation_member_regressions.rs (target/debug/deps/navigation_member_regressions-7f624f149722b99e)
+
+running 3 tests
+test resolves_method_and_constructor_tear_offs_and_keyword_free_calls ... ok
+test resolves_static_members_on_private_named_types_inside_the_library ... ok
+test resolves_all_indexed_static_member_owner_kinds ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+warning: unused import: `DartDeclaration`
+ --> crates/dartscope-parse/src/member_references.rs:2:17
+  |
+2 |     Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
+  |                 ^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `identifier_end` is never used
+   --> crates/dartscope-parse/src/member_references.rs:207:4
+    |
+207 | fn identifier_end(bytes: &[u8], mut at: usize) -> usize {
+    |    ^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `is_identifier_start` is never used
+   --> crates/dartscope-parse/src/member_references.rs:217:4
+    |
+217 | fn is_identifier_start(byte: u8) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: `dartscope-parse` (lib) generated 3 warnings (run `cargo fix --lib -p dartscope-parse` to apply 1 suggestion)
+   Compiling dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.27s
+     Running tests/navigation_operators.rs (target/debug/deps/navigation_operators-163cfd9a85a51b30)
+
+running 2 tests
+test resolves_direct_operator_targets_and_reverse_references ... ok
+test preserves_part_library_and_snapshot_operator_parity ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+ Downloading crates ...
+  Downloaded toml_parser v1.1.2+spec-1.1.0
+  Downloaded serde_spanned v1.1.1
+  Downloaded toml v1.1.3+spec-1.1.0
+  Downloaded toml_datetime v1.1.1+spec-1.1.0
+  Downloaded winnow v1.0.4
+   Compiling serde_core v1.0.228
+    Checking thiserror v2.0.18
+    Checking zmij v1.0.21
+    Checking itoa v1.0.18
+    Checking memchr v2.8.2
+    Checking fnv v1.0.7
+    Checking lazy_static v1.5.0
+    Checking uriparse v0.6.4
+    Checking percent-encoding v2.3.2
+    Checking foldhash v0.2.0
+    Checking hashbrown v0.16.1
+    Checking arraydeque v0.5.1
+    Checking winnow v1.0.4
+    Checking toml_parser v1.1.2+spec-1.1.0
+    Checking hashlink v0.11.1
+    Checking yaml-rust2 v0.11.0
+    Checking serde v1.0.228
+    Checking serde_json v1.0.150
+    Checking serde_spanned v1.1.1
+    Checking toml_datetime v1.1.1+spec-1.1.0
+    Checking toml v1.1.3+spec-1.1.0
+    Checking dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+    Checking dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+    Checking dartscope-flutter v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-flutter)
+    Checking dartscope-json v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-json)
+    Checking dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+    Checking dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+warning: unused import: `DartDeclaration`
+ --> crates/dartscope-parse/src/member_references.rs:2:17
+  |
+2 |     Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
+  |                 ^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+    Checking dartscope-lints v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-lints)
+warning: function `identifier_end` is never used
+   --> crates/dartscope-parse/src/member_references.rs:207:4
+    |
+207 | fn identifier_end(bytes: &[u8], mut at: usize) -> usize {
+    |    ^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `is_identifier_start` is never used
+   --> crates/dartscope-parse/src/member_references.rs:217:4
+    |
+217 | fn is_identifier_start(byte: u8) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: `dartscope-parse` (lib) generated 3 warnings (run `cargo fix --lib -p dartscope-parse` to apply 1 suggestion)
+    Checking dartscope v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope)
+    Checking dartscope-cli v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-cli)
+warning: `dartscope-parse` (lib test) generated 3 warnings (3 duplicates)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.90s
+    Checking serde_core v1.0.228
+    Checking serde v1.0.228
+    Checking serde_json v1.0.150
+    Checking dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+    Checking dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+    Checking dartscope-json v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-json)
+    Checking dartscope-flutter v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-flutter)
+    Checking dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+    Checking dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+warning: unused import: `DartDeclaration`
+ --> crates/dartscope-parse/src/member_references.rs:2:17
+  |
+2 |     Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
+  |                 ^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+    Checking dartscope-lints v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-lints)
+warning: function `identifier_end` is never used
+   --> crates/dartscope-parse/src/member_references.rs:207:4
+    |
+207 | fn identifier_end(bytes: &[u8], mut at: usize) -> usize {
+    |    ^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `is_identifier_start` is never used
+   --> crates/dartscope-parse/src/member_references.rs:217:4
+    |
+217 | fn is_identifier_start(byte: u8) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: `dartscope-parse` (lib) generated 3 warnings (run `cargo fix --lib -p dartscope-parse` to apply 1 suggestion)
+    Checking dartscope v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.87s
+warning: unused import: `DartDeclaration`
+ --> crates/dartscope-parse/src/member_references.rs:2:17
+  |
+2 |     Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
+  |                 ^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `identifier_end` is never used
+   --> crates/dartscope-parse/src/member_references.rs:207:4
+    |
+207 | fn identifier_end(bytes: &[u8], mut at: usize) -> usize {
+    |    ^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `is_identifier_start` is never used
+   --> crates/dartscope-parse/src/member_references.rs:217:4
+    |
+217 | fn is_identifier_start(byte: u8) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+.......
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 5 tests
+.....
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+......
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 17 tests
+.................
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+.....
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+....
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 52 tests
+....................................................
+test result: ok. 52 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+....
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+....
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+....
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 85 tests
+.....................................................................................
+test result: ok. 85 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+....
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+......
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+....
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+..
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+...
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 12 tests
+............
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+i
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.10s; merged doctests compilation took 0.10s
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+    Checking dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+    Checking dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+    Checking dartscope-flutter v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-flutter)
+    Checking dartscope-json v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-json)
+    Checking dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+    Checking dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+error: unused import: `DartDeclaration`
+ --> crates/dartscope-parse/src/member_references.rs:2:17
+  |
+2 |     Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
+  |                 ^^^^^^^^^^^^^^^
+  |
+  = note: `-D unused-imports` implied by `-D warnings`
+  = help: to override `-D warnings` add `#[allow(unused_imports)]`
+
+    Checking dartscope-lints v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-lints)
+error: function `identifier_end` is never used
+   --> crates/dartscope-parse/src/member_references.rs:207:4
+    |
+207 | fn identifier_end(bytes: &[u8], mut at: usize) -> usize {
+    |    ^^^^^^^^^^^^^^
+    |
+    = note: `-D dead-code` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[expect(dead_code)]` or `#[allow(dead_code)]`
+
+error: function `is_identifier_start` is never used
+   --> crates/dartscope-parse/src/member_references.rs:217:4
+    |
+217 | fn is_identifier_start(byte: u8) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+error: could not compile `dartscope-parse` (lib) due to 3 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `dartscope-parse` (lib test) due to 3 previous errors
+ Documenting dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+ Documenting dartscope-json v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-json)
+warning: unused import: `DartDeclaration`
+ --> crates/dartscope-parse/src/member_references.rs:2:17
+  |
+2 |     Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
+  |                 ^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `identifier_end` is never used
+   --> crates/dartscope-parse/src/member_references.rs:207:4
+    |
+207 | fn identifier_end(bytes: &[u8], mut at: usize) -> usize {
+    |    ^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `is_identifier_start` is never used
+   --> crates/dartscope-parse/src/member_references.rs:217:4
+    |
+217 | fn is_identifier_start(byte: u8) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: `dartscope-parse` (lib) generated 3 warnings (run `cargo fix --lib -p dartscope-parse` to apply 1 suggestion)
+ Documenting dartscope v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope)
+ Documenting dartscope-flutter v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-flutter)
+ Documenting dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+ Documenting dartscope-lints v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-lints)
+ Documenting dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+ Documenting dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.79s
+   Generated /home/runner/work/dartscope/dartscope/target/doc/dartscope/index.html and 7 other files
