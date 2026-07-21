@@ -94,9 +94,8 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Continue `DS-INDEX-006` with incremental navigation parity. Retain normalized lexical bindings per
-path in `DartWorkspaceIndex` and immutable snapshots, rebuild only affected navigation facts, and
-expose snapshot-backed definition/reference batches with the same deterministic results as
-`DartWorkspaceResolutionContext` built from a full `DartProjectReferenceAnalysis`. Cover no-op,
-local update, declaration update, removal, and options-update parity before expanding constructor,
-member, extension, pattern, or flow-sensitive lookup.
+Continue `DS-INDEX-006` with constructor-target resolution. Distinguish constructor syntax from
+prefixed imports, resolve unnamed and named constructors to exact indexed declaration spans, and
+preserve import prefixes, library privacy, combinators, conditional environments, parts, ambiguity,
+not-visible evidence, and external-unindexed URIs. Keep general member, inherited-member, extension,
+pattern, and flow-sensitive lookup behind later focused slices.
