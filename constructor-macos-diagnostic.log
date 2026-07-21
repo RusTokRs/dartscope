@@ -1,0 +1,375 @@
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded toml_parser v1.1.2+spec-1.1.0
+  Downloaded serde_spanned v1.1.1
+  Downloaded fnv v1.0.7
+  Downloaded itoa v1.0.18
+  Downloaded zmij v1.0.21
+  Downloaded toml_datetime v1.1.1+spec-1.1.0
+  Downloaded hashlink v0.11.1
+  Downloaded thiserror v2.0.18
+  Downloaded uriparse v0.6.4
+  Downloaded yaml-rust2 v0.11.0
+  Downloaded unicode-ident v1.0.24
+  Downloaded serde v1.0.228
+  Downloaded hashbrown v0.16.1
+  Downloaded memchr v2.8.2
+  Downloaded serde_json v1.0.150
+  Downloaded winnow v1.0.4
+  Downloaded proc-macro2 v1.0.106
+  Downloaded toml v1.1.3+spec-1.1.0
+  Downloaded serde_derive v1.0.228
+  Downloaded serde_core v1.0.228
+  Downloaded quote v1.0.46
+  Downloaded syn v2.0.118
+  Downloaded foldhash v0.2.0
+  Downloaded arraydeque v0.5.1
+  Downloaded thiserror-impl v2.0.18
+  Downloaded percent-encoding v2.3.2
+  Downloaded lazy_static v1.5.0
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.46
+   Compiling serde_core v1.0.228
+   Compiling unicode-ident v1.0.24
+   Compiling thiserror v2.0.18
+   Compiling serde v1.0.228
+   Compiling zmij v1.0.21
+   Compiling syn v2.0.118
+   Compiling serde_json v1.0.150
+    Checking itoa v1.0.18
+    Checking memchr v2.8.2
+    Checking lazy_static v1.5.0
+    Checking fnv v1.0.7
+    Checking uriparse v0.6.4
+    Checking foldhash v0.2.0
+    Checking percent-encoding v2.3.2
+    Checking hashbrown v0.16.1
+    Checking arraydeque v0.5.1
+    Checking winnow v1.0.4
+    Checking toml_parser v1.1.2+spec-1.1.0
+    Checking hashlink v0.11.1
+    Checking yaml-rust2 v0.11.0
+   Compiling serde_derive v1.0.228
+   Compiling thiserror-impl v2.0.18
+    Checking toml_datetime v1.1.1+spec-1.1.0
+    Checking serde_spanned v1.1.1
+    Checking toml v1.1.3+spec-1.1.0
+    Checking dartscope-core v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-core)
+    Checking dartscope-resolve v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+    Checking dartscope-flutter v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-flutter)
+    Checking dartscope-json v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-json)
+    Checking dartscope-parse v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-parse)
+    Checking dartscope-index v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-index)
+    Checking dartscope-lints v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-lints)
+    Checking dartscope v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope)
+    Checking dartscope-cli v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 14.30s
+   Compiling serde_core v1.0.228
+   Compiling thiserror v2.0.18
+   Compiling zmij v1.0.21
+   Compiling memchr v2.8.2
+   Compiling itoa v1.0.18
+   Compiling lazy_static v1.5.0
+   Compiling fnv v1.0.7
+   Compiling uriparse v0.6.4
+   Compiling percent-encoding v2.3.2
+   Compiling foldhash v0.2.0
+   Compiling hashbrown v0.16.1
+   Compiling hashlink v0.11.1
+   Compiling arraydeque v0.5.1
+   Compiling yaml-rust2 v0.11.0
+   Compiling winnow v1.0.4
+   Compiling serde v1.0.228
+   Compiling serde_json v1.0.150
+   Compiling dartscope-core v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-core)
+   Compiling toml_parser v1.1.2+spec-1.1.0
+   Compiling toml_datetime v1.1.1+spec-1.1.0
+   Compiling serde_spanned v1.1.1
+   Compiling toml v1.1.3+spec-1.1.0
+   Compiling dartscope-resolve v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+   Compiling dartscope-parse v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-parse)
+   Compiling dartscope-index v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-index)
+   Compiling dartscope-flutter v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-flutter)
+   Compiling dartscope-lints v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-lints)
+   Compiling dartscope-json v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-json)
+   Compiling dartscope v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope)
+   Compiling dartscope-cli v0.1.0 (/Users/runner/work/dartscope/dartscope/crates/dartscope-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 24.93s
+     Running unittests src/lib.rs (target/debug/deps/dartscope-fcd25f75230fd769)
+
+running 1 test
+test tests::explicit_flutter_composition_keeps_pure_parser_independent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/dartscope-536c15b676a938c8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cli_contract.rs (target/debug/deps/cli_contract-6f652f59f827157d)
+
+running 7 tests
+test flutter_inventory_reads_l10n_and_arb_catalogs ... ok
+test help_version_and_command_help_are_stable ... ok
+test malformed_inputs_never_panic ... ok
+test all_json_commands_write_only_versioned_json_to_stdout ... ok
+test non_catalog_commands_ignore_invalid_arb_bytes ... ok
+test usage_and_input_errors_use_stable_exit_codes ... ok
+test project_discovery_handles_nested_packages_and_generated_directories ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+     Running tests/lint_command.rs (target/debug/deps/lint_command-f85d7916670c8048)
+
+running 5 tests
+test lint_help_and_default_configuration_are_inert ... ok
+test full_toml_surface_maps_to_the_existing_lint_engine ... ok
+test invalid_configuration_project_input_and_arguments_are_distinct ... ok
+test sarif_output_is_deterministic_and_keeps_spans_and_rule_metadata ... ok
+test toml_configuration_and_deny_warnings_use_stable_exit_codes ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+
+     Running tests/versioned_json_contracts.rs (target/debug/deps/versioned_json_contracts-c7daa702263d989a)
+
+running 2 tests
+test every_registered_contract_is_listed_in_the_compatibility_policy ... ok
+test checked_in_v1_golden_contracts_match_public_models ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/dartscope_core-4c158d16dc994649)
+
+running 6 tests
+test pubspec::tests::defaults_extended_asset_configuration_for_legacy_json ... ok
+test compatibility_tests::older_diagnostics_deserialize_without_confidence ... ok
+test compatibility_tests::older_flutter_asset_hints_deserialize_without_package_metadata ... ok
+test pubspec::tests::extracts_embeddable_configuration ... ok
+test pubspec::tests::parses_common_dependency_source_variants ... ok
+test pubspec::tests::preserves_direct_urls_and_additional_fields ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/pubspec_configuration_serialization.rs (target/debug/deps/pubspec_configuration_serialization-cefdaf5a4693c63d)
+
+running 2 tests
+test defaults_selector_policy_and_default_flavor_for_legacy_payloads ... ok
+test serializes_the_core_pubspec_configuration_shape ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/pubspec_source_serialization.rs (target/debug/deps/pubspec_source_serialization-47bf4db8d7915e0f)
+
+running 1 test
+test serializes_every_pubspec_dependency_source_variant ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/dartscope_flutter-4062c50c96a493ab)
+
+running 17 tests
+test catalogs::tests::invalid_l10n_field_types_are_not_silently_defaulted ... ok
+test catalogs::tests::explicit_root_l10n_links_without_a_pubspec ... ok
+test catalogs::tests::links_assets_to_the_nearest_nested_package_pubspec ... ok
+test catalogs::tests::missing_l10n_configuration_is_medium_confidence ... ok
+test catalogs::tests::links_file_and_direct_directory_assets_without_claiming_nested_files ... ok
+test catalogs::tests::parses_custom_l10n_and_links_generated_class_to_arb_keys ... ok
+test catalogs::tests::malformed_catalog_inputs_produce_path_attributed_diagnostics ... ok
+test ecosystem::tests::recognizes_common_pub_constraint_shapes ... ok
+test tests::empty_project_yields_empty_inventory ... ok
+test tests::generic_localization_hints_do_not_invent_a_generated_class ... ok
+test tests::inventory_aggregates_assets_and_localizations ... ok
+test tests::inventory_aggregates_routes ... ok
+test tests::inventory_aggregates_widgets_across_files ... ok
+test tests::inventory_order_is_deterministic_for_unsorted_project_input ... ok
+test tests::non_flutter_files_are_not_counted_as_flutter_files ... ok
+test catalogs::tests::uses_documented_l10n_defaults_when_generate_is_enabled ... ok
+test tests::older_inventory_entries_deserialize_without_catalog_fields ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/convention_boundary.rs (target/debug/deps/convention_boundary-511acada8b737cb1)
+
+running 3 tests
+test go_router_fixture_keeps_resolution_order_and_source_evidence ... ok
+test optional_convention_layer_restores_flutter_fixture_findings ... ok
+test explicit_project_composition_populates_v1_compatibility_projection ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/ecosystem_conventions.rs (target/debug/deps/ecosystem_conventions-99e5ba7e3590314f)
+
+running 5 tests
+test activation_is_strictly_opt_in ... ok
+test exact_package_import_is_required_for_findings ... ok
+test support_table_v1_is_deterministic_and_versioned ... ok
+test enabled_supported_packages_emit_evidence_backed_findings ... ok
+test unsupported_missing_and_unverifiable_dependencies_do_not_activate_semantics ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/official_navigation.rs (target/debug/deps/official_navigation-3a6e0f22df1470d5)
+
+running 3 tests
+test derives_material_routes_and_rejects_unrelated_named_navigation ... ok
+test official_route_names_require_an_official_flutter_import ... ok
+test derives_official_application_and_navigator_named_routes ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/official_themes.rs (target/debug/deps/official_themes-a8cb1110697a3ea1)
+
+running 4 tests
+test derives_subtree_theme_applications_without_evaluating_expressions ... ok
+test project_theme_facts_are_sorted_by_path_and_source_position ... ok
+test derives_material_theme_constructions_and_application_slots ... ok
+test theme_facts_require_the_official_material_import ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/debug/deps/dartscope_index-414272a7a0abea39)
+
+running 52 tests
+test tests::graphql::does_not_resolve_a_cross_file_name_without_an_import ... ok
+test tests::graphql::does_not_assign_a_named_part_claimed_by_multiple_libraries ... ok
+test tests::graphql::excludes_a_part_that_declares_a_different_owner ... ok
+test tests::graphql::binds_operations_and_compares_call_and_variable_contracts ... ok
+test tests::graphql::graphql_and_symbol_queries_share_conditional_namespace_resolution ... ok
+test tests::graphql::reports_ambiguous_imported_operations_and_ignores_private_exports ... ok
+test tests::graphql::reports_missing_and_non_visible_declarations_without_guessing ... ok
+test tests::graphql::imports_public_operations_declared_in_a_validated_part ... ok
+test tests::graphql::resolves_an_operation_through_a_re_export_namespace ... ok
+test tests::graphql::resolves_an_unqualified_operation_through_a_direct_import ... ok
+test tests::graphql::resolves_operations_between_validated_sibling_parts ... ok
+test tests::graphql::respects_prefix_show_and_hide_when_resolving_direct_imports ... ok
+test tests::graphql::same_file_declaration_wins_over_duplicate_names_in_other_files ... ok
+test tests::incremental::adding_a_missing_target_rebuilds_only_the_target_and_direct_uri_sources ... ok
+test tests::incremental::declaration_changes_report_the_transitive_reverse_dependency_closure ... ok
+test tests::incremental::affected_libraries_collapse_part_membership_to_the_owner ... ok
+test tests::incremental::dependency_fingerprints_rebuild_only_the_changed_library ... ok
+test tests::incremental::dependency_fingerprints_track_resolution_and_retained_snapshots ... ok
+test tests::incremental::diagnostic_only_updates_rebuild_only_the_project_projection ... ok
+test tests::incremental::graphql_cache_groups_operation_uses_by_part_library ... ok
+test tests::incremental::graphql_not_visible_evidence_rebuilds_without_a_uri_edge ... ok
+test tests::incremental::incremental_snapshots_match_clean_rebuilds_after_update_and_remove ... ok
+test tests::incremental::local_reference_fact_changes_do_not_invalidate_importers ... ok
+test tests::incremental::option_changes_reuse_project_and_part_products ... ok
+test tests::incremental::part_membership_changes_rebuild_sibling_reference_sources ... ok
+test tests::incremental::per_file_caches_rebuild_only_relevant_sources ... ok
+test tests::incremental::per_library_graphql_cache_rebuilds_only_the_affected_use_library ... ok
+test tests::incremental::pubspec_updates_refresh_package_resolution_without_reparsing_files ... ok
+test tests::incremental::workspace_state_and_snapshots_are_send_and_sync ... ok
+test tests::incremental::same_name_not_visible_evidence_rebuilds_without_an_import_edge ... ok
+test tests::namespace::conditional_imports_require_an_environment_before_resolution ... ok
+test tests::namespace::distinguishes_missing_not_visible_and_missing_source_files ... ok
+test tests::namespace::resolves_re_exports_and_preserves_ambiguous_candidates ... ok
+test tests::namespace::resolves_same_file_and_part_library_declarations ... ok
+test tests::namespace::respects_prefixed_imports_combinators_and_private_names ... ok
+test tests::parts::does_not_treat_an_unindexed_package_part_as_a_missing_file ... ok
+test tests::parts::reports_invalid_part_links_with_evidence ... ok
+test tests::parts::validates_uri_and_named_part_ownership ... ok
+test tests::uri_graph::a_nested_package_config_overrides_an_ancestor_config ... ok
+test tests::uri_graph::does_not_fall_back_when_the_nearest_package_config_is_invalid ... ok
+test tests::uri_graph::falls_back_to_default_conditional_uri_when_environment_does_not_match ... ok
+test tests::uri_graph::graphql_contract_json_schema_fixture_is_stable ... ok
+test tests::uri_graph::part_links_json_schema_fixture_is_stable ... ok
+test tests::uri_graph::reports_unknown_and_ambiguous_packages ... ok
+test tests::uri_graph::requires_an_environment_before_resolving_a_conditional_namespace ... ok
+test tests::uri_graph::resolves_a_conditional_namespace_when_environment_is_explicit ... ok
+test tests::uri_graph::resolves_every_conditional_uri_without_selecting_an_environment ... ok
+test tests::uri_graph::resolves_package_uris_through_the_nearest_package_config ... ok
+test tests::uri_graph::resolves_relative_package_sdk_and_missing_uri_references ... ok
+test tests::uri_graph::selects_the_first_matching_conditional_uri_when_environment_is_explicit ... ok
+test tests::uri_graph::uri_graph_json_schema_fixture_is_stable ... ok
+test tests::incremental::deterministic_randomized_update_sequences_match_clean_rebuilds ... ok
+
+test result: ok. 52 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/declaration_order_resolution.rs (target/debug/deps/declaration_order_resolution-d6c8dffc8bf89c36)
+
+running 2 tests
+test resolves_same_statement_accesses_to_earlier_declarators ... ok
+test keeps_separate_statement_compatibility_and_namespace_filtering ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/deterministic_properties.rs (target/debug/deps/deterministic_properties-f5a883bbfa9edb48)
+
+running 2 tests
+test generated_direct_prefixed_and_reexport_visibility_is_deterministic ... ok
+test generated_combinator_mutations_match_clean_rebuilds ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/existing_for_in_resolution.rs (target/debug/deps/existing_for_in_resolution-95c4020e0d1091e6)
+
+running 2 tests
+test resolves_targets_iterables_and_bodies_to_existing_bindings ... ok
+test keeps_declared_target_omitted_and_resolves_single_statement ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/incremental_navigation_parity.rs (target/debug/deps/incremental_navigation_parity-e5d0449821d676ae)
+
+running 1 test
+test incremental_snapshots_match_full_navigation_across_updates ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/lexical_binding_resolution.rs (target/debug/deps/lexical_binding_resolution-08cbeb17aa8565f5)
+
+running 1 test
+test selects_the_most_specific_visible_binding_without_reparsing_source ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/lexical_region_resolution.rs (target/debug/deps/lexical_region_resolution-8f78585bc96d9500)
+
+running 1 test
+test resolves_region_accesses_to_the_same_most_specific_binding ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/multi_declarator_for_resolution.rs (target/debug/deps/multi_declarator_for_resolution-62e7cf93d3b1a74d)
+
+running 2 tests
+test keeps_self_later_and_unsupported_headers_out_of_resolution ... ok
+test resolves_multi_declarator_intervals_without_reparsing ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/navigation_batch.rs (target/debug/deps/navigation_batch-9424e2d1ba4f9dba)
+
+running 2 tests
+test resolves_namespace_lexical_and_explicit_unresolved_definition_batches ... ok
+test finds_only_unambiguous_references_with_stable_target_and_fact_ordering ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/navigation_constructors.rs (target/debug/deps/navigation_constructors-2a1197e926801b41)
+
+running 3 tests
+test resolves_public_and_private_constructors_across_one_part_library ... ok
+test resolves_exact_prefixed_constructors_and_preserves_owner_fallback_evidence ... ok
+test preserves_ambiguity_conditional_and_external_constructor_evidence ... FAILED
+
+failures:
+
+---- preserves_ambiguity_conditional_and_external_constructor_evidence stdout ----
+
+thread 'preserves_ambiguity_conditional_and_external_constructor_evidence' (16489) panicked at crates/dartscope-index/tests/navigation_constructors.rs:149:5:
+assertion failed: shared.targets.iter().all(|target|
+        matches!(target, DartDefinitionTarget::Namespace(candidate) if
+            candidate.kind == DartDeclarationKind::Constructor &&
+            candidate.name == "Shared.named"))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    preserves_ambiguity_conditional_and_external_constructor_evidence
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p dartscope-index --test navigation_constructors`
