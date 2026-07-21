@@ -1,0 +1,23 @@
+name: Incremental navigation test
+
+on:
+  pull_request:
+    types: [synchronize]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.head_ref == 'agent/incremental-navigation-parity'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Verify slice
+        run: |
+          cargo +1.95.0 fmt --all -- --check
+          cargo +1.95.0 test -p dartscope-index --test incremental_navigation_parity --locked
+          cargo +1.95.0 clippy -p dartscope-index --tests --locked -- -D warnings
