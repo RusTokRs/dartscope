@@ -94,9 +94,9 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Continue `DS-INDEX-006` with direct operator targets. Add parser-produced declaration facts for
-`DartDeclarationKind::Operator` and bounded invocation facts whose left receiver is explicitly
-`this`, keeping the operator token and owning-type evidence separate. Resolve only directly declared
-operator targets from exact indexed evidence, preserve validated parts, exact spans, reverse
-references, and snapshot parity, and keep arbitrary receiver inference, inheritance, extension
-selection, dynamic dispatch, patterns, and flow-sensitive behavior behind later focused slices.
+Continue `DS-INDEX-006` with the remaining explicit-`this` operator forms. Add bounded
+parser facts and exact source-free targets for unary `-`/`~`, index `this[index]`, and index
+assignment `this[index] = value`, with exact operator-token spans, direct owner evidence,
+reverse references, validated parts, and snapshot parity. Keep arbitrary receiver inference,
+inherited-member traversal, extension selection, dynamic dispatch, patterns, and flow-sensitive
+behavior behind later focused slices.
