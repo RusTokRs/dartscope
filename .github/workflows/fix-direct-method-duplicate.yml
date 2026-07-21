@@ -17,10 +17,11 @@ jobs:
           ref: agent/fix-direct-method-duplicate
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
-      - name: Remove duplicate block and format
+      - name: Apply cleanup and contract fixes
         run: |
           set -euo pipefail
           python3 .github/scripts/fix_direct_method_duplicate.py
+          python3 .github/scripts/fix_direct_method_contracts.py
           cargo +1.95.0 fmt --all
       - name: Commit product fix
         run: |
@@ -28,9 +29,10 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add \
             crates/dartscope-index/src/navigation.rs \
-            crates/dartscope-index/tests/navigation_methods.rs
+            crates/dartscope-index/tests/navigation_methods.rs \
+            crates/dartscope-parse/tests/identifier_references.rs
           if ! git diff --cached --quiet; then
-            git commit -m "fix: deduplicate direct method resolver"
+            git commit -m "fix: finalize direct method contracts"
             git push origin HEAD:agent/fix-direct-method-duplicate
           fi
       - name: Verify and retain output
