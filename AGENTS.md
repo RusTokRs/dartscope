@@ -94,8 +94,9 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Continue `DS-INDEX-006` with constructor-target resolution. Distinguish constructor syntax from
-prefixed imports, resolve unnamed and named constructors to exact indexed declaration spans, and
-preserve import prefixes, library privacy, combinators, conditional environments, parts, ambiguity,
-not-visible evidence, and external-unindexed URIs. Keep general member, inherited-member, extension,
-pattern, and flow-sensitive lookup behind later focused slices.
+Continue `DS-INDEX-006` with direct declared-member lookup. Define parser-produced member facts that
+separate the member name from receiver or owning-type evidence, then resolve directly declared methods,
+getters, setters, fields, and operators only when that evidence is exact and indexed. Preserve privacy,
+parts, static-versus-instance evidence, ambiguity, not-visible results, and external-unindexed URIs.
+Keep inheritance, extension selection, dynamic dispatch, patterns, and flow-sensitive behavior behind
+later focused slices.
