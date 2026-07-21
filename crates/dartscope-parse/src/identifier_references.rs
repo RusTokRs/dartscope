@@ -130,11 +130,10 @@ fn invocation_root_is_shadowed(
         return false;
     };
 
-    if bindings.iter().any(|binding| {
-        binding.name == root.text
-            && binding.scope_span.byte_start <= root.start
-            && root.start < binding.scope_span.byte_end
-    }) {
+    if bindings
+        .iter()
+        .any(|binding| binding_shadows_invocation(masked_source, binding, owner_id, root))
+    {
         return true;
     }
 
@@ -165,6 +164,23 @@ fn invocation_root_is_shadowed(
             && declaration.name == root.text
             && is_instance_member_kind(declaration.kind)
     })
+}
+
+fn binding_shadows_invocation(
+    source: &str,
+    binding: &DartLexicalBinding,
+    owner_id: &str,
+    root: IdentifierToken<'_>,
+) -> bool {
+    if binding.enclosing_symbol_id != owner_id || binding.name != root.text {
+        return false;
+    }
+    if binding.scope_span.byte_start <= root.start && root.start < binding.scope_span.byte_end {
+        return true;
+    }
+    root.start < binding.scope_span.byte_start
+        && statement_start(source, root.start)
+            == statement_start(source, binding.declaration_span.byte_start)
 }
 
 fn callable_parameter_names(masked_source: &str, owner: &DartDeclaration) -> Vec<String> {
@@ -281,6 +297,18 @@ fn is_parameter_modifier(value: &str) -> bool {
         value,
         "required" | "covariant" | "final" | "var" | "const" | "late" | "this" | "super"
     )
+}
+
+fn statement_start(source: &str, before: usize) -> usize {
+    let bytes = source.as_bytes();
+    let mut at = before.min(bytes.len());
+    while at > 0 {
+        at -= 1;
+        if matches!(bytes[at], b';' | b'{' | b'}') {
+            return at + 1;
+        }
+    }
+    0
 }
 
 fn local_scope_contains(
