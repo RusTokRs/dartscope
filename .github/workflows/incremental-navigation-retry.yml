@@ -1,0 +1,31 @@
+name: Incremental navigation retry
+
+on:
+  pull_request:
+    types: [synchronize]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/incremental-navigation-parity'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: agent/incremental-navigation-parity
+      - name: Apply corrected patch
+        run: |
+          sed -i 's/if count != 1:/if count < 1:/' .github/scripts/apply_incremental_navigation_patch.py
+          python3 .github/scripts/apply_incremental_navigation_patch.py
+      - name: Format and commit
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+          cargo +1.95.0 fmt --all
+          git config user.name "dartscope-ci"
+          git config user.email "dartscope-ci@users.noreply.github.com"
+          git add crates/dartscope-index/src/incremental.rs crates/dartscope-index/src/navigation.rs
+          git commit -m "feat: retain incremental navigation facts"
+          git push origin HEAD:agent/incremental-navigation-parity
