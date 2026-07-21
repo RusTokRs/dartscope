@@ -8,10 +8,11 @@ Read these files before implementation:
 
 1. `README.md`
 2. `docs/development/dartscope-library-plan.md`
-3. `docs/development/rust-code-standards.md`
-4. `docs/development/rust-toolchain.md`
-5. `docs/reference-strategy.md`
-6. `CONTRIBUTING.md`
+3. `docs/development/ds-index-006-progress-2026-07-21.md`
+4. `docs/development/rust-code-standards.md`
+5. `docs/development/rust-toolchain.md`
+6. `docs/reference-strategy.md`
+7. `CONTRIBUTING.md`
 
 Then read the source and tests for every crate you intend to modify.
 
@@ -93,9 +94,8 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Continue `DS-INDEX-006` with single-statement classic and `for-in` loop scopes. Require exact
-statement boundaries, declaration or assignment targets, iterable/condition/update accesses, nested
-control-flow negatives, and read/write resolution fixtures before enabling a region. Keep collection
-control flow, unparenthesized/pattern/function-type closures, pattern and multi-declarator loops,
-retroactive pre-declaration shadowing, flow analysis, destructuring, and member/index writes behind
-focused slices.
+Continue `DS-INDEX-006` with conservative multi-declarator classic-loop bindings. Require
+per-declarator exact spans and initializer-order intervals, plus condition, update, braced-body,
+and simple-statement-body resolution fixtures. Keep patterns, destructuring, collection control
+flow, retroactive pre-declaration shadowing, flow analysis, and member/index writes behind focused
+slices.
