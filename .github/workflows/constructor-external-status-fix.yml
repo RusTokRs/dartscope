@@ -1,0 +1,38 @@
+name: Constructor external status fix
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.head_ref == 'agent/fix-constructor-external-status'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: agent/fix-constructor-external-status
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Apply fix
+        run: python3 .github/scripts/fix_constructor_external_status.py
+      - name: Format and verify strictly
+        run: |
+          set -e
+          cargo +1.95.0 fmt --all
+          cargo +1.95.0 test -p dartscope-index --test navigation_constructors --locked
+          cargo +1.95.0 test -p dartscope-index --test navigation_batch --locked
+          cargo +1.95.0 test -p dartscope-index --test reference_resolution --locked
+          cargo +1.95.0 clippy -p dartscope-index --all-targets --locked -- -D warnings
+      - name: Commit product fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add crates/dartscope-index/src/navigation.rs
+          if ! git diff --cached --quiet; then
+            git commit -m "fix: prefer external constructor evidence"
+            git push origin HEAD:agent/fix-constructor-external-status
+          fi
