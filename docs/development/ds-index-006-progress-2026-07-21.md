@@ -31,6 +31,9 @@ Implemented on `main`:
 7. Added parser and index integration fixtures for exact spans, confidence, declaration and
    assignment targets, iterable/condition/update/body accesses, most-specific binding resolution,
    invocation-root filtering, namespace filtering, and nested-control negatives.
+8. Filtered both bindings and explicit existing-variable `for-in` write targets when their
+   declaration or target lies inside a deferred lexical region. A focused regression fixture prevents
+   a supported nested target from leaking out of an unsupported outer loop region.
 
 No public Rust type, serialized field, reference kind, confidence rule, or index/parser boundary was
 changed.
