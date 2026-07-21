@@ -141,11 +141,11 @@ inside the following braced body. Catch parameters are visible only in the catch
 headers are suppressed as lexical access positions, while iterable expressions, classic-loop
 conditions and updates, and executable bodies emit binding-backed reads and writes normally.
 
-Pattern and multi-declarator declarations, single-statement or collection control-flow elements,
+Pattern and multi-declarator declarations, collection control-flow elements,
 unparenthesized/receiver/pattern/function-type closure parameters, and malformed regions remain fully
-deferred. Existing-variable `for-in` targets are enabled only by the later focused assignment slice.
-Invocation roots inside supported scopes are filtered by the same parser-produced binding intervals
-before namespace resolution.
+deferred. Simple non-block loop bodies are enabled only by the later focused slice. Existing-variable
+`for-in` targets are enabled only by the later focused assignment slice. Invocation roots inside
+supported scopes are filtered by the same parser-produced binding intervals before namespace resolution.
 
 ## Initializer and declaration-order slice
 
@@ -177,9 +177,31 @@ parameter or local interval. The target and body therefore resolve through the e
 entry points without source reparsing. A declared `for-in` variable keeps its separate loop-local binding
 and does not emit an assignment-target write fact.
 
-Pattern, member/index, wildcard, multi-target, malformed, single-statement, and collection `for-in`
-forms remain deferred. This slice records syntax-proven assignment access only; it does not validate
-mutability, element types, definite assignment, or flow reachability.
+Pattern, member/index, wildcard, multi-target, malformed, and collection `for-in` forms remain deferred.
+Simple-statement targets are enabled only by the later focused loop-body slice. This slice records
+syntax-proven assignment access only; it does not validate mutability, element types, definite assignment,
+or flow reachability.
+
+## Single-statement loop slice
+
+The eleventh `DS-INDEX-006` slice extends the same parser-produced intervals and references to a classic
+or `for-in` loop followed by one simple non-block statement. The body boundary is the first semicolon at
+zero parenthesis, bracket, and brace depth, so semicolons inside calls, indexing, and collection literals
+do not truncate the interval.
+
+For a classic declaration, the loop binding begins after the first header semicolon and remains visible
+through the condition, update, and complete simple body statement. For a declared `for-in`, the binding
+is visible only inside the simple body. For an existing-variable `for-in`, the header target emits the
+same exact high-confidence `variable_write` as the braced form and creates no new binding. Iterable,
+initializer, condition, update, and body accesses continue to reuse the existing read/write collectors
+and index entry points.
+
+Nested `if`, `for`, `while`, `switch`, and `do` statements are recognized only to calculate one complete
+deferred boundary; their contents are not partially enabled. Labels, `try` statements, malformed bodies,
+collection control flow, and simple bodies containing a parser-declared local variable remain deferred.
+These restrictions prevent a heuristic loop binding from leaking into a following statement. Parser and
+index fixtures assert exact spans, confidence, most-specific resolution, invocation-root filtering,
+namespace filtering, and nearby nested-control negatives.
 
 ## Compatibility boundary
 
@@ -199,7 +221,7 @@ mutability, element types, definite assignment, or flow reachability.
 
 This slice does not claim analyzer-equivalent lexical semantics. Receiver formals;
 unparenthesized, pattern, or function-type closure parameter forms; pattern and multi-declarator loops;
-single-statement and collection control-flow elements;
+collection control-flow elements; labels, `try`, and local-declaration simple loop bodies;
 retroactive pre-declaration shadowing across earlier statements; definite-assignment and flow analysis;
 member/index writes; destructuring, inherited members, extension lookup, implicit constructor selection,
 nested generic internals, SDK/external namespaces, record and function-type internals, metadata
