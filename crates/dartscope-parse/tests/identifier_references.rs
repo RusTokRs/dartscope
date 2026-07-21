@@ -16,14 +16,21 @@ void run() {
 "#;
     let analysis = analyze_file_with_references(DartFileInput::new("lib/client.dart", source));
 
-    assert_eq!(analysis.references.len(), 3);
+    assert_eq!(analysis.references.len(), 4);
     assert_eq!(analysis.references[0].name, "load");
     assert_eq!(analysis.references[0].prefix.as_deref(), Some("api"));
     assert_eq!(analysis.references[0].confidence, Confidence::High);
     assert_eq!(analysis.references[1].name, "Factory");
     assert_eq!(analysis.references[1].prefix, None);
     assert_eq!(analysis.references[1].confidence, Confidence::Medium);
-    assert_eq!(analysis.references[2].name, "client");
+    assert_eq!(analysis.references[2].name, "create");
+    assert_eq!(analysis.references[2].prefix.as_deref(), Some("Factory"));
+    assert_eq!(
+        analysis.references[2].kind,
+        DartIdentifierReferenceKind::MemberInvocationStatic
+    );
+    assert_eq!(analysis.references[2].confidence, Confidence::Medium);
+    assert_eq!(analysis.references[3].name, "client");
 
     for reference in &analysis.references {
         assert_eq!(

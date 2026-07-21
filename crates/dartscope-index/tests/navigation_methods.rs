@@ -101,7 +101,7 @@ fn resolves_exact_static_and_this_method_targets() {
 
     let build_target =
         resolution_at(&batch.resolutions, "lib/client.dart", build).targets[0].clone();
-    let references = context.find_references(&[build_target.clone()]);
+    let references = context.find_references(std::slice::from_ref(&build_target));
     assert_eq!(references.results.len(), 1);
     assert_eq!(references.results[0].target, build_target);
     assert_eq!(references.results[0].references.len(), 1);
