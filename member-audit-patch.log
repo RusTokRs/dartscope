@@ -1,7 +1,0 @@
-Traceback (most recent call last):
-  File "/home/runner/work/dartscope/dartscope/tools/agent/apply-member-audit-operators.py", line 203, in <module>
-    navigation = replace_once(
-                 ^^^^^^^^^^^^^
-  File "/home/runner/work/dartscope/dartscope/tools/agent/apply-member-audit-operators.py", line 12, in replace_once
-    raise RuntimeError(f"{label}: expected one match, found {count}")
-RuntimeError: resolve member index type: expected one match, found 11
