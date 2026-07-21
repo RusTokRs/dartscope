@@ -154,7 +154,7 @@ fn is_uninitialized_local_declaration(
     token: IdentifierToken<'_>,
 ) -> bool {
     bindings.iter().any(|binding| {
-        if binding.kind != DartLexicalBindingKind::LocalVariable {
+        if binding.kind != DartLexicalBindingKind::LocalVariable || binding.name != token.text {
             return false;
         }
         let start = statement_start(source, binding.declaration_span.byte_start);
