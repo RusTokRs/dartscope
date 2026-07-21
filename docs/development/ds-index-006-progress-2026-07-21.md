@@ -34,6 +34,8 @@ Implemented on `main`:
 8. Filtered both bindings and explicit existing-variable `for-in` write targets when their
    declaration or target lies inside a deferred lexical region. A focused regression fixture prevents
    a supported nested target from leaking out of an unsupported outer loop region.
+9. Updated the earlier braced-only parser and index fixtures to assert the later supported
+   single-statement assignment target and paired body update instead of preserving stale negatives.
 
 ## Completed Slice: Multi-Declarator Classic Loops
 
@@ -55,6 +57,11 @@ Implemented on `main`:
 7. Suppressed invocation roots that refer to a self or later declarator inside the same declaration
    statement. The guard is bounded by statement delimiters, so a declaration still does not
    retroactively shadow an earlier independent statement.
+8. Bounded lexical-read assignment lookahead at a top-level comma. An assignment in a later
+   declarator can no longer suppress a valid parameter or earlier-binding read in the current
+   initializer.
+9. Applied the pinned Rust 1.95 formatter to every touched Rust file and removed the obsolete
+   statement-boundary helper exposed by warnings during hosted verification.
 
 No public Rust type, serialized field, reference kind, confidence rule, or index/parser boundary was
 changed by either loop slice.
