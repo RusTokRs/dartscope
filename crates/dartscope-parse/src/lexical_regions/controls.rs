@@ -317,18 +317,21 @@ fn parse_classic_for_declarator<'source>(
     let (start, end) = trim_range(source, start, end)?;
     let assignment = top_level_assignment(source, start, end);
     let declaration_end = assignment.unwrap_or(end);
-    if contains_top_level_pattern_start(source, start, declaration_end)
-        || source[start..declaration_end].contains('.')
+    let (declaration_start, declaration_name_end) = trim_range(source, start, declaration_end)?;
+    if contains_top_level_pattern_start(source, declaration_start, declaration_name_end)
+        || source[declaration_start..declaration_name_end].contains('.')
     {
         return None;
     }
-    let tokens = top_level_identifiers(source, start, declaration_end);
+    let tokens = top_level_identifiers(source, declaration_start, declaration_name_end);
     let token = *tokens.last()?;
     if !is_binding_name(token.text) {
         return None;
     }
     if !first
-        && (tokens.len() != 1 || token.start != start || token.end != declaration_end)
+        && (tokens.len() != 1
+            || token.start != declaration_start
+            || token.end != declaration_name_end)
     {
         return None;
     }
