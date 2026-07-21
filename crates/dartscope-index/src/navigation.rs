@@ -794,6 +794,382 @@ fn is_member_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
     )
 }
 
+fn resolve_method_declaration_reference(
+    member_index: &MemberIndex,
+    reference: DartIdentifierReference,
+) -> ResolvedReference {
+    let is_static = reference.kind == DartIdentifierReferenceKind::MemberDeclarationStatic;
+    let owner_symbol_id = reference.prefix.as_deref();
+    let mut targets = member_index
+        .methods
+        .iter()
+        .filter(|method| {
+            Some(method.owner_symbol_id.as_str()) == owner_symbol_id
+                && method.is_static == is_static
+                && method.candidate.name == reference.name
+                && method.candidate.declaration_path == reference.source_path
+                && method.candidate.declaration_span.byte_start <= reference.span.byte_start
+                && reference.span.byte_end <= method.candidate.declaration_span.byte_end
+        })
+        .map(|method| DartDefinitionTarget::Namespace(method.candidate.clone()))
+        .collect::<Vec<_>>();
+    targets.sort_by(compare_targets);
+    targets.dedup_by(|left, right| same_target(left, right));
+    let status = match targets.len() {
+        0 => DartDefinitionResolutionStatus::Missing,
+        1 => DartDefinitionResolutionStatus::Resolved,
+        _ => DartDefinitionResolutionStatus::Ambiguous,
+    };
+    ResolvedReference {
+        reference,
+        status,
+        targets,
+        external_uris: Vec::new(),
+    }
+}
+
+fn resolve_method_invocation_reference(
+    analysis: &DartProjectReferenceAnalysis,
+    namespace: &NamespaceResolver<'_, '_>,
+    uri_graph: &DartUriGraph,
+    member_index: &MemberIndex,
+    reference: DartIdentifierReference,
+) -> ResolvedReference {
+    match reference.kind {
+        DartIdentifierReferenceKind::MemberInvocationInstance => {
+            resolve_instance_method_reference(analysis, namespace, member_index, reference)
+        }
+        DartIdentifierReferenceKind::MemberInvocationStatic => {
+            resolve_static_method_reference(analysis, namespace, uri_graph, member_index, reference)
+        }
+        _ => unreachable!("member invocation resolver received a non-member fact"),
+    }
+}
+
+fn resolve_instance_method_reference(
+    analysis: &DartProjectReferenceAnalysis,
+    namespace: &NamespaceResolver<'_, '_>,
+    member_index: &MemberIndex,
+    reference: DartIdentifierReference,
+) -> ResolvedReference {
+    let owner_symbol_id = reference.prefix.as_deref().unwrap_or_default();
+    let mut owners = member_owner_candidates_by_symbol_id(
+        analysis,
+        namespace,
+        &reference.source_path,
+        owner_symbol_id,
+    );
+    owners.sort_by(|left, right| {
+        (
+            &left.declaration_path,
+            left.declaration_span.byte_start,
+            &left.name,
+        )
+            .cmp(&(
+                &right.declaration_path,
+                right.declaration_span.byte_start,
+                &right.name,
+            ))
+    });
+    owners.dedup();
+    let refinements = owners
+        .iter()
+        .map(|owner| {
+            refine_method_target(
+                member_index,
+                namespace,
+                &reference.source_path,
+                owner,
+                &reference.name,
+                false,
+            )
+        })
+        .collect::<Vec<_>>();
+    finish_method_resolution(reference, refinements, Vec::new())
+}
+
+fn resolve_static_method_reference(
+    analysis: &DartProjectReferenceAnalysis,
+    namespace: &NamespaceResolver<'_, '_>,
+    uri_graph: &DartUriGraph,
+    member_index: &MemberIndex,
+    reference: DartIdentifierReference,
+) -> ResolvedReference {
+    let Some((import_prefix, owner_name)) = static_member_owner(&reference) else {
+        return ResolvedReference {
+            reference,
+            status: DartDefinitionResolutionStatus::Missing,
+            targets: Vec::new(),
+            external_uris: Vec::new(),
+        };
+    };
+    let query = DartSymbolQuery {
+        source_path: reference.source_path.clone(),
+        name: owner_name.clone(),
+        prefix: import_prefix.clone(),
+    };
+    let resolution = resolve_constructible_type_with_resolver(&analysis.project, query, namespace);
+    let external_uris = external_member_owner_uris(
+        analysis,
+        uri_graph,
+        &reference,
+        owner_name.as_str(),
+        import_prefix,
+    );
+    let base_status = if resolution.status
+        == DartSymbolResolutionStatus::ConditionalEnvironmentRequired
+        && resolution.candidates.is_empty()
+        && !external_uris.is_empty()
+    {
+        DartDefinitionResolutionStatus::ExternalUnindexed
+    } else {
+        definition_status(resolution.status, !external_uris.is_empty())
+    };
+    let refinements = resolution
+        .candidates
+        .iter()
+        .map(|owner| {
+            refine_method_target(
+                member_index,
+                namespace,
+                &reference.source_path,
+                owner,
+                &reference.name,
+                true,
+            )
+        })
+        .collect::<Vec<_>>();
+    if base_status == DartDefinitionResolutionStatus::Resolved {
+        finish_method_resolution(reference, refinements, external_uris)
+    } else {
+        let mut targets = refinements
+            .iter()
+            .flat_map(|refinement| refinement.targets.iter().cloned())
+            .collect::<Vec<_>>();
+        targets.sort_by(compare_targets);
+        targets.dedup_by(|left, right| same_target(left, right));
+        ResolvedReference {
+            reference,
+            status: base_status,
+            targets,
+            external_uris,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct MethodRefinement {
+    status: DartDefinitionResolutionStatus,
+    targets: Vec<DartDefinitionTarget>,
+}
+
+fn refine_method_target(
+    member_index: &MemberIndex,
+    namespace: &NamespaceResolver<'_, '_>,
+    source_path: &str,
+    owner: &DartSymbolCandidate,
+    member_name: &str,
+    is_static: bool,
+) -> MethodRefinement {
+    let Some(owner_symbol_id) = owner.symbol_id.as_deref() else {
+        return missing_method_target(owner);
+    };
+    let mut exact = member_index
+        .methods
+        .iter()
+        .filter(|method| {
+            method.owner_symbol_id == owner_symbol_id
+                && method.is_static == is_static
+                && method.candidate.name == member_name
+        })
+        .map(|method| {
+            let mut candidate = method.candidate.clone();
+            candidate.basis = owner.basis;
+            candidate
+        })
+        .collect::<Vec<_>>();
+    if exact.is_empty() {
+        return missing_method_target(owner);
+    }
+    let visible = !member_name.starts_with('_')
+        || exact
+            .iter()
+            .all(|candidate| namespace.same_library(source_path, &candidate.declaration_path));
+    if !visible {
+        for candidate in &mut exact {
+            candidate.basis = DartSymbolResolutionBasis::NotVisible;
+        }
+    }
+    exact.sort_by(|left, right| {
+        (
+            &left.declaration_path,
+            left.declaration_span.byte_start,
+            &left.name,
+            &left.symbol_id,
+        )
+            .cmp(&(
+                &right.declaration_path,
+                right.declaration_span.byte_start,
+                &right.name,
+                &right.symbol_id,
+            ))
+    });
+    exact.dedup();
+    let status = if !visible {
+        DartDefinitionResolutionStatus::NotVisible
+    } else if exact.len() == 1 {
+        DartDefinitionResolutionStatus::Resolved
+    } else {
+        DartDefinitionResolutionStatus::Ambiguous
+    };
+    MethodRefinement {
+        status,
+        targets: exact
+            .into_iter()
+            .map(DartDefinitionTarget::Namespace)
+            .collect(),
+    }
+}
+
+fn missing_method_target(owner: &DartSymbolCandidate) -> MethodRefinement {
+    MethodRefinement {
+        status: DartDefinitionResolutionStatus::Missing,
+        targets: vec![DartDefinitionTarget::Namespace(owner.clone())],
+    }
+}
+
+fn finish_method_resolution(
+    reference: DartIdentifierReference,
+    refinements: Vec<MethodRefinement>,
+    external_uris: Vec<String>,
+) -> ResolvedReference {
+    let mut targets = refinements
+        .iter()
+        .flat_map(|refinement| refinement.targets.iter().cloned())
+        .collect::<Vec<_>>();
+    targets.sort_by(compare_targets);
+    targets.dedup_by(|left, right| same_target(left, right));
+    let statuses = refinements
+        .iter()
+        .map(|refinement| refinement.status)
+        .collect::<Vec<_>>();
+    let status = if statuses.is_empty() {
+        DartDefinitionResolutionStatus::Missing
+    } else {
+        combine_statuses(&statuses, targets.len())
+    };
+    ResolvedReference {
+        reference,
+        status,
+        targets,
+        external_uris,
+    }
+}
+
+fn static_member_owner(reference: &DartIdentifierReference) -> Option<(Option<String>, String)> {
+    let parts = reference.prefix.as_deref()?.split('.').collect::<Vec<_>>();
+    match parts.as_slice() {
+        [owner] if !owner.is_empty() => Some((None, (*owner).to_string())),
+        [prefix, owner] if !prefix.is_empty() && !owner.is_empty() => {
+            Some((Some((*prefix).to_string()), (*owner).to_string()))
+        }
+        _ => None,
+    }
+}
+
+fn member_owner_candidates_by_symbol_id(
+    analysis: &DartProjectReferenceAnalysis,
+    namespace: &NamespaceResolver<'_, '_>,
+    source_path: &str,
+    owner_symbol_id: &str,
+) -> Vec<DartSymbolCandidate> {
+    let mut owners = Vec::new();
+    for file in &analysis.project.files {
+        for declaration in &file.declarations {
+            if declaration.symbol_id.as_deref() != Some(owner_symbol_id)
+                || !is_member_owner_kind(declaration.kind)
+            {
+                continue;
+            }
+            let basis = if file.path == source_path {
+                DartSymbolResolutionBasis::SameFile
+            } else if namespace.same_library(source_path, &file.path) {
+                DartSymbolResolutionBasis::SameLibrary
+            } else {
+                DartSymbolResolutionBasis::NotVisible
+            };
+            owners.push(declaration_candidate(
+                file.path.as_str(),
+                declaration,
+                basis,
+            ));
+        }
+    }
+    owners
+}
+
+fn external_member_owner_uris(
+    analysis: &DartProjectReferenceAnalysis,
+    uri_graph: &DartUriGraph,
+    reference: &DartIdentifierReference,
+    owner_name: &str,
+    import_prefix: Option<String>,
+) -> Vec<String> {
+    let mut owner_reference = reference.clone();
+    owner_reference.name = owner_name.to_string();
+    owner_reference.prefix = import_prefix;
+    owner_reference.kind = DartIdentifierReferenceKind::InvocationTarget;
+    external_namespace_uris(analysis, uri_graph, &owner_reference)
+}
+
+fn declaration_candidate(
+    path: &str,
+    declaration: &DartDeclaration,
+    basis: DartSymbolResolutionBasis,
+) -> DartSymbolCandidate {
+    DartSymbolCandidate {
+        name: declaration.name.clone(),
+        kind: declaration.kind,
+        symbol_id: declaration.symbol_id.clone(),
+        declaration_path: path.to_string(),
+        declaration_span: declaration
+            .declaration_span
+            .clone()
+            .unwrap_or_else(|| declaration.span.clone()),
+        basis,
+    }
+}
+
+fn declaration_span_contains(
+    declaration: &DartDeclaration,
+    span: &dartscope_core::SourceSpan,
+) -> bool {
+    let declaration_span = declaration
+        .declaration_span
+        .as_ref()
+        .unwrap_or(&declaration.span);
+    declaration_span.byte_start <= span.byte_start && span.byte_end <= declaration_span.byte_end
+}
+
+fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
+    matches!(
+        kind,
+        DartDeclarationKind::Class
+            | DartDeclarationKind::Mixin
+            | DartDeclarationKind::Enum
+            | DartDeclarationKind::Extension
+            | DartDeclarationKind::ExtensionType
+    )
+}
+
+fn is_member_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
+    matches!(
+        kind,
+        DartIdentifierReferenceKind::MemberDeclarationInstance
+            | DartIdentifierReferenceKind::MemberDeclarationStatic
+    )
+}
+
 fn resolve_constructor_reference(
     analysis: &DartProjectReferenceAnalysis,
     namespace: &NamespaceResolver<'_, '_>,
