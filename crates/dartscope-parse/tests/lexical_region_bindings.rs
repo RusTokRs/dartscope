@@ -72,9 +72,7 @@ fn enables_binding_backed_accesses_inside_supported_regions() {
         analyze_file_with_references(DartFileInput::new("lib/regions.dart", REGION_SOURCE));
     let read_only_offsets = [
         REGION_SOURCE.find("value + 1").expect("arrow body value"),
-        REGION_SOURCE
-            .find("index < 2")
-            .expect("classic condition"),
+        REGION_SOURCE.find("index < 2").expect("classic condition"),
         REGION_SOURCE
             .find("consume(stack)")
             .expect("catch stack read")
@@ -202,7 +200,9 @@ void run(
     );
     for offset in [
         source.rfind("right++").expect("multi-declarator update"),
-        source.rfind("single++").expect("single-statement loop update"),
+        source
+            .rfind("single++")
+            .expect("single-statement loop update"),
     ] {
         assert_eq!(
             kinds_at(&analysis.references, offset),
@@ -212,7 +212,12 @@ void run(
             ]
         );
     }
-    assert!(analysis.bindings.iter().all(|binding| binding.name != "item"));
+    assert!(
+        analysis
+            .bindings
+            .iter()
+            .all(|binding| binding.name != "item")
+    );
 }
 
 fn kinds_at(

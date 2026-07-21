@@ -160,11 +160,8 @@ fn is_local_declaration_prefix(
             return false;
         }
         let statement_start = statement_start(source, binding.declaration_span.byte_start);
-        let segment_start = declarator_segment_start(
-            source,
-            statement_start,
-            binding.declaration_span.byte_start,
-        );
+        let segment_start =
+            declarator_segment_start(source, statement_start, binding.declaration_span.byte_start);
         segment_start <= token.start
     })
 }
