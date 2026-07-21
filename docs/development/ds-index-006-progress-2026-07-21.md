@@ -109,6 +109,30 @@ Implemented on `main`:
 8. Kept the incremental boundary source-free. Neither the stateful index nor snapshot-backed
    navigation reads or reparses Dart source.
 
+## Completed Slice: Exact Constructor Targets
+
+Implemented on `main`:
+
+1. Added a constructible-type namespace path that selects indexed classes and extension types without
+   changing the existing general top-level symbol resolver.
+2. Refined parser-produced `ConstructorTarget` facts from the owning type to exact unnamed or named
+   `DartDeclarationKind::Constructor` candidates when the declaration inventory contains them.
+3. Preserved the owning type as explicit fallback evidence for implicit unnamed constructors and for
+   missing or parser-incomplete constructor declarations; missing named constructors and unavailable
+   unnamed constructors remain explicit `missing` results.
+4. Preserved prefixes, show/hide combinators, re-exports, conditional environments, part-library
+   membership, ambiguity, not-visible candidates, and external-unindexed URI evidence.
+5. Applied library-scoped privacy to private named constructors. The same private constructor resolves
+   inside its owner library and remains `not_visible` through an import from another library.
+6. Suppressed only a generic `InvocationTarget` fact that is identical to a specialized
+   `ConstructorTarget` fact, preventing one explicit `new` or `const` expression from producing a false
+   owner-plus-constructor ambiguity.
+7. Added deterministic definition and reverse-reference fixtures for prefixed unnamed and named
+   constructors, private and missing constructors, implicit unnamed fallback, ambiguous imports,
+   conditional imports, part libraries, and external packages.
+8. Kept the slice source-free and additive. It changes no serialized core field, reference kind,
+   command envelope, or parser/index ownership boundary.
+
 The loop slices did not change public Rust types or serialized fields. The navigation slices add
 opt-in Rust library API types and snapshot accessors in `dartscope-index`; they do not alter stable
 serialized command payloads, reference kinds, confidence rules, or parser/index ownership boundaries.
@@ -126,25 +150,26 @@ The heuristic backend still defers:
 - definite-assignment and flow analysis;
 - member/index writes, inherited-member lookup, and extension lookup.
 
-Snapshot-backed navigation currently reconstructs the lightweight project-reference projection and
-resolution context from immutable normalized facts. It does not retain parser ASTs or raw source, and
-it does not yet provide constructor-as-member, instance/static member, inherited-member, extension, or
-pattern-reference resolution.
+Snapshot-backed navigation reconstructs the lightweight project-reference projection and resolution
+context from immutable normalized facts. Exact constructor refinement currently consumes specialized
+parser-produced `ConstructorTarget` facts; keyword-free constructor syntax remains on the generic
+invocation path until constructor/member fact classification is broadened. Direct instance/static
+members, inherited members, extensions, patterns, and flow-sensitive behavior remain deferred.
 
 ## Next Ordered Slice
 
-Continue `DS-INDEX-006` with constructor-target resolution:
+Continue `DS-INDEX-006` with direct declared-member lookup:
 
-1. Distinguish type declarations from constructor declarations without treating `Type.named()` as an
-   ordinary prefixed import reference.
-2. Resolve unnamed and named constructors to exact constructor declaration spans when indexed, while
-   retaining the owning type as explicit evidence when constructor declarations are incomplete.
-3. Preserve import prefixes, library privacy, show/hide combinators, conditional environments, parts,
-   ambiguity, not-visible evidence, and external-unindexed URIs.
-4. Keep instance/static member, inherited-member, extension lookup, patterns, and flow-sensitive
-   behavior deferred behind later focused slices.
-5. Add parser/index fixtures for local, imported, prefixed, named, missing, private, ambiguous,
-   conditional, part-library, and external constructor targets before broadening member lookup.
+1. Define parser-produced member facts that distinguish a member name from its receiver/owner evidence
+   without treating import prefixes or constructor names as ordinary instance members.
+2. Resolve directly declared methods, getters, setters, fields, and operators only when receiver or
+   owning-type evidence is exact and indexed.
+3. Preserve library privacy, parts, static-versus-instance evidence, ambiguity, not-visible outcomes,
+   and external-unindexed URIs without claiming analyzer-equivalent type inference.
+4. Keep inherited-member traversal, extension selection, dynamic dispatch, patterns, and flow-sensitive
+   behavior behind later focused slices.
+5. Add local, imported, prefixed, private, missing, ambiguous, part-library, and external member
+   fixtures before expanding inheritance or extension lookup.
 
 ## Verification Contract
 
