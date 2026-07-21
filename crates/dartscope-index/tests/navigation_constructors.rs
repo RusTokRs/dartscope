@@ -93,7 +93,7 @@ fn resolves_exact_prefixed_constructors_and_preserves_owner_fallback_evidence() 
     assert_owner_target(named_only, "NamedOnly", DartDeclarationKind::Class);
 
     let named_target = named.targets[0].clone();
-    let references = context.find_references(&[named_target.clone()]);
+    let references = context.find_references(std::slice::from_ref(&named_target));
     assert_eq!(references.results.len(), 1);
     assert_eq!(references.results[0].target, named_target);
     assert_eq!(references.results[0].references.len(), 1);

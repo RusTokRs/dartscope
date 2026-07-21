@@ -138,6 +138,7 @@ impl DartWorkspaceResolutionContext {
             part_links,
         );
         let mut references = analysis.references.clone();
+        suppress_redundant_constructor_invocations(&mut references);
         sort_references(&mut references);
         let mut resolutions = references
             .into_iter()
@@ -750,6 +751,31 @@ fn same_target(left: &DartDefinitionTarget, right: &DartDefinitionTarget) -> boo
         }
         _ => false,
     }
+}
+
+fn suppress_redundant_constructor_invocations(references: &mut Vec<DartIdentifierReference>) {
+    let constructor_facts = references
+        .iter()
+        .filter(|reference| reference.kind == DartIdentifierReferenceKind::ConstructorTarget)
+        .map(reference_fact_key)
+        .collect::<BTreeSet<_>>();
+    references.retain(|reference| {
+        reference.kind != DartIdentifierReferenceKind::InvocationTarget
+            || !constructor_facts.contains(&reference_fact_key(reference))
+    });
+}
+
+fn reference_fact_key(
+    reference: &DartIdentifierReference,
+) -> (String, usize, usize, String, Option<String>, Option<String>) {
+    (
+        reference.source_path.clone(),
+        reference.span.byte_start,
+        reference.span.byte_end,
+        reference.name.clone(),
+        reference.prefix.clone(),
+        reference.enclosing_symbol_id.clone(),
+    )
 }
 
 fn sort_references(references: &mut [DartIdentifierReference]) {
