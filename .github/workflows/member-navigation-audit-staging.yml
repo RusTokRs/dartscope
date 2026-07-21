@@ -22,6 +22,34 @@ jobs:
         shell: bash
         run: |
           set +e
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("tools/agent/apply-member-audit-operators.py")
+          text = path.read_text(encoding="utf-8")
+          block = '''navigation = replace_once(
+              navigation,
+              "    member_index: &MemberIndex,",
+              "    member_index: &members::MemberIndex,",
+              "resolve member index type",
+          )
+          '''
+          text = text.replace(block, "", 1)
+          marker = '''navigation = navigation[:member_start] + navigation[constructor_start:]
+          navigation_path.write_text(navigation, encoding="utf-8")
+          '''
+          replacement = '''navigation = navigation[:member_start] + navigation[constructor_start:]
+          navigation = replace_once(
+              navigation,
+              "    member_index: &MemberIndex,",
+              "    member_index: &members::MemberIndex,",
+              "resolve member index type",
+          )
+          navigation_path.write_text(navigation, encoding="utf-8")
+          '''
+          if text.count(marker) != 1:
+              raise RuntimeError("member index replacement insertion marker mismatch")
+          path.write_text(text.replace(marker, replacement, 1), encoding="utf-8")
+          PY
           python3 tools/agent/apply-member-audit-operators.py > member-audit-patch.log 2>&1
           status=$?
           cat member-audit-patch.log
