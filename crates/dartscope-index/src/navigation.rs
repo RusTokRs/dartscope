@@ -430,8 +430,7 @@ fn combine_statuses(
             DartDefinitionResolutionStatus::Missing
         };
     }
-    if statuses.contains(&DartDefinitionResolutionStatus::Resolved)
-    {
+    if statuses.contains(&DartDefinitionResolutionStatus::Resolved) {
         return DartDefinitionResolutionStatus::Ambiguous;
     }
     for status in [
