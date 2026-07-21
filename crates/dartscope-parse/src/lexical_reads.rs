@@ -281,7 +281,7 @@ fn precedes_assignment_in_statement(source: &str, start: usize) -> bool {
             b'{' => braces += 1,
             b'}' if braces == 0 => break,
             b'}' => braces -= 1,
-            b';' if parens == 0 && brackets == 0 && braces == 0 => break,
+            b',' | b';' if parens == 0 && brackets == 0 && braces == 0 => break,
             _ => {}
         }
         if assignment_operator_at(bytes, at) {
