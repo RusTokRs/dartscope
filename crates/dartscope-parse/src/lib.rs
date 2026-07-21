@@ -17,6 +17,7 @@ mod lexical_regions;
 mod lexical_writes;
 mod member_references;
 mod namespace;
+mod property_references;
 #[path = "pubspec_analysis.rs"]
 mod pubspec;
 mod pubspec_backend;

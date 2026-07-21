@@ -98,9 +98,17 @@ struct IndexedMethod {
     candidate: DartSymbolCandidate,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct IndexedProperty {
+    owner_symbol_id: String,
+    is_static: bool,
+    candidate: DartSymbolCandidate,
+}
+
 #[derive(Debug, Clone, Default)]
 struct MemberIndex {
     methods: Vec<IndexedMethod>,
+    properties: Vec<IndexedProperty>,
 }
 
 impl MemberIndex {
@@ -154,7 +162,65 @@ impl MemberIndex {
                 ))
         });
         methods.dedup();
-        Self { methods }
+        let mut properties = analysis
+            .references
+            .iter()
+            .filter_map(|reference| {
+                let is_static = match reference.kind {
+                    DartIdentifierReferenceKind::MemberPropertyDeclarationInstance => false,
+                    DartIdentifierReferenceKind::MemberPropertyDeclarationStatic => true,
+                    _ => return None,
+                };
+                let owner_symbol_id = reference.prefix.clone()?;
+                let file = analysis
+                    .project
+                    .files
+                    .iter()
+                    .find(|file| file.path == reference.source_path)?;
+                let declaration = file.declarations.iter().find(|declaration| {
+                    matches!(
+                        declaration.kind,
+                        DartDeclarationKind::Field
+                            | DartDeclarationKind::Getter
+                            | DartDeclarationKind::Setter
+                    ) && declaration.name == reference.name
+                        && declaration.parent_symbol_id.as_deref() == Some(owner_symbol_id.as_str())
+                        && declaration_span_contains(declaration, &reference.span)
+                })?;
+                Some(IndexedProperty {
+                    owner_symbol_id,
+                    is_static,
+                    candidate: declaration_candidate(
+                        file.path.as_str(),
+                        declaration,
+                        DartSymbolResolutionBasis::SameFile,
+                    ),
+                })
+            })
+            .collect::<Vec<_>>();
+        properties.sort_by(|left, right| {
+            (
+                &left.owner_symbol_id,
+                left.is_static,
+                &left.candidate.declaration_path,
+                left.candidate.declaration_span.byte_start,
+                &left.candidate.name,
+                left.candidate.kind,
+            )
+                .cmp(&(
+                    &right.owner_symbol_id,
+                    right.is_static,
+                    &right.candidate.declaration_path,
+                    right.candidate.declaration_span.byte_start,
+                    &right.candidate.name,
+                    right.candidate.kind,
+                ))
+        });
+        properties.dedup();
+        Self {
+            methods,
+            properties,
+        }
     }
 }
 
@@ -369,8 +435,11 @@ fn resolve_reference(
     member_index: &MemberIndex,
     reference: DartIdentifierReference,
 ) -> ResolvedReference {
-    if is_member_declaration_kind(reference.kind) {
+    if is_method_declaration_kind(reference.kind) {
         return resolve_method_declaration_reference(member_index, reference);
+    }
+    if is_property_declaration_kind(reference.kind) {
+        return resolve_property_declaration_reference(member_index, reference);
     }
     if matches!(
         reference.kind,
@@ -378,6 +447,15 @@ fn resolve_reference(
             | DartIdentifierReferenceKind::MemberInvocationStatic
     ) {
         return resolve_method_invocation_reference(
+            analysis,
+            namespace,
+            uri_graph,
+            member_index,
+            reference,
+        );
+    }
+    if is_property_access_kind(reference.kind) {
+        return resolve_property_access_reference(
             analysis,
             namespace,
             uri_graph,
@@ -786,12 +864,341 @@ fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
     )
 }
 
-fn is_member_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
+fn is_method_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
     matches!(
         kind,
         DartIdentifierReferenceKind::MemberDeclarationInstance
             | DartIdentifierReferenceKind::MemberDeclarationStatic
     )
+}
+
+fn is_property_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
+    matches!(
+        kind,
+        DartIdentifierReferenceKind::MemberPropertyDeclarationInstance
+            | DartIdentifierReferenceKind::MemberPropertyDeclarationStatic
+    )
+}
+
+fn is_member_declaration_kind(kind: DartIdentifierReferenceKind) -> bool {
+    is_method_declaration_kind(kind) || is_property_declaration_kind(kind)
+}
+
+fn is_property_access_kind(kind: DartIdentifierReferenceKind) -> bool {
+    matches!(
+        kind,
+        DartIdentifierReferenceKind::MemberPropertyReadInstance
+            | DartIdentifierReferenceKind::MemberPropertyReadStatic
+            | DartIdentifierReferenceKind::MemberPropertyWriteInstance
+            | DartIdentifierReferenceKind::MemberPropertyWriteStatic
+    )
+}
+
+fn property_access_is_static(kind: DartIdentifierReferenceKind) -> bool {
+    matches!(
+        kind,
+        DartIdentifierReferenceKind::MemberPropertyReadStatic
+            | DartIdentifierReferenceKind::MemberPropertyWriteStatic
+    )
+}
+
+fn property_access_is_write(kind: DartIdentifierReferenceKind) -> bool {
+    matches!(
+        kind,
+        DartIdentifierReferenceKind::MemberPropertyWriteInstance
+            | DartIdentifierReferenceKind::MemberPropertyWriteStatic
+    )
+}
+
+// Direct property resolution uses only parser-produced owner and access-mode facts.
+fn resolve_property_declaration_reference(
+    member_index: &MemberIndex,
+    reference: DartIdentifierReference,
+) -> ResolvedReference {
+    let is_static = reference.kind == DartIdentifierReferenceKind::MemberPropertyDeclarationStatic;
+    let owner_symbol_id = reference.prefix.as_deref();
+    let mut targets = member_index
+        .properties
+        .iter()
+        .filter(|property| {
+            Some(property.owner_symbol_id.as_str()) == owner_symbol_id
+                && property.is_static == is_static
+                && property.candidate.name == reference.name
+                && property.candidate.declaration_path == reference.source_path
+                && property.candidate.declaration_span.byte_start <= reference.span.byte_start
+                && reference.span.byte_end <= property.candidate.declaration_span.byte_end
+        })
+        .map(|property| DartDefinitionTarget::Namespace(property.candidate.clone()))
+        .collect::<Vec<_>>();
+    targets.sort_by(compare_targets);
+    targets.dedup_by(|left, right| same_target(left, right));
+    let status = match targets.len() {
+        0 => DartDefinitionResolutionStatus::Missing,
+        1 => DartDefinitionResolutionStatus::Resolved,
+        _ => DartDefinitionResolutionStatus::Ambiguous,
+    };
+    ResolvedReference {
+        reference,
+        status,
+        targets,
+        external_uris: Vec::new(),
+    }
+}
+
+fn resolve_property_access_reference(
+    analysis: &DartProjectReferenceAnalysis,
+    namespace: &NamespaceResolver<'_, '_>,
+    uri_graph: &DartUriGraph,
+    member_index: &MemberIndex,
+    reference: DartIdentifierReference,
+) -> ResolvedReference {
+    if property_access_is_static(reference.kind) {
+        resolve_static_property_reference(analysis, namespace, uri_graph, member_index, reference)
+    } else {
+        resolve_instance_property_reference(analysis, namespace, member_index, reference)
+    }
+}
+
+fn resolve_instance_property_reference(
+    analysis: &DartProjectReferenceAnalysis,
+    namespace: &NamespaceResolver<'_, '_>,
+    member_index: &MemberIndex,
+    reference: DartIdentifierReference,
+) -> ResolvedReference {
+    let owner_symbol_id = reference.prefix.as_deref().unwrap_or_default();
+    let mut owners = member_owner_candidates_by_symbol_id(
+        analysis,
+        namespace,
+        &reference.source_path,
+        owner_symbol_id,
+    );
+    owners.sort_by(|left, right| {
+        (
+            &left.declaration_path,
+            left.declaration_span.byte_start,
+            &left.name,
+        )
+            .cmp(&(
+                &right.declaration_path,
+                right.declaration_span.byte_start,
+                &right.name,
+            ))
+    });
+    owners.dedup();
+    let is_write = property_access_is_write(reference.kind);
+    let refinements = owners
+        .iter()
+        .map(|owner| {
+            refine_property_target(
+                member_index,
+                namespace,
+                &reference.source_path,
+                owner,
+                &reference.name,
+                false,
+                is_write,
+            )
+        })
+        .collect::<Vec<_>>();
+    finish_property_resolution(reference, refinements, Vec::new())
+}
+
+fn resolve_static_property_reference(
+    analysis: &DartProjectReferenceAnalysis,
+    namespace: &NamespaceResolver<'_, '_>,
+    uri_graph: &DartUriGraph,
+    member_index: &MemberIndex,
+    reference: DartIdentifierReference,
+) -> ResolvedReference {
+    let Some((import_prefix, owner_name)) = static_member_owner(&reference) else {
+        return ResolvedReference {
+            reference,
+            status: DartDefinitionResolutionStatus::Missing,
+            targets: Vec::new(),
+            external_uris: Vec::new(),
+        };
+    };
+    let query = DartSymbolQuery {
+        source_path: reference.source_path.clone(),
+        name: owner_name.clone(),
+        prefix: import_prefix.clone(),
+    };
+    let resolution = resolve_constructible_type_with_resolver(&analysis.project, query, namespace);
+    let external_uris = external_member_owner_uris(
+        analysis,
+        uri_graph,
+        &reference,
+        owner_name.as_str(),
+        import_prefix,
+    );
+    let base_status = if resolution.status
+        == DartSymbolResolutionStatus::ConditionalEnvironmentRequired
+        && resolution.candidates.is_empty()
+        && !external_uris.is_empty()
+    {
+        DartDefinitionResolutionStatus::ExternalUnindexed
+    } else {
+        definition_status(resolution.status, !external_uris.is_empty())
+    };
+    let is_write = property_access_is_write(reference.kind);
+    let refinements = resolution
+        .candidates
+        .iter()
+        .map(|owner| {
+            refine_property_target(
+                member_index,
+                namespace,
+                &reference.source_path,
+                owner,
+                &reference.name,
+                true,
+                is_write,
+            )
+        })
+        .collect::<Vec<_>>();
+    if base_status == DartDefinitionResolutionStatus::Resolved {
+        finish_property_resolution(reference, refinements, external_uris)
+    } else {
+        let mut targets = refinements
+            .iter()
+            .flat_map(|refinement| refinement.targets.iter().cloned())
+            .collect::<Vec<_>>();
+        targets.sort_by(compare_targets);
+        targets.dedup_by(|left, right| same_target(left, right));
+        ResolvedReference {
+            reference,
+            status: base_status,
+            targets,
+            external_uris,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct PropertyRefinement {
+    status: DartDefinitionResolutionStatus,
+    targets: Vec<DartDefinitionTarget>,
+}
+
+fn refine_property_target(
+    member_index: &MemberIndex,
+    namespace: &NamespaceResolver<'_, '_>,
+    source_path: &str,
+    owner: &DartSymbolCandidate,
+    property_name: &str,
+    is_static: bool,
+    is_write: bool,
+) -> PropertyRefinement {
+    let Some(owner_symbol_id) = owner.symbol_id.as_deref() else {
+        return missing_property_target(owner);
+    };
+    let mut exact = member_index
+        .properties
+        .iter()
+        .filter(|property| {
+            property.owner_symbol_id == owner_symbol_id
+                && property.is_static == is_static
+                && property.candidate.name == property_name
+                && property_candidate_matches_access(property.candidate.kind, is_write)
+        })
+        .map(|property| {
+            let mut candidate = property.candidate.clone();
+            candidate.basis = owner.basis;
+            candidate
+        })
+        .collect::<Vec<_>>();
+    if exact.is_empty() {
+        return missing_property_target(owner);
+    }
+    let visible = !property_name.starts_with('_')
+        || exact
+            .iter()
+            .all(|candidate| namespace.same_library(source_path, &candidate.declaration_path));
+    if !visible {
+        for candidate in &mut exact {
+            candidate.basis = DartSymbolResolutionBasis::NotVisible;
+        }
+    }
+    exact.sort_by(|left, right| {
+        (
+            &left.declaration_path,
+            left.declaration_span.byte_start,
+            &left.name,
+            left.kind,
+            &left.symbol_id,
+        )
+            .cmp(&(
+                &right.declaration_path,
+                right.declaration_span.byte_start,
+                &right.name,
+                right.kind,
+                &right.symbol_id,
+            ))
+    });
+    exact.dedup();
+    let status = if !visible {
+        DartDefinitionResolutionStatus::NotVisible
+    } else if exact.len() == 1 {
+        DartDefinitionResolutionStatus::Resolved
+    } else {
+        DartDefinitionResolutionStatus::Ambiguous
+    };
+    PropertyRefinement {
+        status,
+        targets: exact
+            .into_iter()
+            .map(DartDefinitionTarget::Namespace)
+            .collect(),
+    }
+}
+
+fn property_candidate_matches_access(kind: DartDeclarationKind, is_write: bool) -> bool {
+    if is_write {
+        matches!(
+            kind,
+            DartDeclarationKind::Field | DartDeclarationKind::Setter
+        )
+    } else {
+        matches!(
+            kind,
+            DartDeclarationKind::Field | DartDeclarationKind::Getter
+        )
+    }
+}
+
+fn missing_property_target(owner: &DartSymbolCandidate) -> PropertyRefinement {
+    PropertyRefinement {
+        status: DartDefinitionResolutionStatus::Missing,
+        targets: vec![DartDefinitionTarget::Namespace(owner.clone())],
+    }
+}
+
+fn finish_property_resolution(
+    reference: DartIdentifierReference,
+    refinements: Vec<PropertyRefinement>,
+    external_uris: Vec<String>,
+) -> ResolvedReference {
+    let mut targets = refinements
+        .iter()
+        .flat_map(|refinement| refinement.targets.iter().cloned())
+        .collect::<Vec<_>>();
+    targets.sort_by(compare_targets);
+    targets.dedup_by(|left, right| same_target(left, right));
+    let statuses = refinements
+        .iter()
+        .map(|refinement| refinement.status)
+        .collect::<Vec<_>>();
+    let status = if statuses.is_empty() {
+        DartDefinitionResolutionStatus::Missing
+    } else {
+        combine_statuses(&statuses, targets.len())
+    };
+    ResolvedReference {
+        reference,
+        status,
+        targets,
+        external_uris,
+    }
 }
 
 fn resolve_constructor_reference(
