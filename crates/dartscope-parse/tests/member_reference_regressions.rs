@@ -1,6 +1,4 @@
-use dartscope_core::{
-    DartFileInput, DartIdentifierReference, DartIdentifierReferenceKind,
-};
+use dartscope_core::{DartFileInput, DartIdentifierReference, DartIdentifierReferenceKind};
 use dartscope_parse::analyze_file_with_references;
 
 const SOURCE: &str = r#"
@@ -47,7 +45,9 @@ fn declaration_facts_anchor_the_declared_member_name() {
         &analysis.references,
         "second",
         DartIdentifierReferenceKind::MemberPropertyDeclarationInstance,
-        SOURCE.find("second = first").expect("second field declaration"),
+        SOURCE
+            .find("second = first")
+            .expect("second field declaration"),
     );
 }
 
@@ -88,5 +88,8 @@ fn assert_reference_start(
 
 fn occurrence(fragment: &str, token: &str) -> usize {
     let start = SOURCE.find(fragment).expect("fragment");
-    start + SOURCE[start..start + fragment.len()].find(token).expect("token")
+    start
+        + SOURCE[start..start + fragment.len()]
+            .find(token)
+            .expect("token")
 }

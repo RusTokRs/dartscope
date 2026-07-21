@@ -182,11 +182,7 @@ fn resolution_at<'a>(
         .unwrap_or_else(|| panic!("missing definition result at {path}:{byte_offset}"))
 }
 
-fn assert_target(
-    resolution: &DartDefinitionResolution,
-    kind: DartDeclarationKind,
-    name: &str,
-) {
+fn assert_target(resolution: &DartDefinitionResolution, kind: DartDeclarationKind, name: &str) {
     assert_eq!(resolution.status, DartDefinitionResolutionStatus::Resolved);
     assert_eq!(resolution.targets.len(), 1);
     match &resolution.targets[0] {
@@ -201,5 +197,8 @@ fn assert_target(
 
 fn occurrence(source: &str, fragment: &str, token: &str) -> usize {
     let start = source.find(fragment).expect("fragment");
-    start + source[start..start + fragment.len()].find(token).expect("token")
+    start
+        + source[start..start + fragment.len()]
+            .find(token)
+            .expect("token")
 }

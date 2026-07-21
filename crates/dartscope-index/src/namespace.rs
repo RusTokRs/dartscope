@@ -376,6 +376,23 @@ pub(crate) fn resolve_constructible_type_with_resolver(
     })
 }
 
+pub(crate) fn resolve_member_owner_with_resolver(
+    project: &DartProjectAnalysis,
+    query: DartSymbolQuery,
+    resolver: &NamespaceResolver<'_, '_>,
+) -> DartSymbolResolution {
+    resolve_symbol_with_resolver_filter(project, query, resolver, |kind| {
+        matches!(
+            kind,
+            DartDeclarationKind::Class
+                | DartDeclarationKind::Mixin
+                | DartDeclarationKind::Enum
+                | DartDeclarationKind::Extension
+                | DartDeclarationKind::ExtensionType
+        )
+    })
+}
+
 fn resolve_symbol_with_resolver_filter(
     project: &DartProjectAnalysis,
     query: DartSymbolQuery,

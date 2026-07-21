@@ -1,8 +1,11 @@
 use dartscope_core::{
     Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
-    DartIdentifierReferenceKind, DartInvocation, DartLexicalBinding, SourceSpan,
+    DartIdentifierReferenceKind, DartInvocation, DartLexicalBinding,
 };
 
+use crate::member_reference_syntax::{
+    declaration_is_static, declaration_name_range, looks_like_type_name,
+};
 use crate::source_lines::span_for_byte_range;
 
 pub(crate) fn collect_method_references(
@@ -143,79 +146,6 @@ fn enclosing_owner_symbol_id<'a>(
     Some(owner_id)
 }
 
-fn declaration_name_range(
-    masked_source: &str,
-    declaration: &DartDeclaration,
-) -> Option<(usize, usize)> {
-    let span = declaration
-        .declaration_span
-        .as_ref()
-        .unwrap_or(&declaration.span);
-    let header_end = declaration_header_end(masked_source, span);
-    let bytes = masked_source.as_bytes();
-    let mut at = span.byte_start;
-    let mut found = None;
-    while at < header_end.min(bytes.len()) {
-        if !is_identifier_start(bytes[at]) {
-            at += 1;
-            continue;
-        }
-        let end = identifier_end(bytes, at);
-        if masked_source.get(at..end) == Some(declaration.name.as_str()) {
-            found = Some((at, end));
-        }
-        at = end;
-    }
-    found
-}
-
-fn declaration_is_static(
-    masked_source: &str,
-    declaration: &DartDeclaration,
-    name_start: usize,
-) -> bool {
-    let span = declaration
-        .declaration_span
-        .as_ref()
-        .unwrap_or(&declaration.span);
-    let bytes = masked_source.as_bytes();
-    let mut at = span.byte_start;
-    while at < name_start.min(bytes.len()) {
-        if !is_identifier_start(bytes[at]) {
-            at += 1;
-            continue;
-        }
-        let end = identifier_end(bytes, at);
-        if masked_source.get(at..end) == Some("static") {
-            return true;
-        }
-        at = end;
-    }
-    false
-}
-
-fn declaration_header_end(source: &str, span: &SourceSpan) -> usize {
-    let bytes = source.as_bytes();
-    let mut parens = 0usize;
-    let mut brackets = 0usize;
-    let mut at = span.byte_start;
-    while at < span.byte_end.min(bytes.len()) {
-        match bytes[at] {
-            b'(' => parens += 1,
-            b')' => parens = parens.saturating_sub(1),
-            b'[' => brackets += 1,
-            b']' => brackets = brackets.saturating_sub(1),
-            b'{' | b';' if parens == 0 && brackets == 0 => return at,
-            b'=' if parens == 0 && brackets == 0 && bytes.get(at + 1) == Some(&b'>') => {
-                return at;
-            }
-            _ => {}
-        }
-        at += 1;
-    }
-    span.byte_end.min(bytes.len())
-}
-
 fn invocation_member_range(
     masked_source: &str,
     invocation: &DartInvocation,
@@ -261,10 +191,6 @@ fn binding_is_visible(bindings: &[DartLexicalBinding], name: &str, at: usize) ->
             && binding.scope_span.byte_start <= at
             && at < binding.scope_span.byte_end
     })
-}
-
-fn looks_like_type_name(value: &str) -> bool {
-    value.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
 }
 
 fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
