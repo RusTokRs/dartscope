@@ -198,6 +198,8 @@ pub enum DartIdentifierReferenceKind {
     MemberPropertyReadStatic,
     MemberPropertyWriteInstance,
     MemberPropertyWriteStatic,
+    MemberOperatorDeclaration,
+    MemberOperatorInvocationInstance,
     TypeAnnotation,
     ParameterType,
     ReturnType,

@@ -42,6 +42,8 @@ pub fn resolve_identifier_references_with_options(
                     | DartIdentifierReferenceKind::MemberPropertyReadStatic
                     | DartIdentifierReferenceKind::MemberPropertyWriteInstance
                     | DartIdentifierReferenceKind::MemberPropertyWriteStatic
+                    | DartIdentifierReferenceKind::MemberOperatorDeclaration
+                    | DartIdentifierReferenceKind::MemberOperatorInvocationInstance
             )
         })
         .cloned()
