@@ -94,9 +94,9 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Continue `DS-INDEX-006` with direct property and operator targets. Add parser-produced facts for
-getter and field reads, setter and field writes, and operator invocations while keeping exact owner
-evidence and static-versus-instance mode explicit. Preserve privacy, validated parts, ambiguity,
-conditional imports, not-visible outcomes, external-unindexed URIs, and snapshot parity. Keep
-arbitrary receiver inference, inheritance, extension selection, dynamic dispatch, patterns, and
-flow-sensitive behavior behind later focused slices.
+Continue `DS-INDEX-006` with direct operator targets. Add parser-produced declaration facts for
+`DartDeclarationKind::Operator` and bounded invocation facts whose left receiver is explicitly
+`this`, keeping the operator token and owning-type evidence separate. Resolve only directly declared
+operator targets from exact indexed evidence, preserve validated parts, exact spans, reverse
+references, and snapshot parity, and keep arbitrary receiver inference, inheritance, extension
+selection, dynamic dispatch, patterns, and flow-sensitive behavior behind later focused slices.
