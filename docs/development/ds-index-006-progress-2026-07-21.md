@@ -160,10 +160,36 @@ Implemented on `main`:
    imports, conditional imports, external packages, part libraries, reverse references, and full-build
    versus immutable-snapshot parity.
 
+## Completed Slice: Direct Property Targets
+
+Implemented on `main`:
+
+1. Added six additive opt-in identifier-reference kinds for instance/static property declarations,
+   reads, and writes. Existing serialized fields and command-facing v1 envelopes remain unchanged.
+2. Added a parser-owned property collector for `DartDeclarationKind::Field`, `Getter`, and `Setter`
+   facts, preserving exact member spans, owning symbol IDs, and static-versus-instance evidence.
+3. Emitted direct access facts only for explicit `this.property`, `Type.property`, and
+   `prefix.Type.property` forms. Method and constructor calls, longer member chains, cascades, and
+   arbitrary receiver expressions remain outside this heuristic.
+4. Classified plain assignment as a write, ordinary access as a read, and compound assignment or
+   prefix/postfix update as paired read/write facts. Uppercase roots shadowed by visible lexical
+   bindings are not reinterpreted as types.
+5. Built a source-free property inventory in `DartWorkspaceResolutionContext`. Reads refine to exact
+   getters or fields; writes refine to exact setters or fields; declaration facts resolve to their own
+   exact declaration spans.
+6. Preserved library privacy, validated part-library membership, static-versus-instance separation,
+   ambiguity, conditional-compilation evidence, external-unindexed import URIs, and explicit owner
+   fallback for missing properties.
+7. Kept declaration facts out of reverse-reference results while attributing uniquely resolved reads
+   and writes to their exact field/getter/setter targets.
+8. Added fixtures for local `this` reads and writes, prefixed static reads and writes, updates, private
+   and missing properties, ambiguous and conditional imports, external packages, part libraries,
+   reverse references, and full-build versus immutable-snapshot parity.
+
 The loop slices did not change public Rust types or serialized fields. The navigation foundation adds
-opt-in Rust library API types and snapshot accessors in `dartscope-index`. The direct-method slice adds
-only new variants to the opt-in serialized `DartIdentifierReferenceKind` enum; it does not add or
-rename fields, change command-facing v1 envelopes, or move parser/index ownership boundaries.
+opt-in Rust library API types and snapshot accessors in `dartscope-index`. The direct method/property
+slices add only new variants to the opt-in serialized `DartIdentifierReferenceKind` enum; they do not
+add or rename fields, change command-facing v1 envelopes, or move parser/index ownership boundaries.
 
 ## Current Limits
 
@@ -176,31 +202,33 @@ The heuristic backend still defers:
 - `try` statements and malformed nested control statements as unbraced loop bodies;
 - retroactive pre-declaration shadowing across separate statements;
 - definite-assignment and flow analysis;
-- member/index writes, inherited-member lookup, and extension lookup.
+- index operators, operator invocations, inherited-member lookup, and extension lookup.
 
 Snapshot-backed navigation reconstructs the lightweight project-reference projection and resolution
 context from immutable normalized facts. Exact constructor refinement currently consumes specialized
 parser-produced `ConstructorTarget` facts; keyword-free constructor syntax remains on the generic
 invocation path. Direct method resolution is intentionally limited to explicit `this.method()` calls
-and static calls whose named-type owner is syntactically exact. Arbitrary receiver type inference,
-unqualified instance calls, getters, setters, fields, operators, inherited members, extension
-selection, dynamic dispatch, patterns, and flow-sensitive behavior remain deferred.
+and static calls whose named-type owner is syntactically exact. Direct property resolution is limited
+to explicit `this.property`, `Type.property`, and `prefix.Type.property` accesses with bounded
+read/write/update classification. Arbitrary receiver type inference, unqualified instance accesses,
+null-aware or cascade member forms, operators, inherited members, extension selection, dynamic
+dispatch, patterns, and flow-sensitive behavior remain deferred.
 
 ## Next Ordered Slice
 
-Continue `DS-INDEX-006` with direct property and operator targets:
+Continue `DS-INDEX-006` with direct operator targets:
 
-1. Define parser-produced declaration and access facts for getters, setters, fields, and operators
-   while keeping member names, owner evidence, read/write/call mode, and static-versus-instance mode
-   explicit.
-2. Resolve only directly declared property/operator targets when the receiver or named-type owner is
-   exact and indexed; do not infer arbitrary receiver types.
-3. Preserve library privacy, validated parts, ambiguity, not-visible outcomes, conditional imports,
-   external-unindexed URIs, and immutable-snapshot parity.
-4. Keep inherited-member traversal, extension selection, dynamic dispatch, patterns, and flow-sensitive
-   behavior behind later focused slices.
-5. Add local, imported, prefixed, private, missing, ambiguous, part-library, external, and snapshot
-   fixtures before broadening receiver inference.
+1. Add parser-produced declaration facts for `DartDeclarationKind::Operator` and bounded invocation
+   facts for operators whose left receiver is explicitly `this`, keeping the operator token and owning
+   type evidence separate.
+2. Resolve only directly declared operator targets from exact indexed owner evidence. Do not infer the
+   types of arbitrary left-hand expressions or claim analyzer-equivalent overload selection.
+3. Cover prefix, infix, equality, index, and index-assignment syntax in focused increments rather than
+   broadening all operator forms at once.
+4. Preserve validated parts, exact declaration spans, ambiguity where multiple exact facts survive,
+   reverse references, and immutable-snapshot parity.
+5. Keep inherited-member traversal, extension selection, dynamic dispatch, arbitrary receiver
+   inference, patterns, and flow-sensitive behavior behind later focused slices.
 
 ## Verification Contract
 
