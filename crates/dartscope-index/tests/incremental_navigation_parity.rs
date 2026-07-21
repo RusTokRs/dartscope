@@ -3,8 +3,8 @@ use dartscope_core::{
     DartProjectReferenceAnalysis,
 };
 use dartscope_index::{
-    DartDefinitionQuery, DartDefinitionResolution, DartDefinitionResolutionStatus, DartIndexOptions,
-    DartWorkspaceIndex, DartWorkspaceResolutionContext,
+    DartDefinitionQuery, DartDefinitionResolution, DartDefinitionResolutionStatus,
+    DartIndexOptions, DartWorkspaceIndex, DartWorkspaceResolutionContext,
 };
 use dartscope_parse::{analyze_file_with_references, analyze_project_with_references};
 
@@ -62,8 +62,8 @@ fn incremental_snapshots_match_full_navigation_across_updates() {
             occurrence(CONDITIONAL, "conditionalValue();", "conditionalValue"),
         ),
     ];
-    let initial_full = DartWorkspaceResolutionContext::new(&initial)
-        .find_definitions(&initial_queries);
+    let initial_full =
+        DartWorkspaceResolutionContext::new(&initial).find_definitions(&initial_queries);
 
     let mut index = DartWorkspaceIndex::from_reference_project(initial.clone());
     let initial_snapshot = index.snapshot();
@@ -91,14 +91,8 @@ fn incremental_snapshots_match_full_navigation_across_updates() {
     let updated_snapshot = index.snapshot();
     let updated_full = project(UPDATED_B, true);
     let updated_queries = [
-        DartDefinitionQuery::new(
-            "lib/b.dart",
-            occurrence(UPDATED_B, "helper();", "helper"),
-        ),
-        DartDefinitionQuery::new(
-            "lib/b.dart",
-            occurrence(UPDATED_B, "renamed++;", "renamed"),
-        ),
+        DartDefinitionQuery::new("lib/b.dart", occurrence(UPDATED_B, "helper();", "helper")),
+        DartDefinitionQuery::new("lib/b.dart", occurrence(UPDATED_B, "renamed++;", "renamed")),
         DartDefinitionQuery::new(
             "lib/conditional.dart",
             occurrence(CONDITIONAL, "conditionalValue();", "conditionalValue"),
