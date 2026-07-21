@@ -159,11 +159,17 @@ fn suppresses_self_later_and_unsupported_multi_initializers() {
         reference.kind != DartIdentifierReferenceKind::InvocationTarget
             || reference.span.byte_start != pending_call
     }));
-    assert!(analysis.bindings.iter().all(|binding| {
-        !matches!(binding.name.as_str(), "left" | "right")
-    }));
+    assert!(
+        analysis
+            .bindings
+            .iter()
+            .all(|binding| { !matches!(binding.name.as_str(), "left" | "right") })
+    );
     assert_eq!(
-        variable_kinds_at(&analysis.references, last_occurrence("consume(seed)", "seed")),
+        variable_kinds_at(
+            &analysis.references,
+            last_occurrence("consume(seed)", "seed")
+        ),
         vec![DartIdentifierReferenceKind::VariableRead]
     );
 }
@@ -182,7 +188,10 @@ fn assert_binding(
                 && binding.declaration_span.byte_start == declaration_start
         })
         .unwrap_or_else(|| panic!("missing binding {name} at {declaration_start}"));
-    assert_eq!(binding.declaration_span.byte_end, declaration_start + name.len());
+    assert_eq!(
+        binding.declaration_span.byte_end,
+        declaration_start + name.len()
+    );
     assert_eq!(binding.scope_span.byte_start, scope_start);
     assert!(
         binding
