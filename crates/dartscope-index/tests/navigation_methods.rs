@@ -4,7 +4,7 @@ use dartscope_core::{
 };
 use dartscope_index::{
     DartDefinitionQuery, DartDefinitionResolution, DartDefinitionResolutionStatus,
-    DartDefinitionTarget, DartIndexOptions, DartWorkspaceResolutionContext,
+    DartDefinitionTarget, DartIndexOptions, DartWorkspaceIndex, DartWorkspaceResolutionContext,
 };
 use dartscope_parse::analyze_project_with_references;
 
@@ -238,6 +238,30 @@ fn resolves_static_methods_declared_in_a_part_library() {
         "open",
         "lib/part.dart",
     );
+}
+
+#[test]
+fn snapshot_navigation_matches_full_method_resolution() {
+    let analysis = analyze_project_with_references(DartProjectInput::new(
+        ".",
+        vec![
+            DartFileInput::new("lib/types.dart", TYPES),
+            DartFileInput::new("lib/client.dart", CLIENT),
+        ],
+        vec![],
+    ));
+    let query = DartDefinitionQuery::new(
+        "lib/client.dart",
+        occurrence(CLIENT, "Service.build", "build"),
+    );
+    let expected = DartWorkspaceResolutionContext::new(&analysis)
+        .find_definitions(std::slice::from_ref(&query));
+    let index = DartWorkspaceIndex::from_reference_project(analysis);
+    let snapshot = index.snapshot();
+    let actual = DartWorkspaceResolutionContext::from_snapshot(snapshot.as_ref())
+        .find_definitions(&[query]);
+
+    assert_eq!(actual, expected);
 }
 
 fn resolution_at<'a>(
