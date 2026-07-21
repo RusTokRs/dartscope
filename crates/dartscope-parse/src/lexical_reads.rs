@@ -311,7 +311,13 @@ fn assignment_operator_at(bytes: &[u8], at: usize) -> bool {
     ]
     .iter()
     .any(|operator| tail.starts_with(operator))
-        || (tail.starts_with(b"=") && !tail.starts_with(b"==") && !tail.starts_with(b"=>"))
+        || (tail.starts_with(b"=")
+            && !tail.starts_with(b"==")
+            && !tail.starts_with(b"=>")
+            && at
+                .checked_sub(1)
+                .and_then(|index| bytes.get(index))
+                .is_none_or(|byte| !matches!(*byte, b'!' | b'<' | b'>')))
 }
 
 pub(super) fn supports_parameters(kind: DartDeclarationKind) -> bool {
