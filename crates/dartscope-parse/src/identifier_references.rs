@@ -308,11 +308,10 @@ fn has_no_statement_boundary_between(source: &str, left: usize, right: usize) ->
     } else {
         (right, left)
     };
-    source.as_bytes().get(start..end).is_some_and(|bytes| {
-        !bytes
-            .iter()
-            .any(|byte| matches!(*byte, b';' | b'{' | b'}'))
-    })
+    source
+        .as_bytes()
+        .get(start..end)
+        .is_some_and(|bytes| !bytes.iter().any(|byte| matches!(*byte, b';' | b'{' | b'}')))
 }
 
 fn local_scope_contains(
