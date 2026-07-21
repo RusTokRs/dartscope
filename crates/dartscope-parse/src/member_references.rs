@@ -1,5 +1,5 @@
 use dartscope_core::{
-    Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
+    Confidence, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
     DartIdentifierReferenceKind, DartInvocation, DartLexicalBinding,
 };
 
@@ -202,20 +202,6 @@ fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
             | DartDeclarationKind::Extension
             | DartDeclarationKind::ExtensionType
     )
-}
-
-fn identifier_end(bytes: &[u8], mut at: usize) -> usize {
-    while bytes
-        .get(at)
-        .is_some_and(|byte| is_identifier_continue(*byte))
-    {
-        at += 1;
-    }
-    at
-}
-
-fn is_identifier_start(byte: u8) -> bool {
-    byte.is_ascii_alphabetic() || byte == b'_'
 }
 
 fn is_identifier_continue(byte: u8) -> bool {
