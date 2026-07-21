@@ -1,10 +1,9 @@
-use dartscope_core::{DartFileAnalysis, DartLexicalBindingKind};
+use dartscope_core::{DartDeclarationKind, DartFileAnalysis, DartLexicalBindingKind};
 
 use super::scan::{
-    contains_top_level_pattern_start, find_keyword, find_top_level_keyword,
-    following_statement_end, has_top_level_byte, identifier_at, is_binding_name,
-    matching_delimiter, next_non_whitespace, top_level_assignment, top_level_byte_positions,
-    top_level_identifiers, trim_range,
+    contains_top_level_pattern_start, find_keyword, find_top_level_keyword, has_top_level_byte,
+    identifier_at, is_binding_name, matching_delimiter, next_non_whitespace,
+    top_level_assignment, top_level_byte_positions, top_level_identifiers, trim_range,
 };
 use super::{LexicalRegionAnalysis, binding_for_token, innermost_callable_symbol, write_for_token};
 
@@ -26,24 +25,20 @@ pub(super) fn collect_for_regions(
         let Some(close) = matching_delimiter(source, open, b'(', b')', bytes.len()) else {
             continue;
         };
-        let Some(body_open) = next_non_whitespace(bytes, close + 1) else {
+        let Some(body_start) = next_non_whitespace(bytes, close + 1) else {
             result.deferred_regions.push((found, bytes.len()));
             continue;
         };
-        if bytes.get(body_open) != Some(&b'{') {
+        let Some((scope_start, scope_end, region_end)) = for_body_region(source, body_start) else {
             result
                 .deferred_regions
-                .push((found, following_statement_end(source, close + 1)));
-            continue;
-        }
-        let Some(body_close) = matching_delimiter(source, body_open, b'{', b'}', bytes.len())
-        else {
-            result.deferred_regions.push((found, bytes.len()));
+                .push((found, statement_end(source, body_start).unwrap_or(bytes.len())));
             continue;
         };
-        let scope_start = body_open + 1;
-        let scope_end = body_close;
-        let region_end = body_close + 1;
+        if contains_local_declaration(analysis, scope_start, scope_end) {
+            result.deferred_regions.push((found, region_end));
+            continue;
+        }
         let Some(owner_id) = innermost_callable_symbol(analysis, found) else {
             result.deferred_regions.push((found, region_end));
             continue;
@@ -61,6 +56,154 @@ pub(super) fn collect_for_regions(
             None => result.deferred_regions.push((found, region_end)),
         }
     }
+}
+
+fn for_body_region(source: &str, body_start: usize) -> Option<(usize, usize, usize)> {
+    let bytes = source.as_bytes();
+    if bytes.get(body_start) == Some(&b'{') {
+        let body_close = matching_delimiter(source, body_start, b'{', b'}', bytes.len())?;
+        return Some((body_start + 1, body_close, body_close + 1));
+    }
+    let body_end = simple_statement_end(source, body_start)?;
+    Some((body_start, body_end, body_end))
+}
+
+fn simple_statement_end(source: &str, start: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let start = next_non_whitespace(bytes, start)?;
+    let token = identifier_at(source, start);
+    if bytes.get(start) == Some(&b'{')
+        || token.is_some_and(|token| {
+            is_control_keyword(token.text)
+                || is_await_for(source, token)
+                || is_label(source, token)
+        })
+    {
+        return None;
+    }
+    terminated_statement_end(source, start)
+}
+
+fn statement_end(source: &str, start: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let start = next_non_whitespace(bytes, start)?;
+    if bytes.get(start) == Some(&b'{') {
+        return matching_delimiter(source, start, b'{', b'}', bytes.len()).map(|end| end + 1);
+    }
+    let Some(token) = identifier_at(source, start) else {
+        return terminated_statement_end(source, start);
+    };
+    if is_label(source, token) {
+        let colon = next_non_whitespace(bytes, token.end)?;
+        return statement_end(source, colon + 1);
+    }
+    match token.text {
+        "if" => if_statement_end(source, token.end),
+        "for" | "while" | "switch" => header_statement_end(source, token.end),
+        "await" if is_await_for(source, token) => {
+            let for_start = next_non_whitespace(bytes, token.end)?;
+            let for_token = identifier_at(source, for_start)?;
+            header_statement_end(source, for_token.end)
+        }
+        "do" => do_statement_end(source, token.end),
+        _ => terminated_statement_end(source, start),
+    }
+}
+
+fn if_statement_end(source: &str, keyword_end: usize) -> Option<usize> {
+    let then_end = header_statement_end(source, keyword_end)?;
+    let bytes = source.as_bytes();
+    let Some(else_start) = next_non_whitespace(bytes, then_end) else {
+        return Some(then_end);
+    };
+    let Some(else_token) = identifier_at(source, else_start) else {
+        return Some(then_end);
+    };
+    if else_token.text != "else" {
+        return Some(then_end);
+    }
+    statement_end(source, else_token.end)
+}
+
+fn header_statement_end(source: &str, keyword_end: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let open = next_non_whitespace(bytes, keyword_end)?;
+    if bytes.get(open) != Some(&b'(') {
+        return None;
+    }
+    let close = matching_delimiter(source, open, b'(', b')', bytes.len())?;
+    statement_end(source, close + 1)
+}
+
+fn do_statement_end(source: &str, keyword_end: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let body_end = statement_end(source, keyword_end)?;
+    let while_start = next_non_whitespace(bytes, body_end)?;
+    let while_token = identifier_at(source, while_start)?;
+    if while_token.text != "while" {
+        return None;
+    }
+    let open = next_non_whitespace(bytes, while_token.end)?;
+    let close = matching_delimiter(source, open, b'(', b')', bytes.len())?;
+    let semicolon = next_non_whitespace(bytes, close + 1)?;
+    (bytes.get(semicolon) == Some(&b';')).then_some(semicolon + 1)
+}
+
+fn terminated_statement_end(source: &str, start: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut parens = 0usize;
+    let mut brackets = 0usize;
+    let mut braces = 0usize;
+    let mut at = start;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'(' => parens += 1,
+            b')' if parens == 0 => return None,
+            b')' => parens -= 1,
+            b'[' => brackets += 1,
+            b']' if brackets == 0 => return None,
+            b']' => brackets -= 1,
+            b'{' => braces += 1,
+            b'}' if braces == 0 => return None,
+            b'}' => braces -= 1,
+            b';' if parens == 0 && brackets == 0 && braces == 0 => return Some(at + 1),
+            _ => {}
+        }
+        at += 1;
+    }
+    None
+}
+
+fn is_control_keyword(value: &str) -> bool {
+    matches!(value, "if" | "for" | "while" | "do" | "switch" | "try")
+}
+
+fn is_await_for(source: &str, token: super::IdentifierToken<'_>) -> bool {
+    if token.text != "await" {
+        return false;
+    }
+    let bytes = source.as_bytes();
+    next_non_whitespace(bytes, token.end)
+        .and_then(|start| identifier_at(source, start))
+        .is_some_and(|next| next.text == "for")
+}
+
+fn is_label(source: &str, token: super::IdentifierToken<'_>) -> bool {
+    next_non_whitespace(source.as_bytes(), token.end)
+        .is_some_and(|at| source.as_bytes().get(at) == Some(&b':'))
+}
+
+fn contains_local_declaration(
+    analysis: &DartFileAnalysis,
+    body_start: usize,
+    body_end: usize,
+) -> bool {
+    analysis.declarations.iter().any(|declaration| {
+        declaration.kind == DartDeclarationKind::LocalVariable
+            && declaration.declaration_span.as_ref().is_some_and(|span| {
+                body_start <= span.byte_start && span.byte_start < body_end
+            })
+    })
 }
 
 fn parse_for_header(
@@ -194,11 +337,10 @@ pub(super) fn collect_catch_regions(
         if bytes.get(body_open) != Some(&b'{') {
             result
                 .deferred_regions
-                .push((found, following_statement_end(source, close + 1)));
+                .push((found, statement_end(source, body_open).unwrap_or(bytes.len())));
             continue;
         }
-        let Some(body_close) = matching_delimiter(source, body_open, b'{', b'}', bytes.len())
-        else {
+        let Some(body_close) = matching_delimiter(source, body_open, b'{', b'}', bytes.len()) else {
             result.deferred_regions.push((found, bytes.len()));
             continue;
         };
