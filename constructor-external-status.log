@@ -1,0 +1,116 @@
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded itoa v1.0.18
+  Downloaded percent-encoding v2.3.2
+  Downloaded arraydeque v0.5.1
+  Downloaded fnv v1.0.7
+  Downloaded lazy_static v1.5.0
+  Downloaded hashlink v0.11.1
+  Downloaded thiserror v2.0.18
+  Downloaded zmij v1.0.21
+  Downloaded foldhash v0.2.0
+  Downloaded thiserror-impl v2.0.18
+  Downloaded quote v1.0.46
+  Downloaded unicode-ident v1.0.24
+  Downloaded serde_derive v1.0.228
+  Downloaded serde_core v1.0.228
+  Downloaded proc-macro2 v1.0.106
+  Downloaded yaml-rust2 v0.11.0
+  Downloaded serde v1.0.228
+  Downloaded memchr v2.8.2
+  Downloaded hashbrown v0.16.1
+  Downloaded uriparse v0.6.4
+  Downloaded serde_json v1.0.150
+  Downloaded syn v2.0.118
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.46
+   Compiling unicode-ident v1.0.24
+   Compiling serde_core v1.0.228
+   Compiling zmij v1.0.21
+   Compiling serde v1.0.228
+   Compiling thiserror v2.0.18
+   Compiling serde_json v1.0.150
+   Compiling itoa v1.0.18
+   Compiling lazy_static v1.5.0
+   Compiling foldhash v0.2.0
+   Compiling memchr v2.8.2
+   Compiling syn v2.0.118
+   Compiling fnv v1.0.7
+   Compiling uriparse v0.6.4
+   Compiling hashbrown v0.16.1
+   Compiling percent-encoding v2.3.2
+   Compiling hashlink v0.11.1
+   Compiling arraydeque v0.5.1
+   Compiling yaml-rust2 v0.11.0
+   Compiling thiserror-impl v2.0.18
+   Compiling serde_derive v1.0.228
+   Compiling dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+   Compiling dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+   Compiling dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+   Compiling dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.39s
+     Running tests/navigation_constructors.rs (target/debug/deps/navigation_constructors-7ea711f8434d52a7)
+
+running 3 tests
+test resolves_public_and_private_constructors_across_one_part_library ... ok
+test resolves_exact_prefixed_constructors_and_preserves_owner_fallback_evidence ... ok
+test preserves_ambiguity_conditional_and_external_constructor_evidence ... FAILED
+
+failures:
+
+---- preserves_ambiguity_conditional_and_external_constructor_evidence stdout ----
+
+thread 'preserves_ambiguity_conditional_and_external_constructor_evidence' (3337) panicked at crates/dartscope-index/tests/navigation_constructors.rs:173:5:
+assertion `left == right` failed
+  left: ExternalUnindexed
+ right: ConditionalEnvironmentRequired
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    preserves_ambiguity_conditional_and_external_constructor_evidence
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p dartscope-index --test navigation_constructors`
+   Compiling dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.28s
+     Running tests/navigation_batch.rs (target/debug/deps/navigation_batch-8ac1c5de809761a7)
+
+running 2 tests
+test finds_only_unambiguous_references_with_stable_target_and_fact_ordering ... ok
+test resolves_namespace_lexical_and_explicit_unresolved_definition_batches ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Compiling dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.23s
+     Running tests/reference_resolution.rs (target/debug/deps/reference_resolution-23aae9e05163a20b)
+
+running 2 tests
+test batch_references_share_conditional_namespace_semantics ... ok
+test resolves_parser_references_in_one_deterministic_batch ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+    Checking serde_core v1.0.228
+    Checking zmij v1.0.21
+    Checking thiserror v2.0.18
+    Checking lazy_static v1.5.0
+    Checking memchr v2.8.2
+    Checking itoa v1.0.18
+    Checking fnv v1.0.7
+    Checking foldhash v0.2.0
+    Checking uriparse v0.6.4
+    Checking hashbrown v0.16.1
+    Checking percent-encoding v2.3.2
+    Checking arraydeque v0.5.1
+    Checking hashlink v0.11.1
+    Checking yaml-rust2 v0.11.0
+    Checking serde v1.0.228
+    Checking serde_json v1.0.150
+    Checking dartscope-core v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-core)
+    Checking dartscope-resolve v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-resolve)
+    Checking dartscope-parse v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-parse)
+    Checking dartscope-index v0.1.0 (/home/runner/work/dartscope/dartscope/crates/dartscope-index)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.01s
