@@ -33,11 +33,35 @@ jobs:
             git commit -m "fix: deduplicate direct method resolver"
             git push origin HEAD:agent/fix-direct-method-duplicate
           fi
-      - name: Verify strictly
+      - name: Verify and retain output
+        id: verify
+        shell: bash
         run: |
-          set -euo pipefail
-          cargo +1.95.0 fmt --all -- --check
-          cargo +1.95.0 check --workspace --all-targets --locked
-          cargo +1.95.0 check -p dartscope --all-features --locked
-          cargo +1.95.0 test --workspace --locked --quiet
-          cargo +1.95.0 clippy --workspace --all-targets --locked -- -D warnings
+          status=0
+          {
+            echo '=== format ==='
+            cargo +1.95.0 fmt --all -- --check || status=1
+            echo '=== workspace all-targets ==='
+            cargo +1.95.0 check --workspace --all-targets --locked || status=1
+            echo '=== umbrella all-features ==='
+            cargo +1.95.0 check -p dartscope --all-features --locked || status=1
+            echo '=== workspace tests ==='
+            cargo +1.95.0 test --workspace --locked --quiet || status=1
+            echo '=== workspace clippy ==='
+            cargo +1.95.0 clippy --workspace --all-targets --locked -- -D warnings || status=1
+            echo "FINAL_STATUS=${status}"
+            echo "status=${status}" >> "${GITHUB_OUTPUT}"
+          } 2>&1 | tee .github/direct-method-cleanup.log
+      - name: Commit diagnostic output
+        if: always()
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/direct-method-cleanup.log
+          if ! git diff --cached --quiet; then
+            git commit -m "ci: retain direct method cleanup log"
+            git push origin HEAD:agent/fix-direct-method-duplicate
+          fi
+      - name: Fail on verification error
+        if: steps.verify.outputs.status != '0'
+        run: exit 1
