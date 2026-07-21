@@ -94,8 +94,8 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Continue `DS-INDEX-006` with conservative multi-declarator classic-loop bindings. Require
-per-declarator exact spans and initializer-order intervals, plus condition, update, braced-body,
-and simple-statement-body resolution fixtures. Keep patterns, destructuring, collection control
-flow, retroactive pre-declaration shadowing, flow analysis, and member/index writes behind focused
-slices.
+Continue `DS-INDEX-006` with deterministic find-definition and find-references batch APIs over
+current parser-produced namespace and lexical facts. Reuse one workspace context, return stable
+exact-span results with unresolved and ambiguous evidence, and prove that index code never reparses
+raw source. Keep pattern and collection control flow, retroactive pre-declaration shadowing, flow
+analysis, member and extension lookup, and member/index writes behind focused slices.
