@@ -88,39 +88,37 @@ fn operator_invocation_references(
             continue;
         };
 
-        if direct_this_operand_ends_at(masked_source, token_end) {
-            if let Some((operator, operator_start, operator_end)) =
+        if direct_this_operand_ends_at(masked_source, token_end)
+            && let Some((operator, operator_start, operator_end)) =
                 unary_operator_before(masked_source, token_start)
-            {
-                references.push(operator_reference(
-                    source,
-                    analysis,
-                    callable,
-                    owner_symbol_id.clone(),
-                    operator,
-                    operator_start,
-                    operator_end,
-                ));
-            }
+        {
+            references.push(operator_reference(
+                source,
+                analysis,
+                callable,
+                owner_symbol_id.clone(),
+                operator,
+                operator_start,
+                operator_end,
+            ));
         }
 
         let operator_start = skip_whitespace(bytes, token_end);
-        if expression_starts_at(masked_source, token_start) {
-            if let Some((operator, operator_end)) =
+        if expression_starts_at(masked_source, token_start)
+            && let Some((operator, operator_end)) =
                 binary_operator_at(masked_source, operator_start)
-            {
-                references.push(operator_reference(
-                    source,
-                    analysis,
-                    callable,
-                    owner_symbol_id.clone(),
-                    operator,
-                    operator_start,
-                    operator_end,
-                ));
-                at = operator_end;
-                continue;
-            }
+        {
+            references.push(operator_reference(
+                source,
+                analysis,
+                callable,
+                owner_symbol_id.clone(),
+                operator,
+                operator_start,
+                operator_end,
+            ));
+            at = operator_end;
+            continue;
         }
         if let Some((operator, anchor_end)) = index_operator_at(masked_source, operator_start) {
             references.push(operator_reference(
