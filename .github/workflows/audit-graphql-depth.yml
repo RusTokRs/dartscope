@@ -1,0 +1,48 @@
+name: Audit GraphQL Depth
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal
+      - name: Build CLI
+        run: cargo +1.95.0 build -p dartscope-cli --locked
+      - name: Exercise isolated GraphQL project
+        run: |
+          mkdir -p /tmp/dartscope-graphql-project/lib
+          python3 - <<'PY'
+          from pathlib import Path
+          depth = 20_000
+          Path('/tmp/dartscope-graphql-project/lib/deep.dart').write_text(
+              "const q = r'''query Q {" + ' f {' * depth + ' id' + ' }' * depth + " }''';\n",
+              encoding='utf-8',
+          )
+          PY
+          set +e
+          start=$(date +%s)
+          timeout 90 target/debug/dartscope graphql-contracts /tmp/dartscope-graphql-project \
+            >/tmp/graphql.out 2>/tmp/graphql.err
+          status=$?
+          elapsed=$(( $(date +%s) - start ))
+          printf 'graphql status=%s elapsed=%ss stdout=%s stderr=%s\n' \
+            "$status" "$elapsed" "$(wc -c </tmp/graphql.out)" "$(wc -c </tmp/graphql.err)" \
+            > /tmp/graphql-depth.txt
+          tail -c 4000 /tmp/graphql.err >> /tmp/graphql-depth.txt
+          cat /tmp/graphql-depth.txt
+      - name: Upload report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: graphql-depth
+          path: /tmp/graphql-depth.txt
+          if-no-files-found: error
+          retention-days: 1
