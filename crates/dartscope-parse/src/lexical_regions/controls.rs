@@ -65,22 +65,8 @@ fn for_body_region(source: &str, body_start: usize) -> Option<(usize, usize, usi
         let body_close = matching_delimiter(source, body_start, b'{', b'}', bytes.len())?;
         return Some((body_start + 1, body_close, body_close + 1));
     }
-    let body_end = simple_statement_end(source, body_start)?;
+    let body_end = statement_end(source, body_start)?;
     Some((body_start, body_end, body_end))
-}
-
-fn simple_statement_end(source: &str, start: usize) -> Option<usize> {
-    let bytes = source.as_bytes();
-    let start = next_non_whitespace(bytes, start)?;
-    let token = identifier_at(source, start);
-    if bytes.get(start) == Some(&b'{')
-        || token.is_some_and(|token| {
-            is_control_keyword(token.text) || is_await_for(source, token) || is_label(source, token)
-        })
-    {
-        return None;
-    }
-    terminated_statement_end(source, start)
 }
 
 fn statement_end(source: &str, start: usize) -> Option<usize> {
