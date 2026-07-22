@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Reproduce product patch
+      - name: Reproduce repaired product patch
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -22,9 +22,22 @@ jobs:
           workflow = Path('.github/workflows/debug-policy-tests.yml').read_text()
           script = workflow.split("python3 - <<'PY'\n", 1)[1].split('\n          PY', 1)[0]
           exec(compile(textwrap.dedent(script), 'blocking-quality-contracts', 'exec'))
+
+          path = Path('tools/tests/test_macos_portability_policy.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              'r"(?ms)^  macos_portability:\n(?P<body>',
+              'r"(?ms)^  macos_portability:\\n(?P<body>',
+          )
+          text = text.replace(
+              'r"(?ms)^  report:\n(?P<body>',
+              'r"(?ms)^  report:\\n(?P<body>',
+          )
+          path.write_text(text, encoding='utf-8')
           PY
           rm .github/workflows/debug-policy-tests.yml
           rm .github/workflows/capture-blocking-contract-validation.yml
+          rm .github/workflows/finalize-blocking-quality-contracts.yml
       - name: Capture validation
         id: validation
         continue-on-error: true
