@@ -13,11 +13,11 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Run policy tests
+      - name: Run tools tests
         id: tests
         continue-on-error: true
-        run: python3 -m unittest tools.tests.test_workflow_policy -v > policy-test.log 2>&1
-      - name: Upload policy test log
+        run: python3 -m unittest discover -s tools/tests -p 'test_*.py' -v > policy-test.log 2>&1
+      - name: Upload tools test log
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
