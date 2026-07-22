@@ -1,0 +1,151 @@
+name: Verify Symlink Fix
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          persist-credentials: true
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+      - name: Apply prepared patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/prepare-symlink-fix.yml').read_text()
+          script = workflow.split("python3 - <<'PY'\n", 1)[1].split('\n          PY', 1)[0]
+          exec(compile(textwrap.dedent(script), 'prepare-symlink-fix', 'exec'))
+          PY
+          rustfmt +1.95.0 --edition 2024 crates/dartscope-cli/src/main.rs
+      - name: Preserve directory symlink compatibility
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/dartscope-cli/src/main.rs')
+          source = path.read_text()
+          old = '''    if !target.starts_with(&root.canonical) {
+              return Err(CliError::input(format!(
+                  "input_symlink_rejected: symlink {} resolves outside project root {}: {}",
+                  path.display(),
+                  root.logical.display(),
+                  target.display()
+              )));
+          }
+
+          let metadata = fs::metadata(&target).map_err(|error| {
+              CliError::input(format!(
+                  "input_symlink_rejected: failed to inspect symlink target {}: {error}",
+                  target.display()
+              ))
+          })?;
+          if metadata.is_dir() {
+              return Err(CliError::input(format!(
+                  "input_symlink_rejected: symlinked directories are not supported: {} -> {}",
+                  path.display(),
+                  target.display()
+              )));
+          }
+          if !metadata.is_file() {
+              return Err(CliError::input(format!(
+                  "input_symlink_rejected: symlink target is not a regular file: {} -> {}",
+                  path.display(),
+                  target.display()
+              )));
+          }
+
+          Ok(true)
+          '''
+          new = '''    let metadata = fs::metadata(&target).map_err(|error| {
+              CliError::input(format!(
+                  "input_symlink_rejected: failed to inspect symlink target {}: {error}",
+                  target.display()
+              ))
+          })?;
+          if metadata.is_dir() {
+              return Ok(false);
+          }
+          if !metadata.is_file() {
+              return Err(CliError::input(format!(
+                  "input_symlink_rejected: symlink target is not a regular file: {} -> {}",
+                  path.display(),
+                  target.display()
+              )));
+          }
+          if !target.starts_with(&root.canonical) {
+              return Err(CliError::input(format!(
+                  "input_symlink_rejected: symlink {} resolves outside project root {}: {}",
+                  path.display(),
+                  root.logical.display(),
+                  target.display()
+              )));
+          }
+
+          Ok(true)
+          '''
+          if old not in source:
+              raise SystemExit('expected symlink policy block was not found')
+          source = source.replace(old, new)
+          source = source.replace('''fn is_regular_file(path: &Path) -> bool {
+              fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
+          }
+
+          ''', '')
+          old_test = '''    #[test]
+              fn cli_rejects_symlink_directories() {
+                  let temp = TempDirectory::new("symlink-directory");
+                  fs::create_dir_all(temp.path.join("target")).unwrap();
+                  fs::write(temp.path.join("target/inside.dart"), "void inside() {}\\n").unwrap();
+                  symlink("target", temp.path.join("linked-directory")).unwrap();
+
+                  let error = collect_project_input(temp.path.to_str().unwrap()).unwrap_err();
+
+                  assert_eq!(error.kind, CliErrorKind::Input);
+                  assert!(error.message.contains("input_symlink_rejected"));
+                  assert!(
+                      error
+                          .message
+                          .contains("symlinked directories are not supported")
+                  );
+              }
+          '''
+          new_test = '''    #[test]
+              fn cli_skips_symlink_directories_without_traversing_them() {
+                  let temp = TempDirectory::new("symlink-directory");
+                  let root = temp.path.join("project");
+                  let target = temp.path.join("target");
+                  fs::create_dir_all(&root).unwrap();
+                  fs::create_dir_all(&target).unwrap();
+                  fs::write(target.join("inside.dart"), "void inside() {}\\n").unwrap();
+                  symlink("../target", root.join("linked-directory")).unwrap();
+
+                  let input = collect_project_input(root.to_str().unwrap()).unwrap();
+
+                  assert!(input.files.is_empty());
+              }
+          '''
+          if old_test not in source:
+              raise SystemExit('expected directory symlink test was not found')
+          path.write_text(source.replace(old_test, new_test))
+          PY
+          rustfmt +1.95.0 --edition 2024 crates/dartscope-cli/src/main.rs
+      - name: Test CLI crate
+        run: cargo +1.95.0 test -p dartscope-cli --locked
+      - name: Commit finalized source
+        run: |
+          rm .github/workflows/prepare-symlink-fix.yml .github/workflows/verify-symlink-fix.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add crates/dartscope-cli/src/main.rs .github/workflows
+          git commit -m "Harden CLI symlink input handling"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
