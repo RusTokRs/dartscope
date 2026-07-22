@@ -42,9 +42,11 @@ fn identical_duplicate_inputs_are_deduplicated_and_reported() {
         .filter(|diagnostic| diagnostic.code == "duplicate_project_input_path")
         .collect();
     assert_eq!(duplicates.len(), 3);
-    assert!(duplicates
-        .iter()
-        .all(|diagnostic| diagnostic.severity == DiagnosticSeverity::Warning));
+    assert!(
+        duplicates
+            .iter()
+            .all(|diagnostic| diagnostic.severity == DiagnosticSeverity::Warning)
+    );
 }
 
 #[test]
