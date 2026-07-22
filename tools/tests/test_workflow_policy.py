@@ -38,13 +38,28 @@ jobs:
     steps:
       - uses: actions/checkout@{POLICY.REVIEWED_ACTIONS['actions/checkout'][0]} # v6.0.2
       - run: go install github.com/rhysd/actionlint/cmd/actionlint@{POLICY.ACTIONLINT_VERSION}
+  benchmark_report:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo benchmark
+  macos_portability:
+    runs-on: macos-15
+    steps:
+      - run: echo macos
   report:
+    needs: [benchmark_report, macos_portability]
     if: always() && github.event_name != 'pull_request'
     permissions:
       statuses: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/github-script@{POLICY.REVIEWED_ACTIONS['actions/github-script'][0]} # v9.0.0
+        with:
+          script: |
+            const results = [
+              '${{{{ needs.benchmark_report.result }}}}',
+              '${{{{ needs.macos_portability.result }}}}',
+            ];
 """
 
     def valid_release(self) -> str:
@@ -115,6 +130,24 @@ jobs:
             self.valid_release(),
         )
         self.assertIn("confined to a job skipped", self.messages(root))
+
+    def test_requires_release_quality_jobs_to_remain_blocking(self) -> None:
+        ci = self.valid_ci().replace(
+            "  benchmark_report:\n    runs-on:",
+            "  benchmark_report:\n    continue-on-error: true\n    runs-on:",
+        )
+        root = self.make_root(ci, self.valid_release())
+
+        self.assertIn("must remain blocking", self.messages(root))
+
+    def test_requires_release_quality_jobs_in_aggregate_status(self) -> None:
+        ci = self.valid_ci().replace(
+            "${{ needs.macos_portability.result }}",
+            "success",
+        )
+        root = self.make_root(ci, self.valid_release())
+
+        self.assertIn("aggregate status must include", self.messages(root))
 
 
 if __name__ == "__main__":
