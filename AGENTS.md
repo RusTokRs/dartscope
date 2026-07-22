@@ -8,7 +8,7 @@ Read these files before implementation:
 
 1. `README.md`
 2. `docs/development/dartscope-library-plan.md`
-3. `docs/development/ds-index-006-progress-2026-07-21.md`
+3. `docs/development/ds-index-006-progress-2026-07-22.md`
 4. `docs/development/rust-code-standards.md`
 5. `docs/development/rust-toolchain.md`
 6. `docs/reference-strategy.md`
@@ -94,9 +94,12 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Continue `DS-INDEX-006` with the remaining explicit-`this` operator forms. Add bounded
-parser facts and exact source-free targets for unary `-`/`~`, index `this[index]`, and index
-assignment `this[index] = value`, with exact operator-token spans, direct owner evidence,
-reverse references, validated parts, and snapshot parity. Keep arbitrary receiver inference,
-inherited-member traversal, extension selection, dynamic dispatch, patterns, and flow-sensitive
-behavior behind later focused slices.
+Continue `DS-INDEX-006` with unqualified same-owner members inside an exact enclosing type.
+Add bounded parser facts for unqualified `method()` calls, property reads, and property writes
+only when exact owner evidence exists and no visible lexical binding, parameter, local function,
+or other exact non-member declaration shadows the spelling. Keep invocation/read/write and
+static-versus-instance evidence explicit; resolve only directly declared methods, fields, getters,
+and setters. Preserve private-library behavior, validated parts, reverse references, missing-owner
+fallback, and snapshot parity. Keep inherited members, extension selection, arbitrary receiver
+inference, cascades, null-aware access, dynamic dispatch, patterns, and flow-sensitive behavior
+behind later focused slices.
