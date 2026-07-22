@@ -157,7 +157,10 @@ fn operator_reference(
     }
 }
 
-fn unary_operator_before(source: &str, token_start: usize) -> Option<(&'static str, usize, usize)> {
+fn unary_operator_before(
+    source: &str,
+    token_start: usize,
+) -> Option<(&'static str, usize, usize)> {
     let bytes = source.as_bytes();
     let operator_end = skip_whitespace_back(bytes, token_start);
     let operator_start = operator_end.checked_sub(1)?;
@@ -166,7 +169,7 @@ fn unary_operator_before(source: &str, token_start: usize) -> Option<(&'static s
         Some(b'~') => "~",
         _ => return None,
     };
-    if operator == "-" && bytes.get(operator_start.wrapping_sub(1)) == Some(&b'-') {
+    if operator == "-" && operator_start > 0 && bytes.get(operator_start - 1) == Some(&b'-') {
         return None;
     }
     expression_starts_at(source, operator_start)
@@ -175,7 +178,10 @@ fn unary_operator_before(source: &str, token_start: usize) -> Option<(&'static s
 
 fn direct_this_operand_ends_at(source: &str, token_end: usize) -> bool {
     let next = skip_whitespace(source.as_bytes(), token_end);
-    !matches!(source.as_bytes().get(next), Some(b'.' | b'[' | b'(' | b'?'))
+    !matches!(
+        source.as_bytes().get(next),
+        Some(b'.' | b'[' | b'(' | b'?')
+    )
 }
 
 fn expression_starts_at(source: &str, start: usize) -> bool {
@@ -193,10 +199,12 @@ fn expression_starts_at(source: &str, start: usize) -> bool {
         return true;
     }
     before.ends_with("=>")
-        || before
-            .as_bytes()
-            .last()
-            .is_some_and(|byte| matches!(byte, b'(' | b'[' | b'{' | b',' | b':' | b';' | b'=' | b'?' | b'!'))
+        || before.as_bytes().last().is_some_and(|byte| {
+            matches!(
+                byte,
+                b'(' | b'[' | b'{' | b',' | b':' | b';' | b'=' | b'?' | b'!'
+            )
+        })
 }
 
 fn index_operator_at(source: &str, start: usize) -> Option<(&'static str, usize)> {
@@ -236,23 +244,30 @@ fn index_operator_at(source: &str, start: usize) -> Option<(&'static str, usize)
 
 fn compound_index_assignment_at(source: &str, start: usize) -> bool {
     [
-        ">>>=", "<<=", ">>=", "??=", "+=", "-=", "*=", "/=", "~/=", "%=", "&=", "|=", "^=",
-        "++", "--",
+        ">>>=", "<<=", ">>=", "??=", "+=", "-=", "*=", "/=", "~/=", "%=", "&=", "|=", "^=", "++",
+        "--",
     ]
     .iter()
-    .any(|operator| source.get(start..).is_some_and(|rest| rest.starts_with(operator)))
+    .any(|operator| {
+        source
+            .get(start..)
+            .is_some_and(|rest| rest.starts_with(operator))
+    })
 }
 
 fn binary_operator_at(source: &str, start: usize) -> Option<(&'static str, usize)> {
     const OPERATORS: [&str; 17] = [
-        ">>>", "<<", ">>", "<=", ">=", "==", "~/", "+", "-", "/", "*", "%", "|", "^", "&", "<", ">",
+        ">>>", "<<", ">>", "<=", ">=", "==", "~/", "+", "-", "/", "*", "%", "|", "^", "&", "<",
+        ">",
     ];
     for operator in OPERATORS {
         if !source.get(start..)?.starts_with(operator) {
             continue;
         }
         let end = start + operator.len();
-        if source.as_bytes().get(end) == Some(&b'=') && !matches!(operator, "<=" | ">=" | "==") {
+        if source.as_bytes().get(end) == Some(&b'=')
+            && !matches!(operator, "<=" | ">=" | "==")
+        {
             continue;
         }
         if matches!(operator, "+" | "-")
