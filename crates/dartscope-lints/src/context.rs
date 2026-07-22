@@ -1,9 +1,7 @@
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
-use dartscope_core::{
-    DartPartLinkAnalysis, DartProjectAnalysis, DartUriGraph, normalize_path,
-};
+use dartscope_core::{DartPartLinkAnalysis, DartProjectAnalysis, DartUriGraph, normalize_path};
 use dartscope_index::{DartWorkspaceSnapshot, analyze_part_links, build_uri_graph};
 
 use crate::DartLintRuleId;
