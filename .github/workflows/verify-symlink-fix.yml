@@ -28,11 +28,21 @@ jobs:
       - name: Format patched source
         run: rustfmt +1.95.0 --edition 2024 crates/dartscope-cli/src/main.rs
       - name: Test CLI crate
-        run: cargo +1.95.0 test -p dartscope-cli --locked
-      - name: Upload patched source
+        id: tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo +1.95.0 test -p dartscope-cli --locked 2>&1 | tee symlink-test.log
+      - name: Upload patch and test log
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
         with:
           name: patched-main-rs
-          path: crates/dartscope-cli/src/main.rs
+          path: |
+            crates/dartscope-cli/src/main.rs
+            symlink-test.log
           if-no-files-found: error
           retention-days: 1
+      - name: Fail when tests failed
+        if: steps.tests.outcome != 'success'
+        run: exit 1
