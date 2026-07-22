@@ -352,81 +352,85 @@ fn collect_sources(
     directory: &Path,
     sources: &mut ProjectSourceAccumulator,
 ) -> Result<(), CliError> {
-    let entries = fs::read_dir(directory).map_err(|error| {
-        CliError::input(format!(
-            "failed to read directory {}: {error}",
-            directory.display()
-        ))
-    })?;
+    let mut pending_directories = vec![directory.to_path_buf()];
 
-    for entry in entries {
-        let entry = entry.map_err(|error| {
+    while let Some(directory) = pending_directories.pop() {
+        let entries = fs::read_dir(&directory).map_err(|error| {
             CliError::input(format!(
-                "failed to read directory entry in {}: {error}",
+                "failed to read directory {}: {error}",
                 directory.display()
             ))
         })?;
-        let path = entry.path();
-        let file_type = entry.file_type().map_err(|error| {
-            CliError::input(format!("failed to inspect {}: {error}", path.display()))
-        })?;
 
-        if file_type.is_dir() {
-            if !is_skipped_directory(&path) {
-                collect_sources(root, &path, sources)?;
+        for entry in entries {
+            let entry = entry.map_err(|error| {
+                CliError::input(format!(
+                    "failed to read directory entry in {}: {error}",
+                    directory.display()
+                ))
+            })?;
+            let path = entry.path();
+            let file_type = entry.file_type().map_err(|error| {
+                CliError::input(format!("failed to inspect {}: {error}", path.display()))
+            })?;
+
+            if file_type.is_dir() {
+                if !is_skipped_directory(&path) {
+                    pending_directories.push(path);
+                }
+                continue;
             }
-            continue;
-        }
-        if !source_file_is_allowed(root, &path, &file_type)? {
-            continue;
-        }
-
-        let Some(source_relative_path) = relative_path(&root.logical, &path) else {
-            continue;
-        };
-
-        match path.file_name().and_then(|name| name.to_str()) {
-            Some("l10n.yaml") if sources.collect_flutter_catalogs => {
-                let source = read_path(&path)?;
-                sources
-                    .l10n_files
-                    .push(FlutterL10nInput::new(source_relative_path, source));
+            if !source_file_is_allowed(root, &path, &file_type)? {
+                continue;
             }
-            Some("pubspec.yaml") => {
-                let source = read_path(&path)?;
-                sources
-                    .pubspecs
-                    .push(PubspecInput::new(source_relative_path, source));
-                if let Some(package_root) = path.parent() {
-                    let package_config_path =
-                        package_root.join(".dart_tool").join("package_config.json");
-                    if optional_source_file_is_allowed(root, &package_config_path)? {
-                        let source = read_path(&package_config_path)?;
-                        if let Some(relative_path) =
-                            relative_path(&root.logical, &package_config_path)
-                        {
-                            sources
-                                .package_configs
-                                .push(PackageConfigInput::new(relative_path, source));
+
+            let Some(source_relative_path) = relative_path(&root.logical, &path) else {
+                continue;
+            };
+
+            match path.file_name().and_then(|name| name.to_str()) {
+                Some("l10n.yaml") if sources.collect_flutter_catalogs => {
+                    let source = read_path(&path)?;
+                    sources
+                        .l10n_files
+                        .push(FlutterL10nInput::new(source_relative_path, source));
+                }
+                Some("pubspec.yaml") => {
+                    let source = read_path(&path)?;
+                    sources
+                        .pubspecs
+                        .push(PubspecInput::new(source_relative_path, source));
+                    if let Some(package_root) = path.parent() {
+                        let package_config_path =
+                            package_root.join(".dart_tool").join("package_config.json");
+                        if optional_source_file_is_allowed(root, &package_config_path)? {
+                            let source = read_path(&package_config_path)?;
+                            if let Some(relative_path) =
+                                relative_path(&root.logical, &package_config_path)
+                            {
+                                sources
+                                    .package_configs
+                                    .push(PackageConfigInput::new(relative_path, source));
+                            }
                         }
                     }
                 }
+                _ if path.extension().and_then(|extension| extension.to_str()) == Some("dart") => {
+                    let source = read_path(&path)?;
+                    sources
+                        .files
+                        .push(DartFileInput::new(source_relative_path, source));
+                }
+                _ if sources.collect_flutter_catalogs
+                    && path.extension().and_then(|extension| extension.to_str()) == Some("arb") =>
+                {
+                    let source = read_path(&path)?;
+                    sources
+                        .arb_files
+                        .push(FlutterArbInput::new(source_relative_path, source));
+                }
+                _ => {}
             }
-            _ if path.extension().and_then(|extension| extension.to_str()) == Some("dart") => {
-                let source = read_path(&path)?;
-                sources
-                    .files
-                    .push(DartFileInput::new(source_relative_path, source));
-            }
-            _ if sources.collect_flutter_catalogs
-                && path.extension().and_then(|extension| extension.to_str()) == Some("arb") =>
-            {
-                let source = read_path(&path)?;
-                sources
-                    .arb_files
-                    .push(FlutterArbInput::new(source_relative_path, source));
-            }
-            _ => {}
         }
     }
 
@@ -795,6 +799,30 @@ mod project_symlink_tests {
         assert_eq!(
             input.package_configs[0].path,
             ".dart_tool/package_config.json"
+        );
+    }
+
+    #[test]
+    fn cli_collects_sources_from_deep_directory_trees_without_recursion() {
+        let temp = TempDirectory::new("deep-directory-tree");
+        let mut directory = temp.path.clone();
+        let mut relative = PathBuf::new();
+        for _ in 0..512 {
+            directory.push("d");
+            relative.push("d");
+        }
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("deep.dart"), "void deep() {}\n").unwrap();
+
+        let input = collect_project_input(temp.path.to_str().unwrap()).unwrap();
+
+        assert_eq!(input.files.len(), 1);
+        assert_eq!(
+            input.files[0].path,
+            format!(
+                "{}/deep.dart",
+                relative.to_string_lossy().replace('\\', "/")
+            )
         );
     }
 }
