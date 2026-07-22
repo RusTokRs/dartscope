@@ -2,7 +2,7 @@ from pathlib import Path
 
 main_path = Path("crates/dartscope-cli/src/main.rs")
 main_source = main_path.read_text()
-obsolete_helper = '''
+obsolete_helper = r'''
 fn is_regular_file(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
 }
@@ -13,7 +13,7 @@ main_path.write_text(main_source.replace(obsolete_helper, "", 1))
 
 contract_path = Path("crates/dartscope-cli/tests/cli_contract.rs")
 contract = contract_path.read_text()
-legacy_fixture = '''
+legacy_fixture = r'''
     #[cfg(unix)]
     let linked = {
         use std::os::unix::fs::symlink;
@@ -27,14 +27,14 @@ legacy_fixture = '''
 if legacy_fixture not in contract:
     raise SystemExit("legacy symlink fixture not found")
 contract = contract.replace(legacy_fixture, "", 1)
-legacy_assertions = '''    assert!(!json.contains("ignored.dart"));
+legacy_assertions = r'''    assert!(!json.contains("ignored.dart"));
     assert!(!json.contains("linked.dart"));
 
     #[cfg(unix)]
     drop(linked);
 }
 '''
-replacement = '''    assert!(!json.contains("ignored.dart"));
+replacement = r'''    assert!(!json.contains("ignored.dart"));
 }
 
 #[cfg(unix)]
