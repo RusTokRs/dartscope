@@ -89,7 +89,7 @@ parser_test.write_text(source, encoding="utf-8")
 
 index_test = Path("crates/dartscope-index/tests/lexical_region_resolution.rs")
 source = index_test.read_text(encoding="utf-8")
-marker = "\nfn assert_expected_bindings(\n"
+marker = "\nfn assert_expected_bindings("
 if source.count(marker) != 1:
     raise SystemExit("index test helper marker not found")
 test = r'''
