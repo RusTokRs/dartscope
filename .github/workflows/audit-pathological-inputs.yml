@@ -1,0 +1,60 @@
+name: Audit Pathological Inputs
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal
+      - name: Build CLI
+        run: cargo +1.95.0 build -p dartscope-cli --locked
+      - name: Generate bounded pathological inputs
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          depth = 50_000
+          Path('/tmp/deep.yaml').write_text('root: ' + '[' * depth + '0' + ']' * depth + '\n', encoding='utf-8')
+          Path('/tmp/deep.dart').write_text('void f() { var x = ' + '(' * depth + '0' + ')' * depth + '; }\n', encoding='utf-8')
+          graphql_depth = 20_000
+          Path('/tmp/deep_graphql.dart').write_text(
+              "const q = r'''query Q {" + ' f {' * graphql_depth + ' id' + ' }' * graphql_depth + " }''';\n",
+              encoding='utf-8',
+          )
+          PY
+      - name: Exercise public CLI parsers
+        run: |
+          set +e
+          report=/tmp/pathological-inputs.txt
+          : > "$report"
+          run_case() {
+            name="$1"
+            shift
+            start=$(date +%s)
+            timeout 90 "$@" >/tmp/${name}.out 2>/tmp/${name}.err
+            status=$?
+            elapsed=$(( $(date +%s) - start ))
+            printf '%s status=%s elapsed=%ss stdout=%s stderr=%s\n' \
+              "$name" "$status" "$elapsed" "$(wc -c </tmp/${name}.out)" "$(wc -c </tmp/${name}.err)" >> "$report"
+            tail -c 4000 /tmp/${name}.err >> "$report"
+            printf '\n---\n' >> "$report"
+          }
+          run_case yaml target/debug/dartscope pubspec /tmp/deep.yaml
+          run_case dart target/debug/dartscope analyze-file /tmp/deep.dart
+          run_case graphql target/debug/dartscope graphql-contracts /tmp
+          cat "$report"
+      - name: Upload stress report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pathological-inputs
+          path: /tmp/pathological-inputs.txt
+          if-no-files-found: error
+          retention-days: 1
