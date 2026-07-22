@@ -151,8 +151,8 @@ fn preserves_part_library_and_snapshot_operator_parity() {
 
     let index = DartWorkspaceIndex::from_reference_project(analysis);
     let snapshot = index.snapshot();
-    let actual = DartWorkspaceResolutionContext::from_snapshot(snapshot.as_ref())
-        .find_definitions(&queries);
+    let actual =
+        DartWorkspaceResolutionContext::from_snapshot(snapshot.as_ref()).find_definitions(&queries);
     assert_eq!(actual, expected);
 }
 

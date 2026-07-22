@@ -157,10 +157,7 @@ fn operator_reference(
     }
 }
 
-fn unary_operator_before(
-    source: &str,
-    token_start: usize,
-) -> Option<(&'static str, usize, usize)> {
+fn unary_operator_before(source: &str, token_start: usize) -> Option<(&'static str, usize, usize)> {
     let bytes = source.as_bytes();
     let operator_end = skip_whitespace_back(bytes, token_start);
     let operator_start = operator_end.checked_sub(1)?;
@@ -172,16 +169,12 @@ fn unary_operator_before(
     if operator == "-" && operator_start > 0 && bytes.get(operator_start - 1) == Some(&b'-') {
         return None;
     }
-    expression_starts_at(source, operator_start)
-        .then_some((operator, operator_start, operator_end))
+    expression_starts_at(source, operator_start).then_some((operator, operator_start, operator_end))
 }
 
 fn direct_this_operand_ends_at(source: &str, token_end: usize) -> bool {
     let next = skip_whitespace(source.as_bytes(), token_end);
-    !matches!(
-        source.as_bytes().get(next),
-        Some(b'.' | b'[' | b'(' | b'?')
-    )
+    !matches!(source.as_bytes().get(next), Some(b'.' | b'[' | b'(' | b'?'))
 }
 
 fn expression_starts_at(source: &str, start: usize) -> bool {
@@ -257,17 +250,14 @@ fn compound_index_assignment_at(source: &str, start: usize) -> bool {
 
 fn binary_operator_at(source: &str, start: usize) -> Option<(&'static str, usize)> {
     const OPERATORS: [&str; 17] = [
-        ">>>", "<<", ">>", "<=", ">=", "==", "~/", "+", "-", "/", "*", "%", "|", "^", "&", "<",
-        ">",
+        ">>>", "<<", ">>", "<=", ">=", "==", "~/", "+", "-", "/", "*", "%", "|", "^", "&", "<", ">",
     ];
     for operator in OPERATORS {
         if !source.get(start..)?.starts_with(operator) {
             continue;
         }
         let end = start + operator.len();
-        if source.as_bytes().get(end) == Some(&b'=')
-            && !matches!(operator, "<=" | ">=" | "==")
-        {
+        if source.as_bytes().get(end) == Some(&b'=') && !matches!(operator, "<=" | ">=" | "==") {
             continue;
         }
         if matches!(operator, "+" | "-")
