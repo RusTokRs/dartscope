@@ -37,6 +37,7 @@ fn analyze_project_handles_deep_directory_trees() {
     let project = TempDirectory::new("deep-directory-contract");
     let mut directory = project.path().to_path_buf();
     let mut relative = PathBuf::new();
+    // Exercise a deep public CLI traversal while staying below conservative platform path limits.
     for _ in 0..64 {
         directory.push("d");
         relative.push("d");
