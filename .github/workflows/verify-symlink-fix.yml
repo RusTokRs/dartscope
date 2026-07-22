@@ -25,8 +25,12 @@ jobs:
           script = workflow.split("python3 - <<'PY'\n", 1)[1].split('\n          PY', 1)[0]
           exec(compile(textwrap.dedent(script), 'prepare-symlink-fix', 'exec'))
           PY
+          python3 tools/apply-symlink-fix-post.py
       - name: Format patched source
-        run: rustfmt +1.95.0 --edition 2024 crates/dartscope-cli/src/main.rs
+        run: |
+          rustfmt +1.95.0 --edition 2024 \
+            crates/dartscope-cli/src/main.rs \
+            crates/dartscope-cli/tests/cli_contract.rs
       - name: Test CLI crate
         id: tests
         continue-on-error: true
@@ -37,9 +41,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
         with:
-          name: patched-main-rs
+          name: patched-symlink-files
           path: |
             crates/dartscope-cli/src/main.rs
+            crates/dartscope-cli/tests/cli_contract.rs
             symlink-test.log
           if-no-files-found: error
           retention-days: 1
