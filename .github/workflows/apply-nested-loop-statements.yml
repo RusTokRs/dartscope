@@ -19,9 +19,11 @@ jobs:
           python3 tools/apply-nested-loop-statements.py
           python3 tools/update-nested-loop-contract.py
           python3 tools/update-deferred-region-contract.py
+          python3 tools/update-nested-loop-scope-assertion.py
           rm tools/apply-nested-loop-statements.py
           rm tools/update-nested-loop-contract.py
           rm tools/update-deferred-region-contract.py
+          rm tools/update-nested-loop-scope-assertion.py
           rm .github/workflows/apply-nested-loop-statements.yml
       - name: Format and test parser and index
         run: |
@@ -49,5 +51,6 @@ jobs:
           git add -u tools/apply-nested-loop-statements.py
           git add -u tools/update-nested-loop-contract.py
           git add -u tools/update-deferred-region-contract.py
+          git add -u tools/update-nested-loop-scope-assertion.py
           git commit -m "Resolve loop bindings in nested statements"
           git push origin "HEAD:${HEAD_BRANCH}"
