@@ -44,10 +44,18 @@ jobs:
               fourth_status=1
             fi
             if [ "$first_status" -eq 0 ] && [ "$second_status" -eq 0 ] && [ "$third_status" -eq 0 ] && [ "$fourth_status" -eq 0 ]; then
+              python3 tools/update-single-statement-for-contract.py
+              fifth_status=$?
+              echo "fifth_patch_status=$fifth_status"
+            else
+              fifth_status=1
+            fi
+            if [ "$first_status" -eq 0 ] && [ "$second_status" -eq 0 ] && [ "$third_status" -eq 0 ] && [ "$fourth_status" -eq 0 ] && [ "$fifth_status" -eq 0 ]; then
               rustfmt +1.95.0 --edition 2024 \
                 crates/dartscope-parse/src/lexical_regions/controls.rs \
                 crates/dartscope-parse/tests/lexical_region_bindings.rs \
                 crates/dartscope-parse/tests/deferred_region_writes.rs \
+                crates/dartscope-parse/tests/single_statement_for.rs \
                 crates/dartscope-index/tests/lexical_region_resolution.rs \
                 crates/dartscope-index/tests/single_statement_for_resolution.rs
               echo "rustfmt_status=$?"
