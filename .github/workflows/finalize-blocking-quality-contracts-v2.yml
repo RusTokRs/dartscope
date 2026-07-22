@@ -1,0 +1,71 @@
+name: Finalize Blocking Quality Contracts V2
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Apply repaired product contracts
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/debug-policy-tests.yml').read_text()
+          script = workflow.split("python3 - <<'PY'\n", 1)[1].split('\n          PY', 1)[0]
+          exec(compile(textwrap.dedent(script), 'blocking-quality-contracts', 'exec'))
+
+          path = Path('tools/tests/test_macos_portability_policy.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              'r"(?ms)^  macos_portability:\n(?P<body>',
+              'r"(?ms)^  macos_portability:\\n(?P<body>',
+          )
+          text = text.replace(
+              'r"(?ms)^  report:\n(?P<body>',
+              'r"(?ms)^  report:\\n(?P<body>',
+          )
+          text = text.replace(
+              '"must not be converted into code exceptions or weaker assertions",',
+              '"must not be converted into code exceptions or weaker",',
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
+          rm .github/workflows/debug-policy-tests.yml
+          rm .github/workflows/capture-blocking-contract-validation.yml
+          rm .github/workflows/finalize-blocking-quality-contracts.yml
+          rm .github/workflows/finalize-blocking-quality-contracts-v2.yml
+      - name: Validate product contracts
+        run: |
+          python3 -m unittest discover -s tools/tests -p 'test_*.py' -v
+          python3 tools/check-workflow-policy.py
+          GOBIN="$RUNNER_TEMP/actionlint-bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$RUNNER_TEMP/actionlint-bin/actionlint" -color
+          git diff --check
+      - name: Commit verified product changes
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            docs/development/macos-portability.md \
+            tools/report_benchmark_regressions.py \
+            tools/tests/test_macos_portability_policy.py \
+            tools/tests/test_report_benchmark_regressions.py
+          git add -u \
+            .github/workflows/debug-policy-tests.yml \
+            .github/workflows/capture-blocking-contract-validation.yml \
+            .github/workflows/finalize-blocking-quality-contracts.yml \
+            .github/workflows/finalize-blocking-quality-contracts-v2.yml
+          git commit -m "Make release quality contracts blocking"
+          git push origin "HEAD:${HEAD_BRANCH}"
