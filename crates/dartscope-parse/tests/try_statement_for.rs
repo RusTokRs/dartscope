@@ -10,7 +10,9 @@ void run(Iterable<int> values) {
   for (var index = 0; index < 2; index++)
     try {
       consume(index);
-    } on StateError catch (error) {
+    } on StateError {
+      consume(index);
+    } on FormatException catch (error) {
       consume(index);
       consume(error);
     } catch (error, stack) {
@@ -51,8 +53,9 @@ fn models_try_handlers_as_complete_loop_bodies_without_leaking_bindings() {
     assert_eq!(names, ["index", "value"]);
 
     let classic_try = occurrence("try {\n      consume(index);", "index");
-    let classic_on = occurrence(
-        "on StateError catch (error) {\n      consume(index);",
+    let classic_on = occurrence("on StateError {\n      consume(index);", "index");
+    let classic_on_catch = occurrence(
+        "on FormatException catch (error) {\n      consume(index);",
         "index",
     );
     let classic_update = occurrence("index++;", "index");
@@ -65,6 +68,7 @@ fn models_try_handlers_as_complete_loop_bodies_without_leaking_bindings() {
     for offset in [
         classic_try,
         classic_on,
+        classic_on_catch,
         classic_finally,
         for_in_try,
         for_in_finally,
