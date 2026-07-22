@@ -14,6 +14,25 @@ SPEC.loader.exec_module(MODULE)
 
 
 class BenchmarkRegressionTests(unittest.TestCase):
+    def report(self, classification: str = "stable") -> MODULE.WorkloadReport:
+        return MODULE.WorkloadReport(
+            workload="parse",
+            baseline_median_ns=1_000_000,
+            candidate_median_ns=1_100_000,
+            delta_percent=10.0,
+            baseline_noise=0.01,
+            candidate_noise=0.02,
+            paired_median_ratio=1.1,
+            supporting_pairs=2,
+            samples=7,
+            classification=classification,
+            comparable=True,
+            baseline_units=10,
+            candidate_units=10,
+            baseline_digest=20,
+            candidate_digest=20,
+        )
+
     def test_sustained_relative_slowdown_is_reported(self) -> None:
         classification, paired_median, support = MODULE.classify_samples(
             [100, 101, 99, 100, 102, 98, 100],
@@ -45,28 +64,18 @@ class BenchmarkRegressionTests(unittest.TestCase):
         self.assertEqual(paired_median, 1.0)
         self.assertEqual(support, 0)
 
-    def test_markdown_states_non_blocking_policy(self) -> None:
-        report = MODULE.WorkloadReport(
-            workload="parse",
-            baseline_median_ns=1_000_000,
-            candidate_median_ns=1_100_000,
-            delta_percent=10.0,
-            baseline_noise=0.01,
-            candidate_noise=0.02,
-            paired_median_ratio=1.1,
-            supporting_pairs=2,
-            samples=7,
-            classification="stable",
-            comparable=True,
-            baseline_units=10,
-            candidate_units=10,
-            baseline_digest=20,
-            candidate_digest=20,
-        )
+    def test_markdown_states_blocking_policy(self) -> None:
+        report = self.report()
         markdown = MODULE.render_markdown("base", "head", [report])
         self.assertIn("No absolute", markdown)
-        self.assertIn("no measured slowdown can fail", markdown)
+        self.assertIn("`possible regression` classification fails", markdown)
         self.assertIn("| parse |", markdown)
+        self.assertEqual(MODULE.exit_code_for_reports([report]), 0)
+
+    def test_possible_regression_returns_blocking_exit_code(self) -> None:
+        self.assertEqual(
+            MODULE.exit_code_for_reports([self.report("possible regression")]), 2
+        )
 
 
 if __name__ == "__main__":

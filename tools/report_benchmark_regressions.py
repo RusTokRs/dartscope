@@ -49,6 +49,10 @@ class WorkloadReport:
     candidate_digest: int
 
 
+def exit_code_for_reports(reports: list[WorkloadReport]) -> int:
+    return 2 if any(report.classification == "possible regression" for report in reports) else 0
+
+
 class BenchmarkError(RuntimeError):
     pass
 
@@ -263,9 +267,9 @@ def render_markdown(
         f"- candidate: `{candidate_sha}`",
         f"- paired samples per workload: `{reports[0].samples if reports else 0}`",
         "",
-        "> Timing classifications are informational. The job compares base and head on the same runner,",
-        "> alternates execution order, and uses medians plus median absolute deviation. No absolute",
-        "> hosted-runner duration and no measured slowdown can fail the blocking `dartscope/ci` status.",
+        "> The job compares base and head on the same runner, alternates execution order, and uses",
+        "> medians plus median absolute deviation. No absolute hosted-runner duration is enforced.",
+        "> A `possible regression` classification fails this blocking benchmark gate.",
         "",
         "| Workload | Baseline median | Candidate median | Delta | Noise (base/head) | Classification |",
         "| --- | ---: | ---: | ---: | ---: | --- |",
@@ -299,7 +303,7 @@ def write_failure(markdown_path: Path, json_path: Path, error: Exception) -> Non
     message = str(error)
     markdown_path.write_text(
         "# DartScope benchmark regression report\n\n"
-        "The non-blocking benchmark reporter could not complete.\n\n"
+        "The blocking benchmark reporter could not complete.\n\n"
         f"```text\n{message}\n```\n",
         encoding="utf-8",
     )
@@ -359,7 +363,7 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(
                 {
                     "schema_version": 1,
-                    "status": "ok",
+                    "status": "regression" if exit_code_for_reports(reports) else "ok",
                     "baseline_sha": baseline_sha,
                     "candidate_sha": candidate_sha,
                     "samples": args.samples,
@@ -371,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
             + "\n",
             encoding="utf-8",
         )
-        return 0
+        return exit_code_for_reports(reports)
     except (BenchmarkError, OSError, subprocess.SubprocessError) as error:
         write_failure(args.markdown, args.json_path, error)
         print(f"error: {error}", file=sys.stderr)
