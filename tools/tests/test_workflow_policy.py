@@ -14,6 +14,7 @@ sys.modules[SPEC.name] = POLICY
 SPEC.loader.exec_module(POLICY)
 
 
+# Policy fixtures intentionally model both release-quality jobs as blocking.
 class WorkflowPolicyTests(unittest.TestCase):
     def make_root(self, ci: str, release: str) -> Path:
         temporary = tempfile.TemporaryDirectory()
