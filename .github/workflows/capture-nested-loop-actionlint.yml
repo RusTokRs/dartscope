@@ -1,4 +1,4 @@
-name: Capture Nested Loop Patch
+name: Capture Nested Loop Tests
 
 on:
   pull_request:
@@ -13,17 +13,30 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Capture patch diagnostics
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+      - name: Capture focused validation
         run: |
           set +e
-          python3 tools/apply-nested-loop-statements.py > nested-loop-patch.txt 2>&1
-          status=$?
-          echo "status=$status" >> nested-loop-patch.txt
-          cat nested-loop-patch.txt
+          {
+            python3 tools/apply-nested-loop-statements.py
+            patch_status=$?
+            echo "patch_status=$patch_status"
+            if [ "$patch_status" -eq 0 ]; then
+              rustfmt +1.95.0 --edition 2024 \
+                crates/dartscope-parse/src/lexical_regions/controls.rs \
+                crates/dartscope-parse/tests/lexical_region_bindings.rs \
+                crates/dartscope-index/tests/lexical_region_resolution.rs
+              echo "rustfmt_status=$?"
+              cargo +1.95.0 test -p dartscope-parse -p dartscope-index --locked
+              echo "cargo_status=$?"
+            fi
+          } > nested-loop-tests.txt 2>&1
+          cat nested-loop-tests.txt
       - name: Upload diagnostics
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nested-loop-patch
-          path: nested-loop-patch.txt
+          name: nested-loop-tests
+          path: nested-loop-tests.txt
           if-no-files-found: error
           retention-days: 1
