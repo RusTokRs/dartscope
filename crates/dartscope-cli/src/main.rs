@@ -380,9 +380,9 @@ fn collect_sources(
                 }
                 continue;
             }
-            if !source_file_is_allowed(root, &path, &file_type)? {
+            let Some(source_read_path) = source_file_read_path(root, &path, &file_type)? else {
                 continue;
-            }
+            };
 
             let Some(source_relative_path) = relative_path(&root.logical, &path) else {
                 continue;
@@ -390,21 +390,24 @@ fn collect_sources(
 
             match path.file_name().and_then(|name| name.to_str()) {
                 Some("l10n.yaml") if sources.collect_flutter_catalogs => {
-                    let source = read_path(&path)?;
+                    let source = read_path(&source_read_path, &path)?;
                     sources
                         .l10n_files
                         .push(FlutterL10nInput::new(source_relative_path, source));
                 }
                 Some("pubspec.yaml") => {
-                    let source = read_path(&path)?;
+                    let source = read_path(&source_read_path, &path)?;
                     sources
                         .pubspecs
                         .push(PubspecInput::new(source_relative_path, source));
                     if let Some(package_root) = path.parent() {
                         let package_config_path =
                             package_root.join(".dart_tool").join("package_config.json");
-                        if optional_source_file_is_allowed(root, &package_config_path)? {
-                            let source = read_path(&package_config_path)?;
+                        if let Some(package_config_read_path) =
+                            optional_source_file_read_path(root, &package_config_path)?
+                        {
+                            let source =
+                                read_path(&package_config_read_path, &package_config_path)?;
                             if let Some(relative_path) =
                                 relative_path(&root.logical, &package_config_path)
                             {
@@ -416,7 +419,7 @@ fn collect_sources(
                     }
                 }
                 _ if path.extension().and_then(|extension| extension.to_str()) == Some("dart") => {
-                    let source = read_path(&path)?;
+                    let source = read_path(&source_read_path, &path)?;
                     sources
                         .files
                         .push(DartFileInput::new(source_relative_path, source));
@@ -424,7 +427,7 @@ fn collect_sources(
                 _ if sources.collect_flutter_catalogs
                     && path.extension().and_then(|extension| extension.to_str()) == Some("arb") =>
                 {
-                    let source = read_path(&path)?;
+                    let source = read_path(&source_read_path, &path)?;
                     sources
                         .arb_files
                         .push(FlutterArbInput::new(source_relative_path, source));
@@ -437,10 +440,13 @@ fn collect_sources(
     Ok(())
 }
 
-fn optional_source_file_is_allowed(root: &ProjectRoot, path: &Path) -> Result<bool, CliError> {
+fn optional_source_file_read_path(
+    root: &ProjectRoot,
+    path: &Path,
+) -> Result<Option<PathBuf>, CliError> {
     match fs::symlink_metadata(path) {
-        Ok(metadata) => source_file_is_allowed(root, path, &metadata.file_type()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Ok(metadata) => source_file_read_path(root, path, &metadata.file_type()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(CliError::input(format!(
             "failed to inspect {}: {error}",
             path.display()
@@ -448,16 +454,16 @@ fn optional_source_file_is_allowed(root: &ProjectRoot, path: &Path) -> Result<bo
     }
 }
 
-fn source_file_is_allowed(
+fn source_file_read_path(
     root: &ProjectRoot,
     path: &Path,
     file_type: &fs::FileType,
-) -> Result<bool, CliError> {
+) -> Result<Option<PathBuf>, CliError> {
     if file_type.is_file() {
-        return Ok(true);
+        return Ok(Some(path.to_path_buf()));
     }
     if !file_type.is_symlink() {
-        return Ok(false);
+        return Ok(None);
     }
 
     let target = fs::canonicalize(path).map_err(|error| {
@@ -496,12 +502,16 @@ fn source_file_is_allowed(
         )));
     }
 
-    Ok(true)
+    Ok(Some(target))
 }
 
-fn read_path(path: &Path) -> Result<String, CliError> {
-    fs::read_to_string(path)
-        .map_err(|error| CliError::input(format!("failed to read {}: {error}", path.display())))
+fn read_path(read_path: &Path, display_path: &Path) -> Result<String, CliError> {
+    fs::read_to_string(read_path).map_err(|error| {
+        CliError::input(format!(
+            "failed to read {}: {error}",
+            display_path.display()
+        ))
+    })
 }
 
 fn relative_path(root: &Path, path: &Path) -> Option<String> {
@@ -799,6 +809,31 @@ mod project_symlink_tests {
         assert_eq!(
             input.package_configs[0].path,
             ".dart_tool/package_config.json"
+        );
+    }
+
+    #[test]
+    fn cli_reads_the_validated_symlink_target_after_the_link_is_retargeted() {
+        let temp = TempDirectory::new("retargeted-symlink");
+        let root_path = temp.path.join("project");
+        fs::create_dir_all(root_path.join("lib")).unwrap();
+        fs::write(root_path.join("inside.txt"), "void inside() {}\n").unwrap();
+        fs::write(temp.path.join("outside.dart"), "void outside() {}\n").unwrap();
+        let link = root_path.join("lib/linked.dart");
+        symlink("../inside.txt", &link).unwrap();
+
+        let root = resolve_project_root(root_path.to_str().unwrap()).unwrap();
+        let file_type = fs::symlink_metadata(&link).unwrap().file_type();
+        let validated_read_path = source_file_read_path(&root, &link, &file_type)
+            .unwrap()
+            .expect("allowed source file");
+
+        fs::remove_file(&link).unwrap();
+        symlink("../../outside.dart", &link).unwrap();
+
+        assert_eq!(
+            read_path(&validated_read_path, &link).unwrap(),
+            "void inside() {}\n"
         );
     }
 
