@@ -89,7 +89,7 @@ fn resolves_single_statement_headers_and_bodies() {
 }
 
 #[test]
-fn keeps_nested_control_deferred_and_namespace_filtered() {
+fn resolves_nested_control_bindings_and_namespace_filtering() {
     let analysis = analyze_project_with_references(DartProjectInput::new(
         ".",
         vec![DartFileInput::new("lib/main.dart", SOURCE)],
@@ -98,24 +98,49 @@ fn keeps_nested_control_deferred_and_namespace_filtered() {
     let reads = resolve_project_variable_read_references(&analysis);
     let writes = resolve_project_variable_write_references(&analysis);
 
-    for offset in [
+    assert_resolution(
+        &reads,
         occurrence("var deferred = seed", "seed"),
+        DartLexicalBindingKind::Parameter,
+        "/parameter:seed",
+    );
+    for offset in [
         occurrence("deferred < 1", "deferred"),
         occurrence("var nested = deferred", "deferred"),
+    ] {
+        assert_resolution(
+            &reads,
+            offset,
+            DartLexicalBindingKind::LocalVariable,
+            "/for_variable:deferred@",
+        );
+    }
+    assert_same_resolution(
+        &reads,
+        &writes,
+        occurrence("deferred++)", "deferred"),
+        DartLexicalBindingKind::LocalVariable,
+        "/for_variable:deferred@",
+    );
+
+    for offset in [
         occurrence("nested < 1", "nested"),
         occurrence("consume(nested)", "nested"),
     ] {
-        assert!(
-            reads
-                .iter()
-                .all(|resolution| resolution.query.byte_offset != offset)
-        );
-        assert!(
-            writes
-                .iter()
-                .all(|resolution| resolution.query.byte_offset != offset)
+        assert_resolution(
+            &reads,
+            offset,
+            DartLexicalBindingKind::LocalVariable,
+            "/for_variable:nested@",
         );
     }
+    assert_same_resolution(
+        &reads,
+        &writes,
+        occurrence("nested++) consume", "nested"),
+        DartLexicalBindingKind::LocalVariable,
+        "/for_variable:nested@",
+    );
 
     let body_call = occurrence("index();", "index");
     assert!(analysis.references.iter().all(|reference| {

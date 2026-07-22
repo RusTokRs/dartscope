@@ -151,24 +151,65 @@ fn supports_declared_and_existing_single_statement_for_in() {
 }
 
 #[test]
-fn defers_nested_control_and_preserves_following_boundary() {
+fn supports_nested_control_and_preserves_following_boundary() {
     let analysis =
         analyze_file_with_references(DartFileInput::new("lib/single_statement_for.dart", SOURCE));
 
-    assert!(
-        analysis
-            .bindings
-            .iter()
-            .all(|binding| { !matches!(binding.name.as_str(), "deferred" | "nested") })
+    let deferred = analysis
+        .bindings
+        .iter()
+        .find(|binding| {
+            binding.name == "deferred" && binding.symbol_id.contains("/for_variable:deferred@")
+        })
+        .expect("outer nested-loop binding");
+    let nested = analysis
+        .bindings
+        .iter()
+        .find(|binding| {
+            binding.name == "nested" && binding.symbol_id.contains("/for_variable:nested@")
+        })
+        .expect("inner nested-loop binding");
+    for offset in [
+        occurrence("deferred < 1", "deferred"),
+        occurrence("var nested = deferred", "deferred"),
+        occurrence("nested++) consume", "nested"),
+        occurrence("consume(nested)", "nested"),
+    ] {
+        assert!(
+            deferred.scope_span.byte_start <= offset && offset < deferred.scope_span.byte_end
+                || nested.scope_span.byte_start <= offset && offset < nested.scope_span.byte_end
+        );
+    }
+
+    assert_eq!(
+        variable_kinds_at(
+            &analysis.references,
+            occurrence("var deferred = seed", "seed")
+        ),
+        vec![DartIdentifierReferenceKind::VariableRead]
     );
     for offset in [
-        occurrence("var deferred = seed", "seed"),
         occurrence("deferred < 1", "deferred"),
         occurrence("var nested = deferred", "deferred"),
         occurrence("nested < 1", "nested"),
         occurrence("consume(nested)", "nested"),
     ] {
-        assert!(variable_kinds_at(&analysis.references, offset).is_empty());
+        assert_eq!(
+            variable_kinds_at(&analysis.references, offset),
+            vec![DartIdentifierReferenceKind::VariableRead]
+        );
+    }
+    for offset in [
+        occurrence("deferred++)", "deferred"),
+        occurrence("nested++) consume", "nested"),
+    ] {
+        assert_eq!(
+            variable_kinds_at(&analysis.references, offset),
+            vec![
+                DartIdentifierReferenceKind::VariableRead,
+                DartIdentifierReferenceKind::VariableWrite,
+            ]
+        );
     }
 
     assert_eq!(
@@ -178,6 +219,8 @@ fn defers_nested_control_and_preserves_following_boundary() {
         ),
         vec![DartIdentifierReferenceKind::VariableRead]
     );
+    assert!(deferred.scope_span.byte_end <= last_occurrence("consume(seed)", "seed"));
+    assert!(nested.scope_span.byte_end <= last_occurrence("consume(seed)", "seed"));
 }
 
 fn occurrence(fragment: &str, token: &str) -> usize {

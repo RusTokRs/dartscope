@@ -220,6 +220,70 @@ void run(
     );
 }
 
+#[test]
+fn models_loop_bindings_inside_nested_unbraced_if_else_statements() {
+    let source = r#"
+void consume(int value) {}
+
+void run(bool enabled, Iterable<int> values) {
+  for (var index = 0; index < 2; index++)
+    if (enabled)
+      consume(index);
+    else
+      index++;
+  for (final value in values)
+    if (enabled)
+      consume(value);
+    else
+      value++;
+  consume(index);
+  consume(value);
+}
+"#;
+    let analysis =
+        analyze_file_with_references(DartFileInput::new("lib/nested_loops.dart", source));
+    let loop_bindings: Vec<_> = analysis
+        .bindings
+        .iter()
+        .filter(|binding| binding.symbol_id.contains("/for_variable:"))
+        .collect();
+
+    assert_eq!(
+        loop_bindings
+            .iter()
+            .map(|binding| binding.name.as_str())
+            .collect::<Vec<_>>(),
+        ["index", "value"]
+    );
+    assert!(loop_bindings.iter().all(|binding| {
+        let scope = &source[binding.scope_span.byte_start..binding.scope_span.byte_end];
+        scope.contains("if (enabled)") && scope.contains("else")
+    }));
+
+    let classic_read = source.find("consume(index)").expect("classic body read") + "consume(".len();
+    let classic_update = source.rfind("index++").expect("classic else update");
+    let for_in_read = source.find("consume(value)").expect("for-in body read") + "consume(".len();
+    let for_in_update = source.find("value++").expect("for-in else update");
+    for offset in [classic_read, classic_update, for_in_read, for_in_update] {
+        assert!(
+            kinds_at(&analysis.references, offset)
+                .contains(&DartIdentifierReferenceKind::VariableRead)
+        );
+    }
+    for offset in [classic_update, for_in_update] {
+        assert!(
+            kinds_at(&analysis.references, offset)
+                .contains(&DartIdentifierReferenceKind::VariableWrite)
+        );
+    }
+    for offset in [
+        source.rfind("consume(index)").expect("post-loop index") + "consume(".len(),
+        source.rfind("consume(value)").expect("post-loop value") + "consume(".len(),
+    ] {
+        assert!(kinds_at(&analysis.references, offset).is_empty());
+    }
+}
+
 fn kinds_at(
     references: &[dartscope_core::DartIdentifierReference],
     byte_start: usize,
