@@ -313,16 +313,6 @@ fn project_discovery_handles_nested_packages_and_generated_directories() {
             "void ignored() {}\n",
         );
     }
-
-    #[cfg(unix)]
-    let linked = {
-        use std::os::unix::fs::symlink;
-        let external = TempDirectory::new("external symlink target");
-        write_file(&external.path().join("linked.dart"), "void linked() {}\n");
-        symlink(external.path(), project.path().join("linked-source")).expect("create symlink");
-        external
-    };
-
     let output = run_os([
         OsString::from("analyze-project"),
         project.path().as_os_str().to_owned(),
@@ -335,10 +325,27 @@ fn project_discovery_handles_nested_packages_and_generated_directories() {
     assert!(json.contains(".dart_tool/package_config.json"));
     assert!(json.contains("packages/nested package/.dart_tool/package_config.json"));
     assert!(!json.contains("ignored.dart"));
-    assert!(!json.contains("linked.dart"));
+}
 
-    #[cfg(unix)]
-    drop(linked);
+#[cfg(unix)]
+#[test]
+fn project_discovery_rejects_external_symlink_directories() {
+    use std::os::unix::fs::symlink;
+
+    let project = TempDirectory::new("external symlink project");
+    write_package(project.path(), "root_package", "lib/root.dart");
+    let external = TempDirectory::new("external symlink target");
+    write_file(&external.path().join("linked.dart"), "void linked() {}\n");
+    symlink(external.path(), project.path().join("linked-source")).expect("create symlink");
+
+    assert_error(
+        run_os([
+            OsString::from("analyze-project"),
+            project.path().as_os_str().to_owned(),
+        ]),
+        3,
+        "input_symlink_rejected",
+    );
 }
 
 fn command_names() -> [&'static str; 7] {
