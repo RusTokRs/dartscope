@@ -17,7 +17,9 @@ jobs:
       - name: Apply product patch
         run: |
           python3 tools/apply-nested-loop-statements.py
+          python3 tools/update-nested-loop-contract.py
           rm tools/apply-nested-loop-statements.py
+          rm tools/update-nested-loop-contract.py
           rm .github/workflows/apply-nested-loop-statements.yml
       - name: Format and test parser and index
         run: |
@@ -25,7 +27,8 @@ jobs:
           rustfmt +1.95.0 --edition 2024 \
             crates/dartscope-parse/src/lexical_regions/controls.rs \
             crates/dartscope-parse/tests/lexical_region_bindings.rs \
-            crates/dartscope-index/tests/lexical_region_resolution.rs
+            crates/dartscope-index/tests/lexical_region_resolution.rs \
+            crates/dartscope-index/tests/single_statement_for_resolution.rs
           cargo +1.95.0 test -p dartscope-parse -p dartscope-index --locked
           git diff --check
       - name: Commit verified change
@@ -37,7 +40,9 @@ jobs:
           git add crates/dartscope-parse/src/lexical_regions/controls.rs
           git add crates/dartscope-parse/tests/lexical_region_bindings.rs
           git add crates/dartscope-index/tests/lexical_region_resolution.rs
+          git add crates/dartscope-index/tests/single_statement_for_resolution.rs
           git add -u .github/workflows/apply-nested-loop-statements.yml
           git add -u tools/apply-nested-loop-statements.py
+          git add -u tools/update-nested-loop-contract.py
           git commit -m "Resolve loop bindings in nested statements"
           git push origin "HEAD:${HEAD_BRANCH}"
