@@ -1,0 +1,47 @@
+name: Capture Bound Symlink Patch
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Run embedded patcher
+        run: |
+          set +e
+          python3 - <<'PY' > bound-symlink-patch.txt 2>&1
+          from base64 import b64decode
+          from pathlib import Path
+          import re
+          import subprocess
+
+          workflow = Path('.github/workflows/apply-bound-symlink-reads.yml').read_text(encoding='utf-8')
+          encoded = re.search(r"printf '%s' '([^']+)'", workflow).group(1)
+          result = subprocess.run(
+              ['python3', '-c', b64decode(encoded).decode('utf-8')],
+              text=True,
+              capture_output=True,
+          )
+          print(result.stdout, end='')
+          print(result.stderr, end='')
+          print(f'status={result.returncode}')
+          raise SystemExit(result.returncode)
+          PY
+          status=$?
+          cat bound-symlink-patch.txt
+          exit "$status"
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bound-symlink-patch
+          path: bound-symlink-patch.txt
+          if-no-files-found: error
+          retention-days: 1
