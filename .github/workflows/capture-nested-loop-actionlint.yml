@@ -37,6 +37,13 @@ jobs:
               third_status=1
             fi
             if [ "$first_status" -eq 0 ] && [ "$second_status" -eq 0 ] && [ "$third_status" -eq 0 ]; then
+              python3 tools/update-nested-loop-scope-assertion.py
+              fourth_status=$?
+              echo "fourth_patch_status=$fourth_status"
+            else
+              fourth_status=1
+            fi
+            if [ "$first_status" -eq 0 ] && [ "$second_status" -eq 0 ] && [ "$third_status" -eq 0 ] && [ "$fourth_status" -eq 0 ]; then
               rustfmt +1.95.0 --edition 2024 \
                 crates/dartscope-parse/src/lexical_regions/controls.rs \
                 crates/dartscope-parse/tests/lexical_region_bindings.rs \
