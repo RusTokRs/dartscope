@@ -20,13 +20,21 @@ jobs:
           set +e
           {
             python3 tools/apply-nested-loop-statements.py
-            patch_status=$?
-            echo "patch_status=$patch_status"
-            if [ "$patch_status" -eq 0 ]; then
+            first_status=$?
+            echo "first_patch_status=$first_status"
+            if [ "$first_status" -eq 0 ]; then
+              python3 tools/update-nested-loop-contract.py
+              second_status=$?
+              echo "second_patch_status=$second_status"
+            else
+              second_status=1
+            fi
+            if [ "$first_status" -eq 0 ] && [ "$second_status" -eq 0 ]; then
               rustfmt +1.95.0 --edition 2024 \
                 crates/dartscope-parse/src/lexical_regions/controls.rs \
                 crates/dartscope-parse/tests/lexical_region_bindings.rs \
-                crates/dartscope-index/tests/lexical_region_resolution.rs
+                crates/dartscope-index/tests/lexical_region_resolution.rs \
+                crates/dartscope-index/tests/single_statement_for_resolution.rs
               echo "rustfmt_status=$?"
               cargo +1.95.0 test -p dartscope-parse -p dartscope-index --locked
               echo "cargo_status=$?"
