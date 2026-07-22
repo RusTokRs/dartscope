@@ -1,0 +1,38 @@
+name: Verify Symlink Fix
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+      - name: Apply prepared patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/prepare-symlink-fix.yml').read_text()
+          script = workflow.split("python3 - <<'PY'\n", 1)[1].split('\n          PY', 1)[0]
+          exec(compile(textwrap.dedent(script), 'prepare-symlink-fix', 'exec'))
+          PY
+      - name: Format patched source
+        run: rustfmt +1.95.0 --edition 2024 crates/dartscope-cli/src/main.rs
+      - name: Test CLI crate
+        run: cargo +1.95.0 test -p dartscope-cli --locked
+      - name: Upload patched source
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: patched-main-rs
+          path: crates/dartscope-cli/src/main.rs
+          if-no-files-found: error
+          retention-days: 1
