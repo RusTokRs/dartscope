@@ -97,7 +97,6 @@ jobs:
   benchmark_report:
     name: Benchmark regression report
     needs: workflow_policy
-    continue-on-error: true
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -152,9 +151,8 @@ jobs:
           retention-days: 14
 
   macos_portability:
-    name: macOS 15 arm64 portability (non-blocking)
+    name: macOS 15 arm64 portability
     needs: workflow_policy
-    continue-on-error: true
     runs-on: macos-15
     timeout-minutes: 30
     permissions:
@@ -263,7 +261,8 @@ jobs:
 
   report:
     name: Publish aggregate status
-    needs: [workflow_policy, dependency_quality, fuzz, quality, test, edition_2024]
+    needs:
+      [workflow_policy, dependency_quality, fuzz, benchmark_report, macos_portability, quality, test, edition_2024]
     if: always() && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -277,6 +276,8 @@ jobs:
               '${{ needs.workflow_policy.result }}',
               '${{ needs.dependency_quality.result }}',
               '${{ needs.fuzz.result }}',
+              '${{ needs.benchmark_report.result }}',
+              '${{ needs.macos_portability.result }}',
               '${{ needs.quality.result }}',
               '${{ needs.test.result }}',
               '${{ needs.edition_2024.result }}',
@@ -291,6 +292,6 @@ jobs:
               state: passed ? 'success' : 'failure',
               context: 'dartscope/ci',
               description: passed
-                ? `Rust 1.95 Linux/Windows matrix passed${retry}`
+                ? `Rust 1.95 Linux/Windows/macOS and benchmark gates passed${retry}`
                 : `CI jobs: ${results.join(', ')}; attempt ${attempt}`,
             });
