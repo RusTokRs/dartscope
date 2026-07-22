@@ -81,30 +81,166 @@ fn operator_invocation_references(
         if masked_source.get(token_start..token_end) != Some("this") {
             continue;
         }
-        let operator_start = skip_whitespace(bytes, token_end);
-        let Some((operator, operator_end)) = binary_operator_at(masked_source, operator_start)
-        else {
-            continue;
-        };
-        let callable = enclosing_callable_declaration(analysis, token_start);
-        let Some(callable) = callable else {
+        let Some(callable) = enclosing_callable_declaration(analysis, token_start) else {
             continue;
         };
         let Some(owner_symbol_id) = callable.parent_symbol_id.clone() else {
             continue;
         };
-        references.push(DartIdentifierReference {
-            source_path: analysis.path.clone(),
-            name: operator.to_string(),
-            prefix: Some(owner_symbol_id),
-            kind: DartIdentifierReferenceKind::MemberOperatorInvocationInstance,
-            confidence: Confidence::High,
-            enclosing_symbol_id: callable.symbol_id.clone(),
-            span: span_for_byte_range(source, operator_start, operator_end),
-        });
-        at = operator_end;
+
+        if direct_this_operand_ends_at(masked_source, token_end) {
+            if let Some((operator, operator_start, operator_end)) =
+                unary_operator_before(masked_source, token_start)
+            {
+                references.push(operator_reference(
+                    source,
+                    analysis,
+                    callable,
+                    owner_symbol_id.clone(),
+                    operator,
+                    operator_start,
+                    operator_end,
+                ));
+            }
+        }
+
+        let operator_start = skip_whitespace(bytes, token_end);
+        if expression_starts_at(masked_source, token_start) {
+            if let Some((operator, operator_end)) =
+                binary_operator_at(masked_source, operator_start)
+            {
+                references.push(operator_reference(
+                    source,
+                    analysis,
+                    callable,
+                    owner_symbol_id.clone(),
+                    operator,
+                    operator_start,
+                    operator_end,
+                ));
+                at = operator_end;
+                continue;
+            }
+        }
+        if let Some((operator, anchor_end)) = index_operator_at(masked_source, operator_start) {
+            references.push(operator_reference(
+                source,
+                analysis,
+                callable,
+                owner_symbol_id,
+                operator,
+                operator_start,
+                anchor_end,
+            ));
+        }
     }
     references
+}
+
+fn operator_reference(
+    source: &str,
+    analysis: &DartFileAnalysis,
+    callable: &DartDeclaration,
+    owner_symbol_id: String,
+    operator: &str,
+    operator_start: usize,
+    operator_end: usize,
+) -> DartIdentifierReference {
+    DartIdentifierReference {
+        source_path: analysis.path.clone(),
+        name: operator.to_string(),
+        prefix: Some(owner_symbol_id),
+        kind: DartIdentifierReferenceKind::MemberOperatorInvocationInstance,
+        confidence: Confidence::High,
+        enclosing_symbol_id: callable.symbol_id.clone(),
+        span: span_for_byte_range(source, operator_start, operator_end),
+    }
+}
+
+fn unary_operator_before(source: &str, token_start: usize) -> Option<(&'static str, usize, usize)> {
+    let bytes = source.as_bytes();
+    let operator_end = skip_whitespace_back(bytes, token_start);
+    let operator_start = operator_end.checked_sub(1)?;
+    let operator = match bytes.get(operator_start) {
+        Some(b'-') => "-",
+        Some(b'~') => "~",
+        _ => return None,
+    };
+    if operator == "-" && bytes.get(operator_start.wrapping_sub(1)) == Some(&b'-') {
+        return None;
+    }
+    expression_starts_at(source, operator_start)
+        .then_some((operator, operator_start, operator_end))
+}
+
+fn direct_this_operand_ends_at(source: &str, token_end: usize) -> bool {
+    let next = skip_whitespace(source.as_bytes(), token_end);
+    !matches!(source.as_bytes().get(next), Some(b'.' | b'[' | b'(' | b'?'))
+}
+
+fn expression_starts_at(source: &str, start: usize) -> bool {
+    let before = source.get(..start).unwrap_or_default().trim_end();
+    if before.is_empty() {
+        return true;
+    }
+    if ["return", "throw", "yield", "case"].iter().any(|keyword| {
+        before.ends_with(keyword)
+            && before
+                .as_bytes()
+                .get(before.len().saturating_sub(keyword.len() + 1))
+                .is_none_or(|byte| !is_identifier_continue(*byte))
+    }) {
+        return true;
+    }
+    before.ends_with("=>")
+        || before
+            .as_bytes()
+            .last()
+            .is_some_and(|byte| matches!(byte, b'(' | b'[' | b'{' | b',' | b':' | b';' | b'=' | b'?' | b'!'))
+}
+
+fn index_operator_at(source: &str, start: usize) -> Option<(&'static str, usize)> {
+    let bytes = source.as_bytes();
+    if bytes.get(start) != Some(&b'[') {
+        return None;
+    }
+    let mut depth = 0usize;
+    let mut at = start;
+    let close = loop {
+        match bytes.get(at)? {
+            b'[' => depth += 1,
+            b']' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    break at;
+                }
+            }
+            _ => {}
+        }
+        at += 1;
+    };
+    let after = skip_whitespace(bytes, close + 1);
+    if compound_index_assignment_at(source, after) {
+        return None;
+    }
+    let operator = if bytes.get(after) == Some(&b'=')
+        && bytes.get(after + 1) != Some(&b'=')
+        && bytes.get(after + 1) != Some(&b'>')
+    {
+        "[]="
+    } else {
+        "[]"
+    };
+    Some((operator, start + 1))
+}
+
+fn compound_index_assignment_at(source: &str, start: usize) -> bool {
+    [
+        ">>>=", "<<=", ">>=", "??=", "+=", "-=", "*=", "/=", "~/=", "%=", "&=", "|=", "^=",
+        "++", "--",
+    ]
+    .iter()
+    .any(|operator| source.get(start..).is_some_and(|rest| rest.starts_with(operator)))
 }
 
 fn binary_operator_at(source: &str, start: usize) -> Option<(&'static str, usize)> {
@@ -166,6 +302,13 @@ fn is_callable_kind(kind: DartDeclarationKind) -> bool {
 fn skip_whitespace(bytes: &[u8], mut at: usize) -> usize {
     while bytes.get(at).is_some_and(u8::is_ascii_whitespace) {
         at += 1;
+    }
+    at
+}
+
+fn skip_whitespace_back(bytes: &[u8], mut at: usize) -> usize {
+    while at > 0 && bytes.get(at - 1).is_some_and(u8::is_ascii_whitespace) {
+        at -= 1;
     }
     at
 }
