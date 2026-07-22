@@ -159,10 +159,6 @@ fn terminated_statement_end(source: &str, start: usize) -> Option<usize> {
     None
 }
 
-fn is_control_keyword(value: &str) -> bool {
-    matches!(value, "if" | "for" | "while" | "do" | "switch" | "try")
-}
-
 fn is_await_for(source: &str, token: super::IdentifierToken<'_>) -> bool {
     if token.text != "await" {
         return false;
