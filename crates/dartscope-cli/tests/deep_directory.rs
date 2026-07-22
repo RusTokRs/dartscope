@@ -15,10 +15,8 @@ impl TempDirectory {
             .duration_since(UNIX_EPOCH)
             .expect("system clock")
             .as_nanos();
-        let path = env::temp_dir().join(format!(
-            "dartscope-{label}-{}-{nonce}",
-            std::process::id()
-        ));
+        let path =
+            env::temp_dir().join(format!("dartscope-{label}-{}-{nonce}", std::process::id()));
         fs::create_dir_all(&path).expect("temporary project directory");
         Self { path }
     }
