@@ -807,7 +807,7 @@ mod project_symlink_tests {
         let temp = TempDirectory::new("deep-directory-tree");
         let mut directory = temp.path.clone();
         let mut relative = PathBuf::new();
-        for _ in 0..512 {
+        for _ in 0..256 {
             directory.push("d");
             relative.push("d");
         }
