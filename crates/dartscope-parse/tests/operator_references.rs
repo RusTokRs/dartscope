@@ -6,11 +6,20 @@ class Vector {
   Vector operator +(Vector other) => this;
   bool operator ==(Object other) => false;
   int operator <<(int amount) => 0;
+  Vector operator -() => this;
+  int operator ~() => 0;
+  int operator [](int index) => index;
+  void operator []=(int index, int value) {}
 
   void exercise(Vector other) {
     final sum = this + other;
     final equal = this == other;
     final shifted = this << 1;
+    final negated = -this;
+    final inverted = ~this;
+    final indexed = this[0];
+    this[0] = 1;
+    final notDirect = other + this + other;
   }
 }
 "#;
@@ -30,8 +39,8 @@ fn emits_exact_operator_declaration_and_invocation_facts() {
         })
         .collect::<Vec<_>>();
 
-    assert_eq!(operators.len(), 6);
-    for operator in ["+", "==", "<<"] {
+    assert_eq!(operators.len(), 14);
+    for operator in ["+", "==", "<<", "-", "~", "[]", "[]="] {
         let declaration = operators
             .iter()
             .find(|reference| {
@@ -51,10 +60,27 @@ fn emits_exact_operator_declaration_and_invocation_facts() {
             &SOURCE[declaration.span.byte_start..declaration.span.byte_end],
             operator
         );
+        let expected_invocation_anchor = if matches!(operator, "[]" | "[]=") {
+            "["
+        } else {
+            operator
+        };
         assert_eq!(
             &SOURCE[invocation.span.byte_start..invocation.span.byte_end],
-            operator
+            expected_invocation_anchor
         );
         assert_eq!(declaration.prefix, invocation.prefix);
     }
+
+    assert_eq!(
+        operators
+            .iter()
+            .filter(|reference| {
+                reference.name == "+"
+                    && reference.kind
+                        == DartIdentifierReferenceKind::MemberOperatorInvocationInstance
+            })
+            .count(),
+        1
+    );
 }
