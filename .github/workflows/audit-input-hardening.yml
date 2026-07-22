@@ -1,0 +1,68 @@
+name: Audit Input Hardening
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Scan production Rust sources
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          roots = [Path('crates')]
+          panic_pattern = re.compile(r'\b(?:unwrap|expect)\s*\(|\b(?:panic|unreachable|todo|unimplemented)!')
+          recursion_pattern = re.compile(r'\b(?:fn\s+\w+|collect_sources|visit_|walk_|parse_)')
+          limit_pattern = re.compile(r'(?i)\b(?:limit|max_|maximum|bounded|depth|size|length|bytes|capacity|timeout)\b')
+
+          lines = ['# DartScope input-hardening source scan', '']
+          panic_hits = []
+          recursion_hits = []
+          limit_hits = []
+
+          for root in roots:
+              for path in sorted(root.rglob('*.rs')):
+                  relative = path.as_posix()
+                  if any(part in {'tests', 'benches', 'fuzz'} for part in path.parts):
+                      continue
+                  text = path.read_text(encoding='utf-8')
+                  production = text.split('#[cfg(test)]', 1)[0]
+                  for number, line in enumerate(production.splitlines(), 1):
+                      stripped = line.strip()
+                      if panic_pattern.search(line):
+                          panic_hits.append((relative, number, stripped))
+                      if recursion_pattern.search(line) and ('fn ' in line or line.count('(') >= 1):
+                          recursion_hits.append((relative, number, stripped))
+                      if limit_pattern.search(line):
+                          limit_hits.append((relative, number, stripped))
+
+          def section(title, hits, cap=500):
+              lines.extend([f'## {title}', '', f'Count: {len(hits)}', ''])
+              for path, number, text in hits[:cap]:
+                  lines.append(f'- `{path}:{number}` — `{text}`')
+              if len(hits) > cap:
+                  lines.append(f'- … {len(hits) - cap} additional hits omitted')
+              lines.append('')
+
+          section('Potential panic sites in production code', panic_hits)
+          section('Traversal / parser function sites', recursion_hits)
+          section('Explicit resource-bound vocabulary', limit_hits)
+
+          Path('input-hardening-audit.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+      - name: Upload audit report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: input-hardening-audit
+          path: input-hardening-audit.md
+          if-no-files-found: error
+          retention-days: 1
