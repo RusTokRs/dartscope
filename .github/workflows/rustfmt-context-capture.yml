@@ -1,0 +1,26 @@
+name: Rustfmt Context Capture
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+      - name: Format lint context
+        run: rustfmt +1.95.0 --edition 2024 crates/dartscope-lints/src/context.rs
+      - name: Upload formatted source
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: formatted-lint-context
+          path: crates/dartscope-lints/src/context.rs
+          if-no-files-found: error
+          retention-days: 1
