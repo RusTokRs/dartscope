@@ -73,7 +73,7 @@ fn statement_end(source: &str, start: usize) -> Option<usize> {
     let bytes = source.as_bytes();
     let start = next_non_whitespace(bytes, start)?;
     if bytes.get(start) == Some(&b'{') {
-        return matching_delimiter(source, start, b'{', b'}', bytes.len()).map(|end| end + 1);
+        return braced_statement_end(source, start);
     }
     let Some(token) = identifier_at(source, start) else {
         return terminated_statement_end(source, start);
@@ -91,6 +91,7 @@ fn statement_end(source: &str, start: usize) -> Option<usize> {
             header_statement_end(source, for_token.end)
         }
         "do" => do_statement_end(source, token.end),
+        "try" => try_statement_end(source, token.end),
         _ => terminated_statement_end(source, start),
     }
 }
@@ -132,6 +133,86 @@ fn do_statement_end(source: &str, keyword_end: usize) -> Option<usize> {
     let close = matching_delimiter(source, open, b'(', b')', bytes.len())?;
     let semicolon = next_non_whitespace(bytes, close + 1)?;
     (bytes.get(semicolon) == Some(&b';')).then_some(semicolon + 1)
+}
+
+fn try_statement_end(source: &str, keyword_end: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut end = braced_statement_end(source, keyword_end)?;
+    let mut saw_handler = false;
+    loop {
+        let Some(clause_start) = next_non_whitespace(bytes, end) else {
+            return saw_handler.then_some(end);
+        };
+        let Some(clause) = identifier_at(source, clause_start) else {
+            return saw_handler.then_some(end);
+        };
+        match clause.text {
+            "on" => {
+                end = on_clause_end(source, clause.end)?;
+                saw_handler = true;
+            }
+            "catch" => {
+                end = catch_clause_end(source, clause.end)?;
+                saw_handler = true;
+            }
+            "finally" => return braced_statement_end(source, clause.end),
+            _ => return saw_handler.then_some(end),
+        }
+    }
+}
+
+fn on_clause_end(source: &str, keyword_end: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut parens = 0usize;
+    let mut brackets = 0usize;
+    let mut at = next_non_whitespace(bytes, keyword_end)?;
+    while at < bytes.len() {
+        if parens == 0 && brackets == 0 {
+            if bytes[at] == b'{' {
+                return braced_statement_end(source, at);
+            }
+            if matches!(bytes[at], b';' | b'}') {
+                return None;
+            }
+            if let Some(token) = identifier_at(source, at) {
+                if token.text == "catch" {
+                    return catch_clause_end(source, token.end);
+                }
+                at = token.end;
+                continue;
+            }
+        }
+        match bytes[at] {
+            b'(' => parens += 1,
+            b')' if parens == 0 => return None,
+            b')' => parens -= 1,
+            b'[' => brackets += 1,
+            b']' if brackets == 0 => return None,
+            b']' => brackets -= 1,
+            _ => {}
+        }
+        at += 1;
+    }
+    None
+}
+
+fn catch_clause_end(source: &str, keyword_end: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let open = next_non_whitespace(bytes, keyword_end)?;
+    if bytes.get(open) != Some(&b'(') {
+        return None;
+    }
+    let close = matching_delimiter(source, open, b'(', b')', bytes.len())?;
+    braced_statement_end(source, close + 1)
+}
+
+fn braced_statement_end(source: &str, start: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let open = next_non_whitespace(bytes, start)?;
+    if bytes.get(open) != Some(&b'{') {
+        return None;
+    }
+    matching_delimiter(source, open, b'{', b'}', bytes.len()).map(|end| end + 1)
 }
 
 fn terminated_statement_end(source: &str, start: usize) -> Option<usize> {
