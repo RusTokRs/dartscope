@@ -55,6 +55,11 @@ PERMISSION_PATTERN = re.compile(r"^(?P<indent>\s*)permissions:\s*(?P<inline>[^#]
 PERMISSION_ENTRY_PATTERN = re.compile(
     r"^(?P<indent>\s*)(?P<name>[a-z-]+):\s*(?P<value>[a-z-]+)\s*(?:#.*)?$"
 )
+JOB_PATTERN = re.compile(r"^  (?P<name>[A-Za-z0-9_-]+):\s*(?:#.*)?$")
+REQUIRED_BLOCKING_CI_JOBS = {
+    "benchmark_report": "benchmark regression",
+    "macos_portability": "macOS portability",
+}
 
 
 @dataclass(frozen=True)
@@ -235,6 +240,75 @@ def check_events(path: Path, lines: list[str]) -> list[PolicyFailure]:
     return failures
 
 
+def workflow_job_blocks(lines: list[str]) -> dict[str, list[tuple[int, str]]]:
+    jobs: dict[str, list[tuple[int, str]]] = {}
+    inside_jobs = False
+    current_job: str | None = None
+    for number, line in enumerate(lines, 1):
+        clean = strip_yaml_comment(line).rstrip()
+        if clean == "jobs:":
+            inside_jobs = True
+            current_job = None
+            continue
+        if not inside_jobs:
+            continue
+        if clean and not clean.startswith(" "):
+            break
+        match = JOB_PATTERN.match(clean)
+        if match is not None:
+            current_job = match.group("name")
+            jobs[current_job] = []
+            continue
+        if current_job is not None:
+            jobs[current_job].append((number, line))
+    return jobs
+
+
+def check_blocking_ci_jobs(root: Path) -> list[PolicyFailure]:
+    path = root / ".github" / "workflows" / "ci.yml"
+    relative = path.relative_to(root)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    jobs = workflow_job_blocks(lines)
+    failures: list[PolicyFailure] = []
+
+    for job_id, description in REQUIRED_BLOCKING_CI_JOBS.items():
+        block = jobs.get(job_id)
+        if block is None:
+            failures.append(
+                PolicyFailure(
+                    relative,
+                    0,
+                    f"required blocking CI job {job_id!r} ({description}) is missing",
+                )
+            )
+            continue
+        for number, line in block:
+            if strip_yaml_comment(line).strip().startswith("continue-on-error:"):
+                failures.append(
+                    PolicyFailure(
+                        relative,
+                        number,
+                        f"CI job {job_id!r} ({description}) must remain blocking; remove continue-on-error",
+                    )
+                )
+
+    report = jobs.get("report")
+    if report is None:
+        failures.append(PolicyFailure(relative, 0, "aggregate status job 'report' is missing"))
+    else:
+        report_text = "\n".join(line for _, line in report)
+        for job_id, description in REQUIRED_BLOCKING_CI_JOBS.items():
+            if f"needs.{job_id}.result" not in report_text:
+                failures.append(
+                    PolicyFailure(
+                        relative,
+                        0,
+                        f"aggregate status must include blocking CI job {job_id!r} ({description})",
+                    )
+                )
+    return failures
+
+
 def check_release_boundary(root: Path) -> list[PolicyFailure]:
     path = root / ".github" / "workflows" / "release.yml"
     relative = path.relative_to(root)
@@ -285,6 +359,7 @@ def check_workflows(root: Path = ROOT) -> list[PolicyFailure]:
         failures.extend(check_action_references(relative, lines))
         failures.extend(check_permissions(root, path, lines))
         failures.extend(check_events(relative, lines))
+    failures.extend(check_blocking_ci_jobs(root))
     failures.extend(check_release_boundary(root))
     failures.extend(check_actionlint_pin(root))
     return failures
