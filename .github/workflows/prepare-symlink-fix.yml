@@ -1,0 +1,345 @@
+name: Prepare Symlink Fix
+
+on:
+  push:
+    branches: [agent/fix-cli-symlink-files]
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+      - name: Apply symlink policy patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/dartscope-cli/src/main.rs")
+          source = path.read_text()
+          start = source.index("fn collect_project_sources(\n")
+          end = source.index("fn read_path(path: &Path)")
+          replacement = r'''fn collect_project_sources(
+              root: &str,
+              collect_flutter_catalogs: bool,
+          ) -> Result<CollectedProjectSources, CliError> {
+              let root = resolve_project_root(root)?;
+              let mut sources = ProjectSourceAccumulator::new(collect_flutter_catalogs);
+              collect_sources(&root, &root.logical, &mut sources)?;
+              Ok(sources.finish(&root.logical))
+          }
+
+          #[derive(Debug)]
+          struct ProjectRoot {
+              logical: PathBuf,
+              canonical: PathBuf,
+          }
+
+          fn resolve_project_root(root: &str) -> Result<ProjectRoot, CliError> {
+              let path = PathBuf::from(root);
+              let path = if path.is_absolute() {
+                  path
+              } else {
+                  env::current_dir()
+                      .map_err(|error| {
+                          CliError::input(format!("failed to read current directory: {error}"))
+                      })?
+                      .join(path)
+              };
+
+              let metadata = fs::metadata(&path).map_err(|error| {
+                  CliError::input(format!(
+                      "failed to inspect project root {}: {error}",
+                      path.display()
+                  ))
+              })?;
+              if !metadata.is_dir() {
+                  return Err(CliError::input(format!(
+                      "project root is not a directory: {}",
+                      path.display()
+                  )));
+              }
+              let canonical = fs::canonicalize(&path).map_err(|error| {
+                  CliError::input(format!(
+                      "failed to resolve project root {}: {error}",
+                      path.display()
+                  ))
+              })?;
+
+              Ok(ProjectRoot {
+                  logical: path,
+                  canonical,
+              })
+          }
+
+          fn collect_sources(
+              root: &ProjectRoot,
+              directory: &Path,
+              sources: &mut ProjectSourceAccumulator,
+          ) -> Result<(), CliError> {
+              let entries = fs::read_dir(directory).map_err(|error| {
+                  CliError::input(format!(
+                      "failed to read directory {}: {error}",
+                      directory.display()
+                  ))
+              })?;
+
+              for entry in entries {
+                  let entry = entry.map_err(|error| {
+                      CliError::input(format!(
+                          "failed to read directory entry in {}: {error}",
+                          directory.display()
+                      ))
+                  })?;
+                  let path = entry.path();
+                  let file_type = entry.file_type().map_err(|error| {
+                      CliError::input(format!("failed to inspect {}: {error}", path.display()))
+                  })?;
+
+                  if file_type.is_dir() {
+                      if !is_skipped_directory(&path) {
+                          collect_sources(root, &path, sources)?;
+                      }
+                      continue;
+                  }
+                  if !source_file_is_allowed(root, &path, &file_type)? {
+                      continue;
+                  }
+
+                  let Some(source_relative_path) = relative_path(&root.logical, &path) else {
+                      continue;
+                  };
+
+                  match path.file_name().and_then(|name| name.to_str()) {
+                      Some("l10n.yaml") if sources.collect_flutter_catalogs => {
+                          let source = read_path(&path)?;
+                          sources
+                              .l10n_files
+                              .push(FlutterL10nInput::new(source_relative_path, source));
+                      }
+                      Some("pubspec.yaml") => {
+                          let source = read_path(&path)?;
+                          sources
+                              .pubspecs
+                              .push(PubspecInput::new(source_relative_path, source));
+                          if let Some(package_root) = path.parent() {
+                              let package_config_path =
+                                  package_root.join(".dart_tool").join("package_config.json");
+                              if optional_source_file_is_allowed(root, &package_config_path)? {
+                                  let source = read_path(&package_config_path)?;
+                                  if let Some(relative_path) =
+                                      relative_path(&root.logical, &package_config_path)
+                                  {
+                                      sources
+                                          .package_configs
+                                          .push(PackageConfigInput::new(relative_path, source));
+                                  }
+                              }
+                          }
+                      }
+                      _ if path.extension().and_then(|extension| extension.to_str()) == Some("dart") => {
+                          let source = read_path(&path)?;
+                          sources
+                              .files
+                              .push(DartFileInput::new(source_relative_path, source));
+                      }
+                      _ if sources.collect_flutter_catalogs
+                          && path.extension().and_then(|extension| extension.to_str()) == Some("arb") =>
+                      {
+                          let source = read_path(&path)?;
+                          sources
+                              .arb_files
+                              .push(FlutterArbInput::new(source_relative_path, source));
+                      }
+                      _ => {}
+                  }
+              }
+
+              Ok(())
+          }
+
+          fn optional_source_file_is_allowed(root: &ProjectRoot, path: &Path) -> Result<bool, CliError> {
+              match fs::symlink_metadata(path) {
+                  Ok(metadata) => source_file_is_allowed(root, path, &metadata.file_type()),
+                  Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+                  Err(error) => Err(CliError::input(format!(
+                      "failed to inspect {}: {error}",
+                      path.display()
+                  ))),
+              }
+          }
+
+          fn source_file_is_allowed(
+              root: &ProjectRoot,
+              path: &Path,
+              file_type: &fs::FileType,
+          ) -> Result<bool, CliError> {
+              if file_type.is_file() {
+                  return Ok(true);
+              }
+              if !file_type.is_symlink() {
+                  return Ok(false);
+              }
+
+              let target = fs::canonicalize(path).map_err(|error| {
+                  CliError::input(format!(
+                      "input_symlink_rejected: failed to resolve symlink {}: {error}",
+                      path.display()
+                  ))
+              })?;
+              if !target.starts_with(&root.canonical) {
+                  return Err(CliError::input(format!(
+                      "input_symlink_rejected: symlink {} resolves outside project root {}: {}",
+                      path.display(),
+                      root.logical.display(),
+                      target.display()
+                  )));
+              }
+
+              let metadata = fs::metadata(&target).map_err(|error| {
+                  CliError::input(format!(
+                      "input_symlink_rejected: failed to inspect symlink target {}: {error}",
+                      target.display()
+                  ))
+              })?;
+              if metadata.is_dir() {
+                  return Err(CliError::input(format!(
+                      "input_symlink_rejected: symlinked directories are not supported: {} -> {}",
+                      path.display(),
+                      target.display()
+                  )));
+              }
+              if !metadata.is_file() {
+                  return Err(CliError::input(format!(
+                      "input_symlink_rejected: symlink target is not a regular file: {} -> {}",
+                      path.display(),
+                      target.display()
+                  )));
+              }
+
+              Ok(true)
+          }
+
+          '''
+          source = source[:start] + replacement + source[end:]
+          tests = r'''
+
+          #[cfg(all(test, unix))]
+          mod project_symlink_tests {
+              use super::*;
+              use std::os::unix::fs::symlink;
+              use std::time::{SystemTime, UNIX_EPOCH};
+
+              struct TempDirectory {
+                  path: PathBuf,
+              }
+
+              impl TempDirectory {
+                  fn new(label: &str) -> Self {
+                      let nonce = SystemTime::now()
+                          .duration_since(UNIX_EPOCH)
+                          .expect("system clock")
+                          .as_nanos();
+                      let path = env::temp_dir().join(format!(
+                          "dartscope-{label}-{}-{nonce}",
+                          std::process::id()
+                      ));
+                      fs::create_dir_all(&path).expect("temporary project directory");
+                      Self { path }
+                  }
+              }
+
+              impl Drop for TempDirectory {
+                  fn drop(&mut self) {
+                      let _ = fs::remove_dir_all(&self.path);
+                  }
+              }
+
+              #[test]
+              fn cli_allows_in_root_symlink_files() {
+                  let temp = TempDirectory::new("in-root-symlink");
+                  fs::create_dir_all(temp.path.join("lib")).unwrap();
+                  fs::write(temp.path.join("real_source.txt"), "void realFn() {}\n").unwrap();
+                  symlink("../real_source.txt", temp.path.join("lib/linked.dart")).unwrap();
+
+                  let input = collect_project_input(temp.path.to_str().unwrap()).unwrap();
+
+                  assert_eq!(input.files.len(), 1);
+                  assert_eq!(input.files[0].path, "lib/linked.dart");
+                  assert_eq!(input.files[0].source, "void realFn() {}\n");
+              }
+
+              #[test]
+              fn cli_rejects_symlink_files_that_escape_the_project_root() {
+                  let temp = TempDirectory::new("escaping-symlink");
+                  let root = temp.path.join("project");
+                  fs::create_dir_all(root.join("lib")).unwrap();
+                  fs::write(temp.path.join("outside.dart"), "void outside() {}\n").unwrap();
+                  symlink("../../outside.dart", root.join("lib/escape.dart")).unwrap();
+
+                  let error = collect_project_input(root.to_str().unwrap()).unwrap_err();
+
+                  assert_eq!(error.kind, CliErrorKind::Input);
+                  assert!(error.message.contains("input_symlink_rejected"));
+                  assert!(error.message.contains("outside project root"));
+              }
+
+              #[test]
+              fn cli_rejects_symlink_directories() {
+                  let temp = TempDirectory::new("symlink-directory");
+                  fs::create_dir_all(temp.path.join("target")).unwrap();
+                  fs::write(temp.path.join("target/inside.dart"), "void inside() {}\n").unwrap();
+                  symlink("target", temp.path.join("linked-directory")).unwrap();
+
+                  let error = collect_project_input(temp.path.to_str().unwrap()).unwrap_err();
+
+                  assert_eq!(error.kind, CliErrorKind::Input);
+                  assert!(error.message.contains("input_symlink_rejected"));
+                  assert!(error.message.contains("symlinked directories are not supported"));
+              }
+
+              #[test]
+              fn cli_allows_in_root_package_config_symlink_files() {
+                  let temp = TempDirectory::new("package-config-symlink");
+                  fs::create_dir_all(temp.path.join(".dart_tool")).unwrap();
+                  fs::write(temp.path.join("pubspec.yaml"), "name: demo\n").unwrap();
+                  fs::write(
+                      temp.path.join("package_config_source.json"),
+                      r#"{"configVersion":2,"packages":[]}"#,
+                  )
+                  .unwrap();
+                  symlink(
+                      "../package_config_source.json",
+                      temp.path.join(".dart_tool/package_config.json"),
+                  )
+                  .unwrap();
+
+                  let input = collect_project_input(temp.path.to_str().unwrap()).unwrap();
+
+                  assert_eq!(input.package_configs.len(), 1);
+                  assert_eq!(
+                      input.package_configs[0].path,
+                      ".dart_tool/package_config.json"
+                  );
+              }
+          }
+          '''
+          path.write_text(source + tests)
+          PY
+      - name: Format patched source
+        run: rustfmt +1.95.0 --edition 2024 crates/dartscope-cli/src/main.rs
+      - name: Test CLI crate
+        run: cargo +1.95.0 test -p dartscope-cli --locked
+      - name: Upload patched source
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: patched-main-rs
+          path: crates/dartscope-cli/src/main.rs
+          if-no-files-found: error
+          retention-days: 1
