@@ -22,7 +22,7 @@ jobs:
       - name: Capture diagnostics
         run: |
           set +e
-          actionlint -color=never .github/workflows/apply-bound-symlink-reads.yml \
+          actionlint -no-color -oneline .github/workflows/apply-bound-symlink-reads.yml \
             > actionlint-bound-symlink.txt 2>&1
           status=$?
           echo "status=$status" >> actionlint-bound-symlink.txt
