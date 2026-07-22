@@ -68,9 +68,7 @@ pub fn analyze_project(input: DartProjectInput) -> DartProjectAnalysis {
 }
 
 /// Analyzes a project and opt-in conservative reference facts after input validation.
-pub fn analyze_project_with_references(
-    input: DartProjectInput,
-) -> DartProjectReferenceAnalysis {
+pub fn analyze_project_with_references(input: DartProjectInput) -> DartProjectReferenceAnalysis {
     let (input, diagnostics) = project_input::prepare_project_input(input);
     let mut analysis = analysis::analyze_project_with_references(input);
     project_input::append_project_diagnostics(&mut analysis.project, diagnostics);
