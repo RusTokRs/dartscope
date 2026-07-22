@@ -1,0 +1,50 @@
+name: Capture Blocking Contract Validation
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Reproduce product patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/debug-policy-tests.yml').read_text()
+          script = workflow.split("python3 - <<'PY'\n", 1)[1].split('\n          PY', 1)[0]
+          exec(compile(textwrap.dedent(script), 'blocking-quality-contracts', 'exec'))
+          PY
+          rm .github/workflows/debug-policy-tests.yml
+          rm .github/workflows/capture-blocking-contract-validation.yml
+      - name: Capture validation
+        id: validation
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          {
+            python3 -m unittest discover -s tools/tests -p 'test_*.py' -v
+            python3 tools/check-workflow-policy.py
+            GOBIN="$RUNNER_TEMP/actionlint-bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+            "$RUNNER_TEMP/actionlint-bin/actionlint" -color
+            git diff --check
+          } 2>&1 | tee blocking-contract-validation.log
+      - name: Upload validation log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: blocking-contract-validation-log
+          path: blocking-contract-validation.log
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve validation status
+        if: steps.validation.outcome != 'success'
+        run: exit 1
