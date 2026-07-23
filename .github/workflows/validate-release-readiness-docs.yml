@@ -1,0 +1,64 @@
+name: Validate Release Readiness Docs
+
+on:
+  push:
+    branches:
+      - agent/release-readiness-docs
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Release validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install actionlint 1.7.12
+        env:
+          GOBIN: ${{ runner.temp }}/actionlint-bin
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$GOBIN" >> "$GITHUB_PATH"
+      - name: Validate workflows and policy
+        run: |
+          actionlint -color
+          python3 -m unittest discover -s tools/tests -p 'test_*.py' -v
+          python3 tools/check-workflow-policy.py
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Run release gates
+        env:
+          RUSTDOCFLAGS: -D warnings
+          DARTSCOPE_VERIFY_RELEASE_TAG: 1
+        run: |
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo doc --workspace --no-deps --locked
+          cargo test --workspace --locked --quiet
+          cargo test -p dartscope --all-features --locked --quiet
+          python3 tools/check-repository-consistency.py
+          python3 tools/check-release-packages.py
+          bash -n tools/publish-crates.sh
+          git diff --check
+
+  platforms:
+    name: Workspace tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-15
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal
+      - name: Test workspace
+        run: cargo test --workspace --locked --quiet
