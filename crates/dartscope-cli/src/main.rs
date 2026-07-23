@@ -1,6 +1,7 @@
 mod input_limits;
 mod lint_command;
 mod output_limits;
+mod result_limits;
 
 use std::env;
 use std::fmt;
@@ -122,50 +123,81 @@ fn help_command(args: &[String]) -> Result<CliOutput, CliError> {
 }
 
 fn execute(command: CliCommand, path: &str, extra_args: &[String]) -> Result<CliOutput, CliError> {
+    let mut result_budget = result_limits::AnalysisResultBudget::default();
     match command {
         CliCommand::AnalyzeFile => {
             reject_extra_args(extra_args, command)?;
             let source = read_source(path)?;
             let analysis = analyze_file_with_flutter(DartFileInput::new(path, source));
+            result_budget
+                .check_file_analysis(&analysis)
+                .map_err(result_limit_error)?;
             serialize_contract!(JsonContract::FileAnalysis, &analysis)
         }
         CliCommand::Pubspec => {
             reject_extra_args(extra_args, command)?;
             let source = read_source(path)?;
             let analysis = parse_pubspec(PubspecInput::new(path, source));
+            result_budget
+                .check_pubspec_analysis(&analysis)
+                .map_err(result_limit_error)?;
             serialize_contract!(JsonContract::PubspecAnalysis, &analysis)
         }
         CliCommand::PubspecConfig => {
             reject_extra_args(extra_args, command)?;
             let source = read_source(path)?;
             let analysis = parse_pubspec_configuration(PubspecInput::new(path, source));
+            result_budget
+                .check_pubspec_configuration(&analysis)
+                .map_err(result_limit_error)?;
             serialize_contract!(JsonContract::PubspecConfiguration, &analysis)
         }
         CliCommand::AnalyzeProject => {
             reject_extra_args(extra_args, command)?;
             let input = collect_project_input(path)?;
             let analysis = analyze_project_with_flutter(input);
+            result_budget
+                .check_project_analysis(&analysis)
+                .map_err(result_limit_error)?;
             serialize_contract!(JsonContract::ProjectAnalysis, &analysis)
         }
         CliCommand::GraphqlContracts => {
             let options = parse_index_options(extra_args, command)?;
             let input = collect_project_input(path)?;
             let project = analyze_project(input);
+            result_budget
+                .check_project_analysis(&project)
+                .map_err(result_limit_error)?;
             let analysis = analyze_graphql_contracts_with_options(&project, &options);
+            result_budget
+                .check_graphql_contracts(&analysis)
+                .map_err(result_limit_error)?;
             serialize_contract!(JsonContract::GraphqlContracts, &analysis)
         }
         CliCommand::UriGraph => {
             let options = parse_index_options(extra_args, command)?;
             let input = collect_project_input(path)?;
             let project = analyze_project(input);
+            result_budget
+                .check_project_analysis(&project)
+                .map_err(result_limit_error)?;
             let graph = build_uri_graph_with_options(&project, &options);
+            result_budget
+                .check_uri_graph(&graph)
+                .map_err(result_limit_error)?;
             serialize_contract!(JsonContract::UriGraph, &graph)
         }
         CliCommand::FlutterInventory => {
             reject_extra_args(extra_args, command)?;
             let input = collect_flutter_project_sources(path)?;
             let project = analyze_project(input.dart);
+            result_budget
+                .check_project_analysis(&project)
+                .map_err(result_limit_error)?;
             let inventory = extract_flutter_inventory_with_catalogs(&project, &input.flutter);
+            result_budget
+                .check_flutter_inventory(&inventory)
+                .map_err(result_limit_error)?;
             serialize_contract!(JsonContract::FlutterInventory, &inventory)
         }
         CliCommand::Lint => lint_command::execute(path, extra_args),
@@ -731,6 +763,13 @@ impl fmt::Display for CliError {
     }
 }
 
+fn result_limit_error(error: result_limits::ResultLimitExceeded) -> CliError {
+    CliError::input(format!(
+        "analysis_result_limit_exceeded: retained analysis results exceed the limit of {} items while counting {}",
+        error.max_items, error.context
+    ))
+}
+
 fn structured_output_error(
     output_format: &str,
     error: output_limits::BoundedJsonError,
@@ -763,6 +802,26 @@ mod structured_output_limit_tests {
         assert_eq!(
             error.message,
             "analysis_output_limit_exceeded: JSON output exceeds the limit of 42 bytes"
+        );
+        assert_eq!(error.exit_code(), EXIT_INPUT);
+    }
+}
+
+#[cfg(test)]
+mod result_limit_error_tests {
+    use super::*;
+
+    #[test]
+    fn result_limit_is_a_stable_input_error() {
+        let error = result_limit_error(result_limits::ResultLimitExceeded {
+            context: "URI graph references",
+            max_items: 42,
+        });
+
+        assert_eq!(error.kind, CliErrorKind::Input);
+        assert_eq!(
+            error.message,
+            "analysis_result_limit_exceeded: retained analysis results exceed the limit of 42 items while counting URI graph references"
         );
         assert_eq!(error.exit_code(), EXIT_INPUT);
     }
