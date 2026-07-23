@@ -1,0 +1,124 @@
+name: Stage Draft v0.1.0
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  stage:
+    if: github.head_ref == 'agent/stage-v0.1.0-draft'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Create or update hidden draft release
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const tag = 'v0.1.0';
+            const target = 'b32c70eb3952bed142868fa495d08697543f4d2a';
+            const name = 'DartScope 0.1.0 — production validation draft';
+            const body = [
+              '> **Hidden draft. Do not publish before production validation.**',
+              '',
+              'Source commit: `b32c70eb3952bed142868fa495d08697543f4d2a`',
+              '',
+              'Validated before staging:',
+              '- full CI and Release workflows passed;',
+              '- Linux, Windows, and macOS 15 arm64 workspace tests passed;',
+              '- Clippy, rustdoc, benchmark, bounded fuzz, RustSec, and unused-dependency gates passed;',
+              '- all nine crate archives were built and the publishing script was validated.',
+              '',
+              'Distribution status:',
+              '- GitHub Release remains a maintainer-only draft;',
+              '- no public `v0.1.0` tag exists;',
+              '- crates.io publication is intentionally disabled;',
+              '- production smoke tests and explicit publication approval are still required.',
+            ].join('\n');
+
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+            let release = releases.find((candidate) => candidate.tag_name === tag);
+            if (release && !release.draft) {
+              core.setFailed(`${tag} already exists as a public release`);
+              return;
+            }
+            if (release) {
+              const response = await github.rest.repos.updateRelease({
+                owner,
+                repo,
+                release_id: release.id,
+                tag_name: tag,
+                target_commitish: target,
+                name,
+                body,
+                draft: true,
+                prerelease: false,
+              });
+              release = response.data;
+            } else {
+              const response = await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tag,
+                target_commitish: target,
+                name,
+                body,
+                draft: true,
+                prerelease: false,
+                generate_release_notes: false,
+              });
+              release = response.data;
+            }
+
+            try {
+              await github.rest.git.getRef({ owner, repo, ref: `tags/${tag}` });
+              await github.rest.git.deleteRef({ owner, repo, ref: `tags/${tag}` });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+            let tagRefExists = false;
+            try {
+              await github.rest.git.getRef({ owner, repo, ref: `tags/${tag}` });
+              tagRefExists = true;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            const verified = (await github.rest.repos.getRelease({
+              owner,
+              repo,
+              release_id: release.id,
+            })).data;
+            if (!verified.draft || tagRefExists) {
+              core.setFailed('Draft release visibility invariant failed');
+              return;
+            }
+            fs.writeFileSync('draft-release.json', JSON.stringify({
+              release_id: verified.id,
+              tag_name: verified.tag_name,
+              name: verified.name,
+              draft: verified.draft,
+              prerelease: verified.prerelease,
+              source_commit: target,
+              tag_ref_exists: tagRefExists,
+              html_url: verified.html_url,
+            }, null, 2));
+      - name: Upload private staging evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: draft-release-evidence
+          path: draft-release.json
+          if-no-files-found: error
+          retention-days: 7
