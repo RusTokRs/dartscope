@@ -11,6 +11,7 @@ source text is retained for analysis.
 - Lint configuration TOML: **1 MiB**.
 - Project collection: **20,000 loaded inputs** and **256 MiB aggregate source bytes**.
 - Project traversal: **250,000 inspected directory entries** and **25,000 pending directories**.
+- Retained structured-analysis results: **2,000,000 counted collection items per command**.
 - Structured JSON or SARIF output: **128 MiB**.
 
 Only recognized inputs count toward the project budgets. Generated and tool directories from the
@@ -18,9 +19,12 @@ documented skip list are not traversed. `flutter-inventory` additionally counts 
 ARB catalogs; all other project commands count Dart, pubspec, and discovered package-config files.
 Every item returned by `read_dir` counts toward the traversal limit before file type, skip-list,
 or source-extension checks, so irrelevant files cannot bypass the CPU bound. Only non-skipped real
-directories enter the pending queue. Structured output is serialized into a bounded in-memory
-buffer before stdout is touched. Limits are inclusive: an input, project, or output document exactly
-at its configured byte or count boundary is accepted.
+directories enter the pending queue. One retained-result budget is shared across every in-memory
+analysis stage used by a command. It counts major collection entries such as file and project facts,
+pubspec and package-configuration entries, URI references and candidate paths, GraphQL contracts,
+Flutter inventory entries, and lint diagnostics. Nested collection entries are charged as well.
+Structured output is serialized into a bounded in-memory buffer before stdout is touched. Limits are
+inclusive: an input, project, result, or output document exactly at its configured boundary is accepted.
 
 ## Failure behavior
 
@@ -37,10 +41,14 @@ Limit failures and path-race failures are input errors (exit code 3) and use sta
 - `input_path_changed`
 - `project_input_limit_exceeded`
 - `project_traversal_limit_exceeded`
+- `analysis_result_limit_exceeded`
 - `analysis_output_limit_exceeded`
 
-JSON and SARIF are never partially written on a limit failure. An oversized serialized buffer is
-discarded, and the error is emitted only on stderr. Symlink validation remains separate: in-root
+JSON and SARIF are never partially written on a limit failure. A result-cardinality failure occurs
+before serialization, and an oversized serialized buffer is discarded before stdout is touched. The
+retained-result budget is checked after each producer finishes its current in-memory stage, so it
+prevents later indexing, linting, or serialization but is not yet a producer-side allocation budget.
+Symlink validation remains separate: in-root
 file symlinks are allowed, while escaping links and directory symlinks are rejected before reading.
 The no-follow open closes replacement of the final file component. It does not claim protection from
 concurrent replacement of an ancestor directory component; eliminating that broader race requires a

@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 
 use super::{
     CliError, CliOutput, EXIT_FINDINGS, collect_project_input, input_limits, output_limits,
-    structured_output_error,
+    result_limit_error, result_limits, structured_output_error,
 };
 
 const CONFIG_VERSION: u16 = 1;
@@ -26,12 +26,19 @@ pub(super) fn execute(path: &str, arguments: &[String]) -> Result<CliOutput, Cli
     }
 
     let project = analyze_project(collect_project_input(path)?);
+    let mut result_budget = result_limits::AnalysisResultBudget::default();
+    result_budget
+        .check_project_analysis(&project)
+        .map_err(result_limit_error)?;
     if let Some(message) = malformed_project_message(&project) {
         return Err(CliError::project(message));
     }
 
     let engine_config = config.engine_config();
     let analysis = lint_project(&project, &engine_config);
+    result_budget
+        .check_lint_analysis(&analysis)
+        .map_err(result_limit_error)?;
     let exit_code = if config.failure_threshold.is_failure(&analysis) {
         EXIT_FINDINGS
     } else {
