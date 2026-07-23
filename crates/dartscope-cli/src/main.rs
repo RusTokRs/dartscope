@@ -1,5 +1,6 @@
 mod input_limits;
 mod lint_command;
+mod output_limits;
 
 use std::env;
 use std::fmt;
@@ -13,7 +14,6 @@ use dartscope::{
     analyze_file_with_flutter, analyze_graphql_contracts_with_options, analyze_project,
     analyze_project_with_flutter, build_uri_graph_with_options,
     extract_flutter_inventory_with_catalogs, parse_pubspec, parse_pubspec_configuration,
-    to_json_contract_pretty,
 };
 
 const EXIT_INTERNAL: u8 = 1;
@@ -44,11 +44,13 @@ impl CliOutput {
 
 macro_rules! serialize_contract {
     ($contract:expr, $value:expr) => {
-        to_json_contract_pretty($contract, $value)
-            .map(CliOutput::success)
-            .map_err(|error| {
-                CliError::internal(format!("failed to serialize JSON output: {error}"))
-            })
+        output_limits::to_json_contract_pretty_bounded(
+            $contract,
+            $value,
+            output_limits::MAX_STRUCTURED_OUTPUT_BYTES,
+        )
+        .map(CliOutput::success)
+        .map_err(|error| structured_output_error("JSON", error))
     };
 }
 
@@ -726,6 +728,43 @@ impl CliError {
 impl fmt::Display for CliError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.message)
+    }
+}
+
+fn structured_output_error(
+    output_format: &str,
+    error: output_limits::BoundedJsonError,
+) -> CliError {
+    match error {
+        output_limits::BoundedJsonError::LimitExceeded { max_bytes } => CliError::input(format!(
+            "analysis_output_limit_exceeded: {output_format} output exceeds the limit of {max_bytes} bytes"
+        )),
+        output_limits::BoundedJsonError::Serialization(error) => CliError::internal(format!(
+            "failed to serialize {output_format} output: {error}"
+        )),
+        output_limits::BoundedJsonError::InvalidUtf8(error) => CliError::internal(format!(
+            "failed to encode {output_format} output as UTF-8: {error}"
+        )),
+    }
+}
+
+#[cfg(test)]
+mod structured_output_limit_tests {
+    use super::*;
+
+    #[test]
+    fn output_limit_is_a_stable_input_error() {
+        let error = structured_output_error(
+            "JSON",
+            output_limits::BoundedJsonError::LimitExceeded { max_bytes: 42 },
+        );
+
+        assert_eq!(error.kind, CliErrorKind::Input);
+        assert_eq!(
+            error.message,
+            "analysis_output_limit_exceeded: JSON output exceeds the limit of 42 bytes"
+        );
+        assert_eq!(error.exit_code(), EXIT_INPUT);
     }
 }
 

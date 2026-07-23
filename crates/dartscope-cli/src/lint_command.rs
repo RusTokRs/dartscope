@@ -2,12 +2,15 @@ use dartscope::{
     DartDiagnostic, DartForbiddenImportPattern, DartLayerBoundary, DartLintAnalysis,
     DartLintConfig, DartLintRuleId, DartLintSeverityOverride, DartNamingRuleConfig,
     DartOrphanFileRuleConfig, DartProjectAnalysis, DiagnosticSeverity, JsonContract,
-    analyze_project, lint_project, to_json_contract_pretty,
+    analyze_project, lint_project,
 };
 use serde::Deserialize;
 use std::collections::BTreeSet;
 
-use super::{CliError, CliOutput, EXIT_FINDINGS, collect_project_input, input_limits};
+use super::{
+    CliError, CliOutput, EXIT_FINDINGS, collect_project_input, input_limits, output_limits,
+    structured_output_error,
+};
 
 const CONFIG_VERSION: u16 = 1;
 mod sarif;
@@ -35,15 +38,18 @@ pub(super) fn execute(path: &str, arguments: &[String]) -> Result<CliOutput, Cli
         0
     };
     let output = match options.format {
-        LintOutputFormat::Json => to_json_contract_pretty(JsonContract::LintAnalysis, &analysis)
-            .map_err(|error| {
-                CliError::internal(format!("failed to serialize lint JSON output: {error}"))
-            })?,
-        LintOutputFormat::Sarif => {
-            sarif::to_pretty_json(&analysis, &engine_config).map_err(|error| {
-                CliError::internal(format!("failed to serialize SARIF output: {error}"))
-            })?
-        }
+        LintOutputFormat::Json => output_limits::to_json_contract_pretty_bounded(
+            JsonContract::LintAnalysis,
+            &analysis,
+            output_limits::MAX_STRUCTURED_OUTPUT_BYTES,
+        )
+        .map_err(|error| structured_output_error("lint JSON", error))?,
+        LintOutputFormat::Sarif => sarif::to_pretty_json(
+            &analysis,
+            &engine_config,
+            output_limits::MAX_STRUCTURED_OUTPUT_BYTES,
+        )
+        .map_err(|error| structured_output_error("SARIF", error))?,
     };
 
     Ok(CliOutput::new(output, exit_code))

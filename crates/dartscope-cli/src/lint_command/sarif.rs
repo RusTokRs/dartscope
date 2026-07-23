@@ -2,9 +2,11 @@ use std::collections::BTreeMap;
 
 use dartscope::{
     DartLintAnalysis, DartLintConfig, DartLintDiagnostic, DartLintRuleId, DiagnosticSeverity,
-    SourceSpan, to_json_pretty,
+    SourceSpan,
 };
 use serde::Serialize;
+
+use crate::output_limits::{self, BoundedJsonError};
 
 const SARIF_VERSION: &str = "2.1.0";
 const SARIF_SCHEMA: &str = "https://json.schemastore.org/sarif-2.1.0.json";
@@ -12,8 +14,9 @@ const SARIF_SCHEMA: &str = "https://json.schemastore.org/sarif-2.1.0.json";
 pub(super) fn to_pretty_json(
     analysis: &DartLintAnalysis,
     config: &DartLintConfig,
-) -> Result<String, String> {
-    to_json_pretty(&SarifLog::from_analysis(analysis, config)).map_err(|error| error.to_string())
+    max_bytes: usize,
+) -> Result<String, BoundedJsonError> {
+    output_limits::to_json_pretty_bounded(&SarifLog::from_analysis(analysis, config), max_bytes)
 }
 
 #[derive(Debug, Serialize)]

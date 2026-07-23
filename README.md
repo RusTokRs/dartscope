@@ -156,7 +156,8 @@ directory symlinks, skips the documented generated/tool directory list, and retu
 deterministic JSON summary plus per-file analysis output. The CLI rejects any loaded input over
 8 MiB and stops project collection above 20,000 loaded inputs or 256 MiB of aggregate source.
 The same per-file bound applies to direct file commands, while lint configuration is limited to
-1 MiB. See [`docs/development/cli-input-limits.md`](docs/development/cli-input-limits.md).
+1 MiB. Every JSON or SARIF document is buffered under a 128 MiB hard limit before anything is
+written to stdout. See [`docs/development/cli-input-limits.md`](docs/development/cli-input-limits.md).
 The CLI explicitly enables optional Flutter convention composition, while the underlying pure
 parser remains Flutter-free.
 Current output includes generic invocation and named-argument facts, top-level string constants,
