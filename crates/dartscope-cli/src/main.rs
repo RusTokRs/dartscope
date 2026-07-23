@@ -168,9 +168,12 @@ fn execute(command: CliCommand, path: &str, extra_args: &[String]) -> Result<Cli
             result_budget
                 .check_project_analysis(&project)
                 .map_err(result_limit_error)?;
+            let reservation = result_budget
+                .preflight_graphql_contracts(&project)
+                .map_err(result_limit_error)?;
             let analysis = analyze_graphql_contracts_with_options(&project, &options);
             result_budget
-                .check_graphql_contracts(&analysis)
+                .check_graphql_contracts(&analysis, reservation)
                 .map_err(result_limit_error)?;
             serialize_contract!(JsonContract::GraphqlContracts, &analysis)
         }

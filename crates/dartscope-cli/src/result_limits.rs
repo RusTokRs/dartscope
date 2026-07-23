@@ -13,6 +13,11 @@ pub(super) struct ResultLimitExceeded {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(super) struct GraphqlContractReservation {
+    results: usize,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(super) struct UriGraphReservation {
     references: usize,
 }
@@ -220,11 +225,39 @@ impl AnalysisResultBudget {
         self.charge("project diagnostics", analysis.diagnostics.len())
     }
 
+    pub(super) fn preflight_graphql_contracts(
+        &mut self,
+        project: &DartProjectAnalysis,
+    ) -> Result<GraphqlContractReservation, ResultLimitExceeded> {
+        let mut results = 0usize;
+        for file in &project.files {
+            self.add_projection(
+                &mut results,
+                file.graphql_operation_uses.len(),
+                "GraphQL contract results",
+            )?;
+        }
+        self.charge("GraphQL contract results", results)?;
+        Ok(GraphqlContractReservation { results })
+    }
+
     pub(super) fn check_graphql_contracts(
         &mut self,
         analysis: &DartGraphqlContractAnalysis,
+        reservation: GraphqlContractReservation,
     ) -> Result<(), ResultLimitExceeded> {
-        self.charge("GraphQL contract bindings", analysis.bindings.len())?;
+        let Some(results) = analysis
+            .bindings
+            .len()
+            .checked_add(analysis.unresolved_uses.len())
+        else {
+            return Err(self.limit_error("GraphQL contract results"));
+        };
+        if results > reservation.results {
+            self.charge("GraphQL contract results", results - reservation.results)?;
+        }
+        debug_assert_eq!(results, reservation.results);
+
         for binding in &analysis.bindings {
             self.charge(
                 "GraphQL declared variables",
@@ -243,7 +276,6 @@ impl AnalysisResultBudget {
                 binding.unexpected_variable_names.len(),
             )?;
         }
-        self.charge("unresolved GraphQL uses", analysis.unresolved_uses.len())?;
         for unresolved in &analysis.unresolved_uses {
             self.charge(
                 "unresolved GraphQL candidate paths",
@@ -414,6 +446,57 @@ mod tests {
                 max_items: 3,
             }
         );
+    }
+
+    fn graphql_contract_project() -> DartProjectAnalysis {
+        use dartscope::{DartFileInput, DartProjectInput, analyze_project};
+
+        analyze_project(DartProjectInput::new(
+            ".",
+            vec![DartFileInput::new(
+                "lib/api.dart",
+                r#"
+const viewerQuery = r'''query Viewer { viewer { id } }''';
+void load() {
+  client.query(QueryOptions(document: gql(viewerQuery)));
+  client.query(QueryOptions(document: gql(missingQuery)));
+}
+"#,
+            )],
+            Vec::new(),
+        ))
+    }
+
+    #[test]
+    fn graphql_contract_preflight_rejects_before_building_result_vectors() {
+        let project = graphql_contract_project();
+        let mut budget = AnalysisResultBudget::with_limit(1);
+
+        let error = budget.preflight_graphql_contracts(&project).unwrap_err();
+
+        assert_eq!(error.context, "GraphQL contract results");
+        assert_eq!(error.max_items, 1);
+    }
+
+    #[test]
+    fn graphql_contract_preflight_matches_output_without_double_charge() {
+        use dartscope::analyze_graphql_contracts;
+
+        let project = graphql_contract_project();
+        let mut budget = AnalysisResultBudget::with_limit(2);
+
+        let reservation = budget.preflight_graphql_contracts(&project).unwrap();
+        assert_eq!(reservation.results, 2);
+        let analysis = analyze_graphql_contracts(&project);
+        assert_eq!(analysis.bindings.len(), 1);
+        assert_eq!(analysis.unresolved_uses.len(), 1);
+        budget
+            .check_graphql_contracts(&analysis, reservation)
+            .unwrap();
+        let error = budget.charge("later stage", 1).unwrap_err();
+
+        assert_eq!(error.context, "later stage");
+        assert_eq!(error.max_items, 2);
     }
 
     fn conditional_uri_project() -> DartProjectAnalysis {
