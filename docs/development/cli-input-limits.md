@@ -47,10 +47,12 @@ Limit failures and path-race failures are input errors (exit code 3) and use sta
 JSON and SARIF are never partially written on a limit failure. A result-cardinality failure occurs
 before serialization, and an oversized serialized buffer is discarded before stdout is touched. The
 retained-result budget is normally checked after each producer finishes its current in-memory stage.
-The `uri-graph` command additionally reserves the exact top-level reference count before graph
-construction, so an oversized reference vector is rejected before that producer allocates it.
-Candidate-path vectors are still checked immediately after graph construction. Other producers remain
-post-stage guarded and do not yet have producer-side allocation budgets. Symlink validation remains
+The `uri-graph` command reserves the exact top-level reference count before graph construction, and
+`graphql-contracts` reserves one top-level result for every analyzed operation use before contract
+analysis. Oversized reference, binding, or unresolved-use result vectors are therefore rejected before
+those vectors are constructed. URI candidate paths, GraphQL namespace resolver maps, resolution scratch
+vectors, binding variable-difference vectors, and unresolved candidate paths remain producer-internal or
+post-stage guarded. Other producers do not yet have producer-side allocation budgets. Symlink validation remains
 separate: in-root file symlinks are allowed, while escaping links and directory symlinks are rejected
 before reading. The no-follow open closes replacement of the final file component. It does not claim
 protection from concurrent replacement of an ancestor directory component; eliminating that broader
