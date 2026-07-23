@@ -17,7 +17,9 @@ jobs:
       - name: Apply product patch
         run: |
           python3 tools/apply-loop-statement-comments.py
+          python3 tools/remove-loop-comment-unused.py
           rm tools/apply-loop-statement-comments.py
+          rm tools/remove-loop-comment-unused.py
           rm .github/workflows/apply-loop-statement-comments.yml
       - name: Validate parser, index, and Clippy
         run: |
@@ -40,5 +42,6 @@ jobs:
           git add crates/dartscope-index/tests/commented_statement_for_resolution.rs
           git add -u .github/workflows/apply-loop-statement-comments.yml
           git add -u tools/apply-loop-statement-comments.py
+          git add -u tools/remove-loop-comment-unused.py
           git commit -m "Skip comments between loop statements"
           git push origin "HEAD:${HEAD_BRANCH}"
