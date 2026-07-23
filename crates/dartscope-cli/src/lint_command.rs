@@ -6,9 +6,8 @@ use dartscope::{
 };
 use serde::Deserialize;
 use std::collections::BTreeSet;
-use std::fs;
 
-use super::{CliError, CliOutput, EXIT_FINDINGS, collect_project_input};
+use super::{CliError, CliOutput, EXIT_FINDINGS, collect_project_input, input_limits};
 
 const CONFIG_VERSION: u16 = 1;
 mod sarif;
@@ -239,9 +238,12 @@ impl LintFileConfig {
 }
 
 fn read_config(path: &str) -> Result<LintFileConfig, CliError> {
-    let source = fs::read_to_string(path).map_err(|error| {
-        CliError::input(format!("failed to read lint configuration {path}: {error}"))
-    })?;
+    let source = input_limits::read_labeled_path(
+        std::path::Path::new(path),
+        std::path::Path::new(path),
+        input_limits::MAX_LINT_CONFIG_BYTES,
+        "lint configuration",
+    )?;
     let mut config: LintFileConfig = toml::from_str(&source).map_err(|error| {
         CliError::configuration(format!("invalid lint configuration {path}: {error}"))
     })?;
@@ -332,4 +334,30 @@ fn project_error(fallback_path: &str, diagnostic: &DartDiagnostic) -> Option<Str
             diagnostic.code, diagnostic.message
         )
     })
+}
+#[cfg(test)]
+mod input_limit_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn rejects_lint_configuration_over_the_size_limit() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "dartscope-large-lint-config-{}-{nonce}.toml",
+            std::process::id()
+        ));
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(input_limits::MAX_LINT_CONFIG_BYTES + 1)
+            .unwrap();
+
+        let error = read_config(path.to_str().unwrap()).unwrap_err();
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(error.kind, super::super::CliErrorKind::Input);
+        assert!(error.message.contains("input_file_too_large"));
+    }
 }
