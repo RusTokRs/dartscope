@@ -181,9 +181,12 @@ fn execute(command: CliCommand, path: &str, extra_args: &[String]) -> Result<Cli
             result_budget
                 .check_project_analysis(&project)
                 .map_err(result_limit_error)?;
+            let reservation = result_budget
+                .preflight_uri_graph(&project, &options)
+                .map_err(result_limit_error)?;
             let graph = build_uri_graph_with_options(&project, &options);
             result_budget
-                .check_uri_graph(&graph)
+                .check_uri_graph(&graph, reservation)
                 .map_err(result_limit_error)?;
             serialize_contract!(JsonContract::UriGraph, &graph)
         }
