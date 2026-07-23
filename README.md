@@ -150,10 +150,15 @@ cargo run -p dartscope-cli -- lint path\to\project --config dartscope.toml
 cargo run -p dartscope-cli -- lint path\to\project --config dartscope.toml --format sarif --deny-warnings
 ```
 
-`analyze-project` recursively scans regular `.dart` files and `pubspec.yaml` files,
-never follows symlink entries, skips the documented generated/tool directory list, and
-returns a deterministic JSON summary plus per-file analysis output. The CLI explicitly enables
-optional Flutter convention composition, while the underlying pure parser remains Flutter-free.
+`analyze-project` recursively scans regular `.dart` files and `pubspec.yaml` files plus
+validated file symlinks whose targets remain inside the project root. It rejects escaping or
+directory symlinks, skips the documented generated/tool directory list, and returns a
+deterministic JSON summary plus per-file analysis output. The CLI rejects any loaded input over
+8 MiB and stops project collection above 20,000 loaded inputs or 256 MiB of aggregate source.
+The same per-file bound applies to direct file commands, while lint configuration is limited to
+1 MiB. See [`docs/development/cli-input-limits.md`](docs/development/cli-input-limits.md).
+The CLI explicitly enables optional Flutter convention composition, while the underlying pure
+parser remains Flutter-free.
 Current output includes generic invocation and named-argument facts, top-level string constants,
 GraphQL operation documents from Dart raw string constants, declared operation
 variables, client uses such as `gql(operationConstant)` inside

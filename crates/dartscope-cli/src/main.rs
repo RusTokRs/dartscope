@@ -1,3 +1,4 @@
+mod input_limits;
 mod lint_command;
 
 use std::env;
@@ -238,8 +239,11 @@ fn parse_environment_entry(pair: &str) -> Result<(String, String), CliError> {
 }
 
 fn read_source(path: &str) -> Result<String, CliError> {
-    fs::read_to_string(path)
-        .map_err(|error| CliError::input(format!("failed to read {path}: {error}")))
+    input_limits::read_path(
+        Path::new(path),
+        Path::new(path),
+        input_limits::DEFAULT_INPUT_LIMITS.max_file_bytes,
+    )
 }
 
 struct CollectedProjectSources {
@@ -300,9 +304,22 @@ fn collect_project_sources(
     root: &str,
     collect_flutter_catalogs: bool,
 ) -> Result<CollectedProjectSources, CliError> {
+    collect_project_sources_with_limits(
+        root,
+        collect_flutter_catalogs,
+        input_limits::DEFAULT_INPUT_LIMITS,
+    )
+}
+
+fn collect_project_sources_with_limits(
+    root: &str,
+    collect_flutter_catalogs: bool,
+    limits: input_limits::InputLimits,
+) -> Result<CollectedProjectSources, CliError> {
     let root = resolve_project_root(root)?;
     let mut sources = ProjectSourceAccumulator::new(collect_flutter_catalogs);
-    collect_sources(&root, &root.logical, &mut sources)?;
+    let mut budget = input_limits::ProjectInputBudget::default();
+    collect_sources(&root, &root.logical, &mut sources, limits, &mut budget)?;
     Ok(sources.finish(&root.logical))
 }
 
@@ -351,6 +368,8 @@ fn collect_sources(
     root: &ProjectRoot,
     directory: &Path,
     sources: &mut ProjectSourceAccumulator,
+    limits: input_limits::InputLimits,
+    budget: &mut input_limits::ProjectInputBudget,
 ) -> Result<(), CliError> {
     let mut pending_directories = vec![directory.to_path_buf()];
 
@@ -390,13 +409,15 @@ fn collect_sources(
 
             match path.file_name().and_then(|name| name.to_str()) {
                 Some("l10n.yaml") if sources.collect_flutter_catalogs => {
-                    let source = read_path(&source_read_path, &path)?;
+                    let source =
+                        input_limits::read_project_path(&source_read_path, &path, limits, budget)?;
                     sources
                         .l10n_files
                         .push(FlutterL10nInput::new(source_relative_path, source));
                 }
                 Some("pubspec.yaml") => {
-                    let source = read_path(&source_read_path, &path)?;
+                    let source =
+                        input_limits::read_project_path(&source_read_path, &path, limits, budget)?;
                     sources
                         .pubspecs
                         .push(PubspecInput::new(source_relative_path, source));
@@ -406,8 +427,12 @@ fn collect_sources(
                         if let Some(package_config_read_path) =
                             optional_source_file_read_path(root, &package_config_path)?
                         {
-                            let source =
-                                read_path(&package_config_read_path, &package_config_path)?;
+                            let source = input_limits::read_project_path(
+                                &package_config_read_path,
+                                &package_config_path,
+                                limits,
+                                budget,
+                            )?;
                             if let Some(relative_path) =
                                 relative_path(&root.logical, &package_config_path)
                             {
@@ -419,7 +444,8 @@ fn collect_sources(
                     }
                 }
                 _ if path.extension().and_then(|extension| extension.to_str()) == Some("dart") => {
-                    let source = read_path(&source_read_path, &path)?;
+                    let source =
+                        input_limits::read_project_path(&source_read_path, &path, limits, budget)?;
                     sources
                         .files
                         .push(DartFileInput::new(source_relative_path, source));
@@ -427,7 +453,8 @@ fn collect_sources(
                 _ if sources.collect_flutter_catalogs
                     && path.extension().and_then(|extension| extension.to_str()) == Some("arb") =>
                 {
-                    let source = read_path(&source_read_path, &path)?;
+                    let source =
+                        input_limits::read_project_path(&source_read_path, &path, limits, budget)?;
                     sources
                         .arb_files
                         .push(FlutterArbInput::new(source_relative_path, source));
@@ -503,15 +530,6 @@ fn source_file_read_path(
     }
 
     Ok(Some(target))
-}
-
-fn read_path(read_path: &Path, display_path: &Path) -> Result<String, CliError> {
-    fs::read_to_string(read_path).map_err(|error| {
-        CliError::input(format!(
-            "failed to read {}: {error}",
-            display_path.display()
-        ))
-    })
 }
 
 fn relative_path(root: &Path, path: &Path) -> Option<String> {
@@ -832,7 +850,12 @@ mod project_symlink_tests {
         symlink("../../outside.dart", &link).unwrap();
 
         assert_eq!(
-            read_path(&validated_read_path, &link).unwrap(),
+            input_limits::read_path(
+                &validated_read_path,
+                &link,
+                input_limits::DEFAULT_INPUT_LIMITS.max_file_bytes,
+            )
+            .unwrap(),
             "void inside() {}\n"
         );
     }
@@ -859,5 +882,92 @@ mod project_symlink_tests {
                 relative.to_string_lossy().replace('\\', "/")
             )
         );
+    }
+}
+#[cfg(test)]
+mod project_input_limit_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TempDirectory {
+        path: PathBuf,
+    }
+
+    impl TempDirectory {
+        fn new(label: &str) -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock")
+                .as_nanos();
+            let path = env::temp_dir().join(format!(
+                "dartscope-input-limit-{label}-{}-{nonce}",
+                std::process::id()
+            ));
+            fs::create_dir_all(path.join("lib")).expect("temporary project directory");
+            Self { path }
+        }
+    }
+
+    impl Drop for TempDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[test]
+    fn cli_rejects_a_project_source_over_the_per_file_limit() {
+        let temp = TempDirectory::new("file-bytes");
+        fs::write(temp.path.join("lib/large.dart"), "12345").unwrap();
+
+        let error = collect_project_sources_with_limits(
+            temp.path.to_str().unwrap(),
+            false,
+            input_limits::InputLimits::new(4, 10, 100),
+        )
+        .err()
+        .expect("input limit error");
+
+        assert_eq!(error.kind, CliErrorKind::Input);
+        assert!(error.message.contains("input_file_too_large"));
+        assert!(error.message.contains("limit is 4 bytes"));
+    }
+
+    #[test]
+    fn cli_rejects_projects_over_the_source_file_count_limit() {
+        let temp = TempDirectory::new("file-count");
+        fs::write(temp.path.join("lib/a.dart"), "a").unwrap();
+        fs::write(temp.path.join("lib/b.dart"), "b").unwrap();
+
+        let error = collect_project_sources_with_limits(
+            temp.path.to_str().unwrap(),
+            false,
+            input_limits::InputLimits::new(10, 1, 100),
+        )
+        .err()
+        .expect("input limit error");
+
+        assert_eq!(error.kind, CliErrorKind::Input);
+        assert!(error.message.contains("project_input_limit_exceeded"));
+        assert!(error.message.contains("source file count"));
+        assert!(error.message.contains("limit of 1"));
+    }
+
+    #[test]
+    fn cli_rejects_projects_over_the_aggregate_source_byte_limit() {
+        let temp = TempDirectory::new("project-bytes");
+        fs::write(temp.path.join("lib/a.dart"), "1234").unwrap();
+        fs::write(temp.path.join("lib/b.dart"), "5678").unwrap();
+
+        let error = collect_project_sources_with_limits(
+            temp.path.to_str().unwrap(),
+            false,
+            input_limits::InputLimits::new(4, 10, 7),
+        )
+        .err()
+        .expect("input limit error");
+
+        assert_eq!(error.kind, CliErrorKind::Input);
+        assert!(error.message.contains("project_input_limit_exceeded"));
+        assert!(error.message.contains("source byte limit of 7"));
     }
 }
