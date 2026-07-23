@@ -46,13 +46,15 @@ Limit failures and path-race failures are input errors (exit code 3) and use sta
 
 JSON and SARIF are never partially written on a limit failure. A result-cardinality failure occurs
 before serialization, and an oversized serialized buffer is discarded before stdout is touched. The
-retained-result budget is checked after each producer finishes its current in-memory stage, so it
-prevents later indexing, linting, or serialization but is not yet a producer-side allocation budget.
-Symlink validation remains separate: in-root
-file symlinks are allowed, while escaping links and directory symlinks are rejected before reading.
-The no-follow open closes replacement of the final file component. It does not claim protection from
-concurrent replacement of an ancestor directory component; eliminating that broader race requires a
-capability-directory or `openat`-style traversal redesign.
+retained-result budget is normally checked after each producer finishes its current in-memory stage.
+The `uri-graph` command additionally reserves the exact top-level reference count before graph
+construction, so an oversized reference vector is rejected before that producer allocates it.
+Candidate-path vectors are still checked immediately after graph construction. Other producers remain
+post-stage guarded and do not yet have producer-side allocation budgets. Symlink validation remains
+separate: in-root file symlinks are allowed, while escaping links and directory symlinks are rejected
+before reading. The no-follow open closes replacement of the final file component. It does not claim
+protection from concurrent replacement of an ancestor directory component; eliminating that broader
+race requires a capability-directory or `openat`-style traversal redesign.
 
 ## Large repositories
 

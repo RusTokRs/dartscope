@@ -1,7 +1,7 @@
 use dartscope::{
-    DartFileAnalysis, DartGraphqlContractAnalysis, DartLintAnalysis, DartProjectAnalysis,
-    DartUriGraph, FlutterInventory, PubspecAnalysis, PubspecConfigurationAnalysis,
-    PubspecDependencySource, PubspecFlutterConfiguration,
+    DartFileAnalysis, DartGraphqlContractAnalysis, DartIndexOptions, DartLintAnalysis,
+    DartProjectAnalysis, DartUriGraph, FlutterInventory, PubspecAnalysis,
+    PubspecConfigurationAnalysis, PubspecDependencySource, PubspecFlutterConfiguration,
 };
 
 pub(super) const MAX_RETAINED_RESULT_ITEMS: usize = 2_000_000;
@@ -10,6 +10,11 @@ pub(super) const MAX_RETAINED_RESULT_ITEMS: usize = 2_000_000;
 pub(super) struct ResultLimitExceeded {
     pub(super) context: &'static str,
     pub(super) max_items: usize,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(super) struct UriGraphReservation {
+    references: usize,
 }
 
 #[derive(Debug)]
@@ -248,14 +253,71 @@ impl AnalysisResultBudget {
         Ok(())
     }
 
+    pub(super) fn preflight_uri_graph(
+        &mut self,
+        project: &DartProjectAnalysis,
+        options: &DartIndexOptions,
+    ) -> Result<UriGraphReservation, ResultLimitExceeded> {
+        let mut references = 0usize;
+        let environment_selected = options.compilation_environment.is_some();
+
+        for file in &project.files {
+            if environment_selected {
+                self.add_projection(&mut references, file.imports.len(), "URI graph references")?;
+                self.add_projection(&mut references, file.exports.len(), "URI graph references")?;
+            } else {
+                for import in &file.imports {
+                    self.add_projection(&mut references, 1, "URI graph references")?;
+                    self.add_projection(
+                        &mut references,
+                        import.configurations.len(),
+                        "URI graph references",
+                    )?;
+                }
+                for export in &file.exports {
+                    self.add_projection(&mut references, 1, "URI graph references")?;
+                    self.add_projection(
+                        &mut references,
+                        export.configurations.len(),
+                        "URI graph references",
+                    )?;
+                }
+            }
+            self.add_projection(&mut references, file.parts.len(), "URI graph references")?;
+        }
+
+        self.charge("URI graph references", references)?;
+        Ok(UriGraphReservation { references })
+    }
+
     pub(super) fn check_uri_graph(
         &mut self,
         graph: &DartUriGraph,
+        reservation: UriGraphReservation,
     ) -> Result<(), ResultLimitExceeded> {
-        self.charge("URI graph references", graph.references.len())?;
+        if graph.references.len() > reservation.references {
+            self.charge(
+                "URI graph references",
+                graph.references.len() - reservation.references,
+            )?;
+        }
+        debug_assert_eq!(graph.references.len(), reservation.references);
         for reference in &graph.references {
             self.charge("URI graph candidate paths", reference.candidate_paths.len())?;
         }
+        Ok(())
+    }
+
+    fn add_projection(
+        &self,
+        total: &mut usize,
+        count: usize,
+        context: &'static str,
+    ) -> Result<(), ResultLimitExceeded> {
+        let Some(next) = total.checked_add(count) else {
+            return Err(self.limit_error(context));
+        };
+        *total = next;
         Ok(())
     }
 
@@ -354,23 +416,53 @@ mod tests {
         );
     }
 
-    #[test]
-    fn shares_one_budget_across_intermediate_and_final_results() {
-        let project = DartProjectAnalysis {
-            root: ".".to_string(),
-            files: vec![DartFileAnalysis::empty("lib/main.dart")],
-            pubspecs: Vec::new(),
-            package_configs: Vec::new(),
-            summary: Default::default(),
-            diagnostics: Vec::new(),
-        };
-        let mut budget = AnalysisResultBudget::with_limit(1);
+    fn conditional_uri_project() -> DartProjectAnalysis {
+        use dartscope::{DartFileInput, DartProjectInput, analyze_project};
 
-        budget.check_project_analysis(&project).unwrap();
-        budget.check_uri_graph(&DartUriGraph::default()).unwrap();
+        analyze_project(DartProjectInput::new(
+            ".",
+            vec![DartFileInput::new(
+                "lib/main.dart",
+                concat!(
+                    "import 'dart:async' if (dart.library.io) 'dart:io' ",
+                    "if (dart.library.html) 'dart:html';\n",
+                    "export 'dart:core' if (dart.library.io) 'dart:collection';\n",
+                ),
+            )],
+            Vec::new(),
+        ))
+    }
+
+    #[test]
+    fn uri_graph_preflight_rejects_before_building_the_reference_vector() {
+        let project = conditional_uri_project();
+        let options = DartIndexOptions::default();
+        let mut budget = AnalysisResultBudget::with_limit(4);
+
+        let error = budget.preflight_uri_graph(&project, &options).unwrap_err();
+
+        assert_eq!(error.context, "URI graph references");
+        assert_eq!(error.max_items, 4);
+    }
+
+    #[test]
+    fn uri_graph_preflight_matches_environment_selected_output_without_double_charge() {
+        use dartscope::{DartCompilationEnvironment, build_uri_graph_with_options};
+
+        let project = conditional_uri_project();
+        let options = DartIndexOptions::default().with_compilation_environment(
+            DartCompilationEnvironment::from_pairs([("dart.library.io", "true")]),
+        );
+        let mut budget = AnalysisResultBudget::with_limit(2);
+
+        let reservation = budget.preflight_uri_graph(&project, &options).unwrap();
+        assert_eq!(reservation.references, 2);
+        let graph = build_uri_graph_with_options(&project, &options);
+        assert_eq!(graph.references.len(), 2);
+        budget.check_uri_graph(&graph, reservation).unwrap();
         let error = budget.charge("later stage", 1).unwrap_err();
 
         assert_eq!(error.context, "later stage");
-        assert_eq!(error.max_items, 1);
+        assert_eq!(error.max_items, 2);
     }
 }
