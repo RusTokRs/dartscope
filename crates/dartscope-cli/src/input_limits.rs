@@ -1,6 +1,6 @@
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
 
 use super::CliError;
 
@@ -194,9 +194,18 @@ fn read_path_with_label(
     max_bytes: u64,
     label: Option<&str>,
 ) -> Result<String, CliError> {
-    let (file, declared_bytes) = open_regular_file(read_path, display_path, label)?;
+    let resolved_path = resolve_direct_read_path(read_path, display_path, label)?;
+    let (file, declared_bytes) = open_regular_file(&resolved_path, display_path, label)?;
     ensure_file_limit(display_path, declared_bytes, max_bytes)?;
     read_opened_file(file, display_path, max_bytes, label)
+}
+
+fn resolve_direct_read_path(
+    read_path: &Path,
+    display_path: &Path,
+    label: Option<&str>,
+) -> Result<PathBuf, CliError> {
+    fs::canonicalize(read_path).map_err(|error| read_error(display_path, label, error))
 }
 
 pub(super) fn read_project_path(
@@ -219,10 +228,19 @@ fn open_regular_file(
     display_path: &Path,
     label: Option<&str>,
 ) -> Result<(File, u64), CliError> {
-    let file = File::open(read_path).map_err(|error| read_error(display_path, label, error))?;
+    let file = open_without_follow(read_path).map_err(|error| {
+        if final_component_is_symlink_error(&error) {
+            input_path_changed_error(display_path)
+        } else {
+            read_error(display_path, label, error)
+        }
+    })?;
     let metadata = file
         .metadata()
         .map_err(|error| read_error(display_path, label, error))?;
+    if metadata_is_reparse_point(&metadata) {
+        return Err(input_path_changed_error(display_path));
+    }
     if !metadata.is_file() {
         return Err(CliError::input(format!(
             "input_file_rejected: input path is not a regular file: {}",
@@ -230,6 +248,62 @@ fn open_regular_file(
         )));
     }
     Ok((file, metadata.len()))
+}
+
+#[cfg(unix)]
+fn open_without_follow(path: &Path) -> io::Result<File> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+}
+
+#[cfg(windows)]
+fn open_without_follow(path: &Path) -> io::Result<File> {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn open_without_follow(path: &Path) -> io::Result<File> {
+    File::open(path)
+}
+
+#[cfg(unix)]
+fn final_component_is_symlink_error(error: &io::Error) -> bool {
+    error.raw_os_error() == Some(libc::ELOOP)
+}
+
+#[cfg(not(unix))]
+fn final_component_is_symlink_error(_error: &io::Error) -> bool {
+    false
+}
+
+#[cfg(windows)]
+fn metadata_is_reparse_point(metadata: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(not(windows))]
+fn metadata_is_reparse_point(_metadata: &fs::Metadata) -> bool {
+    false
+}
+
+fn input_path_changed_error(display_path: &Path) -> CliError {
+    CliError::input(format!(
+        "input_path_changed: input path became a symbolic link before it could be opened: {}",
+        display_path.display()
+    ))
 }
 
 fn read_opened_file(
