@@ -14,6 +14,8 @@ source text is retained for analysis.
 Only recognized inputs count toward the project budgets. Generated and tool directories from the
 documented skip list are not traversed. `flutter-inventory` additionally counts `l10n.yaml` and
 ARB catalogs; all other project commands count Dart, pubspec, and discovered package-config files.
+Limits are inclusive: an input or project exactly at its configured byte or count boundary is
+accepted.
 
 ## Failure behavior
 
