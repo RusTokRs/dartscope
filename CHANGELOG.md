@@ -63,6 +63,7 @@ pre-1.0.
 
 - Minimum supported Rust version: 1.95.
 - Workspace edition: Rust 2024 with resolver 3.
+- Blocking host coverage: Linux, Windows, and macOS 15 arm64.
 - Dart and Flutter support is capability-based and source-only; DartScope does not execute SDK
   tools during normal analysis.
 - Existing command-facing JSON contracts remain at schema version v1.
