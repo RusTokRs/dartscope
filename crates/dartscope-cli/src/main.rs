@@ -916,6 +916,49 @@ mod project_symlink_tests {
     }
 
     #[test]
+    fn cli_rejects_a_validated_target_replaced_by_a_symlink() {
+        let temp = TempDirectory::new("replaced-symlink-target");
+        let root_path = temp.path.join("project");
+        fs::create_dir_all(root_path.join("lib")).unwrap();
+        fs::write(
+            root_path.join("inside.txt"),
+            "void inside() {}
+",
+        )
+        .unwrap();
+        fs::write(
+            temp.path.join("outside.dart"),
+            "void outside() {}
+",
+        )
+        .unwrap();
+        let link = root_path.join("lib/linked.dart");
+        symlink("../inside.txt", &link).unwrap();
+
+        let root = resolve_project_root(root_path.to_str().unwrap()).unwrap();
+        let file_type = fs::symlink_metadata(&link).unwrap().file_type();
+        let validated_read_path = source_file_read_path(&root, &link, &file_type)
+            .unwrap()
+            .expect("allowed source file");
+
+        fs::remove_file(&validated_read_path).unwrap();
+        symlink("../outside.dart", &validated_read_path).unwrap();
+
+        let mut budget = input_limits::ProjectInputBudget::default();
+        let error = input_limits::read_project_path(
+            &validated_read_path,
+            &link,
+            input_limits::DEFAULT_INPUT_LIMITS,
+            &mut budget,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind, CliErrorKind::Input);
+        assert!(error.message.contains("input_path_changed"));
+        assert!(error.message.contains("became a symbolic link"));
+    }
+
+    #[test]
     fn cli_collects_sources_from_deep_directory_trees_without_recursion() {
         let temp = TempDirectory::new("deep-directory-tree");
         let mut directory = temp.path.clone();

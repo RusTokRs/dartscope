@@ -26,9 +26,15 @@ at its configured byte or count boundary is accepted.
 
 Limits are checked from the opened regular-file handle before allocation and checked again after
 a bounded read. This prevents a file that grows during collection from bypassing the per-file or
-aggregate budget. Limit failures are input errors (exit code 3) and use stable diagnostic prefixes:
+aggregate budget. On Unix and Windows, the final path component is opened with platform no-follow
+semantics. Direct file commands first resolve an already-existing symlink target, while project
+collection opens the exact target that passed project-root validation. Replacing that final component
+with a symlink before `open` fails deterministically instead of following the replacement.
+
+Limit failures and path-race failures are input errors (exit code 3) and use stable diagnostic prefixes:
 
 - `input_file_too_large`
+- `input_path_changed`
 - `project_input_limit_exceeded`
 - `project_traversal_limit_exceeded`
 - `analysis_output_limit_exceeded`
@@ -36,6 +42,9 @@ aggregate budget. Limit failures are input errors (exit code 3) and use stable d
 JSON and SARIF are never partially written on a limit failure. An oversized serialized buffer is
 discarded, and the error is emitted only on stderr. Symlink validation remains separate: in-root
 file symlinks are allowed, while escaping links and directory symlinks are rejected before reading.
+The no-follow open closes replacement of the final file component. It does not claim protection from
+concurrent replacement of an ancestor directory component; eliminating that broader race requires a
+capability-directory or `openat`-style traversal redesign.
 
 ## Large repositories
 

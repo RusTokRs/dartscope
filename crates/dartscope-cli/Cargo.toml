@@ -22,3 +22,6 @@ dartscope = { workspace = true, features = ["parse", "index", "json", "flutter",
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
