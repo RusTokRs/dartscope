@@ -18,10 +18,10 @@ claim.
 | Minimum Rust | Rust 1.95 |
 | Pinned release toolchain | Rust 1.95.0 with rustfmt and Clippy |
 | Edition | Rust 2024, Cargo resolver 3 |
-| Hosted CI | `ubuntu-latest` and `windows-latest` for the normal workspace matrix |
+| Hosted CI | Blocking workspace tests on `ubuntu-latest` and `windows-latest`, plus blocking macOS 15 arm64 portability and package-archive validation |
 | CI Action runtime | Reviewed immutable Node 24 Action SHAs on GitHub-hosted runners compatible with Actions Runner 2.327.1 or newer |
-| Release packaging | `ubuntu-latest` on exact Rust 1.95.0 |
-| macOS | Expected to be portable Rust, but not a blocking hosted matrix for `0.1` |
+| Release packaging | `ubuntu-latest` on exact Rust 1.95.0, with an independent macOS 15 arm64 archive build in the blocking CI matrix |
+| macOS | Blocking hosted portability coverage on macOS 15 arm64, including workspace checks/tests and release package archives |
 
 Rust versions older than 1.95 are unsupported. Newer stable compilers are expected to work, but the
 MSRV and exact release gate are the compatibility anchors. The audited `0.2` development queue may
