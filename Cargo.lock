@@ -27,6 +27,7 @@ version = "0.1.0"
 dependencies = [
  "dartscope",
  "serde",
+ "serde_json",
  "toml",
 ]
 
