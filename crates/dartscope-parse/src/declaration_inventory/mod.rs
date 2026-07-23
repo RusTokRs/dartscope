@@ -18,6 +18,49 @@ use crate::declarations::{
 };
 use crate::source_lines::{source_lines, span_for_byte_range};
 
+const DEFAULT_MAX_DECLARATION_LINE_VISITS: usize = 10_000_000;
+const COMPLEXITY_LIMIT_CODE: &str = "analysis_complexity_limit_exceeded";
+
+#[derive(Debug)]
+struct DeclarationScanBudget {
+    line_visits: usize,
+    max_line_visits: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DeclarationScanLimitExceeded;
+
+impl DeclarationScanBudget {
+    fn new(max_line_visits: usize) -> Self {
+        Self {
+            line_visits: 0,
+            max_line_visits,
+        }
+    }
+
+    fn visit_line(&mut self) -> Result<(), DeclarationScanLimitExceeded> {
+        let Some(next) = self.line_visits.checked_add(1) else {
+            return Err(DeclarationScanLimitExceeded);
+        };
+        if next > self.max_line_visits {
+            return Err(DeclarationScanLimitExceeded);
+        }
+        self.line_visits = next;
+        Ok(())
+    }
+
+    fn limit_diagnostic(&self) -> DartDiagnostic {
+        DartDiagnostic::error(
+            COMPLEXITY_LIMIT_CODE,
+            format!(
+                "declaration analysis exceeded the limit of {} line inspections",
+                self.max_line_visits
+            ),
+            None,
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 struct DeclarationRecord {
     declaration: DartDeclaration,
@@ -29,17 +72,38 @@ pub(crate) fn collect_declaration_inventory(
     source: &str,
     masked_source: &str,
 ) -> (Vec<DartDeclaration>, Vec<DartDiagnostic>) {
+    collect_declaration_inventory_with_limit(
+        path,
+        source,
+        masked_source,
+        DEFAULT_MAX_DECLARATION_LINE_VISITS,
+    )
+}
+
+fn collect_declaration_inventory_with_limit(
+    path: &str,
+    source: &str,
+    masked_source: &str,
+    max_line_visits: usize,
+) -> (Vec<DartDeclaration>, Vec<DartDiagnostic>) {
     let lines = source_lines(masked_source);
     let line_depths = line_brace_depths(masked_source, &lines);
     let mut diagnostics = Vec::new();
-    let mut records = collect_top_level(
+    let mut budget = DeclarationScanBudget::new(max_line_visits);
+    let mut records = match collect_top_level(
         path,
         source,
         masked_source,
         &lines,
         &line_depths,
         &mut diagnostics,
-    );
+        &mut budget,
+    ) {
+        Ok(records) => records,
+        Err(DeclarationScanLimitExceeded) => {
+            return (Vec::new(), vec![budget.limit_diagnostic()]);
+        }
+    };
 
     let type_records: Vec<_> = records
         .iter()
@@ -47,7 +111,7 @@ pub(crate) fn collect_declaration_inventory(
         .cloned()
         .collect();
     for type_record in type_records {
-        collect_members(
+        if let Err(DeclarationScanLimitExceeded) = collect_members(
             source,
             masked_source,
             &lines,
@@ -55,7 +119,10 @@ pub(crate) fn collect_declaration_inventory(
             &type_record,
             &mut records,
             &mut diagnostics,
-        );
+            &mut budget,
+        ) {
+            return (Vec::new(), vec![budget.limit_diagnostic()]);
+        }
     }
 
     let callable_records: Vec<_> = records
@@ -64,7 +131,17 @@ pub(crate) fn collect_declaration_inventory(
         .cloned()
         .collect();
     for callable in callable_records {
-        collect_locals(path, source, masked_source, &lines, &callable, &mut records);
+        if let Err(DeclarationScanLimitExceeded) = collect_locals(
+            path,
+            source,
+            masked_source,
+            &lines,
+            &callable,
+            &mut records,
+            &mut budget,
+        ) {
+            return (Vec::new(), vec![budget.limit_diagnostic()]);
+        }
     }
 
     records.sort_by(|left, right| {
@@ -99,12 +176,14 @@ fn collect_top_level(
     lines: &[crate::source_lines::SourceLine<'_>],
     line_depths: &[usize],
     diagnostics: &mut Vec<DartDiagnostic>,
-) -> Vec<DeclarationRecord> {
+    budget: &mut DeclarationScanBudget,
+) -> Result<Vec<DeclarationRecord>, DeclarationScanLimitExceeded> {
     let mut records = Vec::new();
     let mut skip_until = 0usize;
     let mut ids = SymbolIdAllocator::default();
 
     for (index, line) in lines.iter().copied().enumerate() {
+        budget.visit_line()?;
         if line.text.trim().is_empty() {
             continue;
         }
@@ -194,7 +273,7 @@ fn collect_top_level(
         }
     }
 
-    records
+    Ok(records)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -206,9 +285,10 @@ fn collect_members(
     owner: &DeclarationRecord,
     records: &mut Vec<DeclarationRecord>,
     diagnostics: &mut Vec<DartDiagnostic>,
-) {
+    budget: &mut DeclarationScanBudget,
+) -> Result<(), DeclarationScanLimitExceeded> {
     let Some((body_start, body_end)) = owner.body else {
-        return;
+        return Ok(());
     };
     let owner_id = owner.declaration.symbol_id.as_deref().unwrap_or_default();
     let owner_depth = brace_depth_at(masked, body_start) + 1;
@@ -221,6 +301,7 @@ fn collect_members(
     let mut ids = SymbolIdAllocator::default();
 
     for (index, line) in lines.iter().copied().enumerate() {
+        budget.visit_line()?;
         if line.text.trim().is_empty() {
             continue;
         }
@@ -282,6 +363,7 @@ fn collect_members(
         }
         skip_until = end;
     }
+    Ok(())
 }
 
 fn collect_locals(
@@ -291,15 +373,17 @@ fn collect_locals(
     lines: &[crate::source_lines::SourceLine<'_>],
     owner: &DeclarationRecord,
     records: &mut Vec<DeclarationRecord>,
-) {
+    budget: &mut DeclarationScanBudget,
+) -> Result<(), DeclarationScanLimitExceeded> {
     let Some((body_start, body_end)) = owner.body else {
-        return;
+        return Ok(());
     };
     let owner_id = owner.declaration.symbol_id.as_deref().unwrap_or_default();
     let mut skip_until = body_start + 1;
     let mut ids = SymbolIdAllocator::default();
 
     for line in lines.iter().copied() {
+        budget.visit_line()?;
         if line.text.trim().is_empty() {
             continue;
         }
@@ -337,5 +421,47 @@ fn collect_locals(
             });
         }
         skip_until = end;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod complexity_limit_tests {
+    use dartscope_core::DiagnosticSeverity;
+
+    use super::{COMPLEXITY_LIMIT_CODE, collect_declaration_inventory_with_limit};
+    use crate::lexical::mask_non_code;
+
+    #[test]
+    fn accepts_declaration_scan_at_the_exact_line_visit_limit() {
+        let source = "final first = 1;
+final second = 2;";
+        let masked = mask_non_code(source);
+
+        let (declarations, diagnostics) =
+            collect_declaration_inventory_with_limit("lib/example.dart", source, &masked.code, 2);
+
+        assert_eq!(declarations.len(), 2);
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != COMPLEXITY_LIMIT_CODE)
+        );
+    }
+
+    #[test]
+    fn rejects_repeated_callable_line_scans_over_the_limit() {
+        let source = "void first() {}
+void second() {}";
+        let masked = mask_non_code(source);
+
+        let (declarations, diagnostics) =
+            collect_declaration_inventory_with_limit("lib/example.dart", source, &masked.code, 4);
+
+        assert!(declarations.is_empty());
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, COMPLEXITY_LIMIT_CODE);
+        assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Error);
+        assert!(diagnostics[0].message.contains("4 line inspections"));
     }
 }
