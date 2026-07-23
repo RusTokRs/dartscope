@@ -4,6 +4,8 @@ mod scan;
 
 use dartscope_core::{DartDeclarationKind, DartFileAnalysis, DartLexicalBindingKind};
 
+use crate::lexical::mask_non_code;
+
 #[derive(Debug, Clone)]
 pub(crate) struct LexicalRegionBinding {
     pub(crate) name: String,
@@ -43,9 +45,10 @@ pub(crate) fn analyze_lexical_regions(
     source: &str,
     analysis: &DartFileAnalysis,
 ) -> LexicalRegionAnalysis {
+    let masked_source = mask_non_code(source).code;
     let mut result = LexicalRegionAnalysis::default();
-    controls::collect_for_regions(source, analysis, &mut result);
-    controls::collect_catch_regions(source, analysis, &mut result);
+    controls::collect_for_regions(&masked_source, analysis, &mut result);
+    controls::collect_catch_regions(&masked_source, analysis, &mut result);
     closures::collect_arrow_regions(source, analysis, &mut result);
     closures::collect_block_regions(source, analysis, &mut result);
     result.deferred_regions.sort_unstable();
