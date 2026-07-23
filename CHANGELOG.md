@@ -36,6 +36,13 @@ pre-1.0.
 - Pinned RustSec advisory and unused-dependency CI gates with expiring, owner-attributed exception policy.
 - Five nightly libFuzzer targets with reviewed malformed-input seeds and a bounded panic-free CI corpus.
 
+### Changed
+
+- macOS 15 arm64 portability and benchmark-regression jobs are blocking release gates alongside the
+  Linux/Windows workspace matrix, workflow policy, RustSec, unused-dependency, and bounded-fuzz checks.
+- Project traversal and command-facing path handling are deterministic across normalized duplicate
+  inputs, deep directory trees, platform path separators, and supported symlink cases.
+
 ### Fixed
 
 - Removed an unused direct `serde` dependency and stale lock edge from `dartscope-parse` instead of
@@ -44,6 +51,13 @@ pre-1.0.
   visibility changes without leaking non-Dart metadata paths into `affected_paths`.
 - Retained per-library namespace-membership and GraphQL-binding caches rebuild only affected GraphQL-use
   libraries while preserving the existing aggregate snapshot contract.
+- Declaration navigation now preserves the correct member declaration span and owner filtering for
+  static members, private owner types, tear-offs, and supported named-constructor forms.
+- CLI filesystem reads remain bound to the validated target, project traversal is iterative, and
+  normalized duplicate project inputs no longer produce duplicate analysis results.
+- Loop lexical regions now retain exact reads, writes, and navigation through multi-declarator classic
+  loops, existing-variable `for-in` targets, nested unbraced control statements, `try`/`on`/`catch`/
+  `finally` bodies, and comments between chained clauses without leaking bindings after the loop.
 
 ### Compatibility
 
