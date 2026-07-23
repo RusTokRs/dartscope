@@ -319,7 +319,15 @@ fn collect_project_sources_with_limits(
     let root = resolve_project_root(root)?;
     let mut sources = ProjectSourceAccumulator::new(collect_flutter_catalogs);
     let mut budget = input_limits::ProjectInputBudget::default();
-    collect_sources(&root, &root.logical, &mut sources, limits, &mut budget)?;
+    let mut traversal = input_limits::ProjectTraversalBudget::default();
+    collect_sources(
+        &root,
+        &root.logical,
+        &mut sources,
+        limits,
+        &mut budget,
+        &mut traversal,
+    )?;
     Ok(sources.finish(&root.logical))
 }
 
@@ -370,8 +378,10 @@ fn collect_sources(
     sources: &mut ProjectSourceAccumulator,
     limits: input_limits::InputLimits,
     budget: &mut input_limits::ProjectInputBudget,
+    traversal: &mut input_limits::ProjectTraversalBudget,
 ) -> Result<(), CliError> {
     let mut pending_directories = vec![directory.to_path_buf()];
+    traversal.ensure_pending_directories(directory, pending_directories.len(), limits)?;
 
     while let Some(directory) = pending_directories.pop() {
         let entries = fs::read_dir(&directory).map_err(|error| {
@@ -389,12 +399,18 @@ fn collect_sources(
                 ))
             })?;
             let path = entry.path();
+            traversal.record_directory_entry(&path, limits)?;
             let file_type = entry.file_type().map_err(|error| {
                 CliError::input(format!("failed to inspect {}: {error}", path.display()))
             })?;
 
             if file_type.is_dir() {
                 if !is_skipped_directory(&path) {
+                    traversal.ensure_can_queue_directory(
+                        &path,
+                        pending_directories.len(),
+                        limits,
+                    )?;
                     pending_directories.push(path);
                 }
                 continue;
@@ -969,5 +985,41 @@ mod project_input_limit_tests {
         assert_eq!(error.kind, CliErrorKind::Input);
         assert!(error.message.contains("project_input_limit_exceeded"));
         assert!(error.message.contains("source byte limit of 7"));
+    }
+
+    #[test]
+    fn cli_rejects_projects_over_the_directory_entry_limit() {
+        let temp = TempDirectory::new("directory-entries");
+        fs::write(temp.path.join("noise.txt"), "ignored").unwrap();
+
+        let error = collect_project_sources_with_limits(
+            temp.path.to_str().unwrap(),
+            false,
+            input_limits::InputLimits::new(10, 10, 100).with_traversal_limits(1, 10),
+        )
+        .err()
+        .expect("traversal limit error");
+
+        assert_eq!(error.kind, CliErrorKind::Input);
+        assert!(error.message.contains("project_traversal_limit_exceeded"));
+        assert!(error.message.contains("directory entry limit of 1"));
+    }
+
+    #[test]
+    fn cli_rejects_projects_over_the_pending_directory_limit() {
+        let temp = TempDirectory::new("pending-directories");
+        fs::create_dir(temp.path.join("second_directory")).unwrap();
+
+        let error = collect_project_sources_with_limits(
+            temp.path.to_str().unwrap(),
+            false,
+            input_limits::InputLimits::new(10, 10, 100).with_traversal_limits(10, 1),
+        )
+        .err()
+        .expect("traversal limit error");
+
+        assert_eq!(error.kind, CliErrorKind::Input);
+        assert!(error.message.contains("project_traversal_limit_exceeded"));
+        assert!(error.message.contains("pending directory limit of 1"));
     }
 }

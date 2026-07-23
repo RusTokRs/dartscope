@@ -5,7 +5,8 @@ use std::path::Path;
 use super::CliError;
 
 pub(super) const DEFAULT_INPUT_LIMITS: InputLimits =
-    InputLimits::new(8 * 1024 * 1024, 20_000, 256 * 1024 * 1024);
+    InputLimits::new(8 * 1024 * 1024, 20_000, 256 * 1024 * 1024)
+        .with_traversal_limits(250_000, 25_000);
 pub(super) const MAX_LINT_CONFIG_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -13,6 +14,8 @@ pub(super) struct InputLimits {
     pub(super) max_file_bytes: u64,
     max_project_files: usize,
     max_project_bytes: u64,
+    max_directory_entries: usize,
+    max_pending_directories: usize,
 }
 
 impl InputLimits {
@@ -25,7 +28,19 @@ impl InputLimits {
             max_file_bytes,
             max_project_files,
             max_project_bytes,
+            max_directory_entries: usize::MAX,
+            max_pending_directories: usize::MAX,
         }
+    }
+
+    pub(super) const fn with_traversal_limits(
+        mut self,
+        max_directory_entries: usize,
+        max_pending_directories: usize,
+    ) -> Self {
+        self.max_directory_entries = max_directory_entries;
+        self.max_pending_directories = max_pending_directories;
+        self
     }
 }
 
@@ -93,6 +108,66 @@ impl ProjectInputBudget {
         }
 
         Ok((files, bytes))
+    }
+}
+
+#[derive(Debug, Default)]
+pub(super) struct ProjectTraversalBudget {
+    directory_entries: usize,
+}
+
+impl ProjectTraversalBudget {
+    pub(super) fn record_directory_entry(
+        &mut self,
+        path: &Path,
+        limits: InputLimits,
+    ) -> Result<(), CliError> {
+        let directory_entries = self.directory_entries.checked_add(1).ok_or_else(|| {
+            project_traversal_limit_error(format!(
+                "inspecting {} would overflow the directory entry counter",
+                path.display()
+            ))
+        })?;
+        if directory_entries > limits.max_directory_entries {
+            return Err(project_traversal_limit_error(format!(
+                "inspecting {} would raise the directory entry count to {directory_entries}, above the directory entry limit of {}",
+                path.display(),
+                limits.max_directory_entries
+            )));
+        }
+        self.directory_entries = directory_entries;
+        Ok(())
+    }
+
+    pub(super) fn ensure_can_queue_directory(
+        &self,
+        path: &Path,
+        current_pending_directories: usize,
+        limits: InputLimits,
+    ) -> Result<(), CliError> {
+        let pending_directories = current_pending_directories.checked_add(1).ok_or_else(|| {
+            project_traversal_limit_error(format!(
+                "queueing {} would overflow the pending directory counter",
+                path.display()
+            ))
+        })?;
+        self.ensure_pending_directories(path, pending_directories, limits)
+    }
+
+    pub(super) fn ensure_pending_directories(
+        &self,
+        path: &Path,
+        pending_directories: usize,
+        limits: InputLimits,
+    ) -> Result<(), CliError> {
+        if pending_directories > limits.max_pending_directories {
+            return Err(project_traversal_limit_error(format!(
+                "queueing {} would raise pending directories to {pending_directories}, above the pending directory limit of {}",
+                path.display(),
+                limits.max_pending_directories
+            )));
+        }
+        Ok(())
     }
 }
 
@@ -196,4 +271,8 @@ fn read_error(display_path: &Path, label: Option<&str>, error: std::io::Error) -
 
 fn project_limit_error(message: String) -> CliError {
     CliError::input(format!("project_input_limit_exceeded: {message}"))
+}
+
+fn project_traversal_limit_error(message: String) -> CliError {
+    CliError::input(format!("project_traversal_limit_exceeded: {message}"))
 }
