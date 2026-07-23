@@ -20,18 +20,24 @@ jobs:
           set +e
           {
             python3 tools/apply-loop-statement-comments.py
-            echo "patch_status=$?"
-            rustfmt +1.95.0 --edition 2024 \
-              crates/dartscope-parse/src/lexical_regions/controls.rs \
-              crates/dartscope-parse/tests/commented_statement_for.rs \
-              crates/dartscope-index/tests/commented_statement_for_resolution.rs
-            echo "rustfmt_status=$?"
-            cargo +1.95.0 test -p dartscope-parse -p dartscope-index --locked
-            echo "tests_status=$?"
-            cargo +1.95.0 clippy --workspace --all-targets --locked -- -D warnings
-            echo "clippy_status=$?"
-            git diff --check
-            echo "diff_status=$?"
+            first_status=$?
+            echo "first_patch_status=$first_status"
+            python3 tools/remove-loop-comment-unused.py
+            second_status=$?
+            echo "second_patch_status=$second_status"
+            if [ "$first_status" -eq 0 ] && [ "$second_status" -eq 0 ]; then
+              rustfmt +1.95.0 --edition 2024 \
+                crates/dartscope-parse/src/lexical_regions/controls.rs \
+                crates/dartscope-parse/tests/commented_statement_for.rs \
+                crates/dartscope-index/tests/commented_statement_for_resolution.rs
+              echo "rustfmt_status=$?"
+              cargo +1.95.0 test -p dartscope-parse -p dartscope-index --locked
+              echo "tests_status=$?"
+              cargo +1.95.0 clippy --workspace --all-targets --locked -- -D warnings
+              echo "clippy_status=$?"
+              git diff --check
+              echo "diff_status=$?"
+            fi
           } > loop-comment-validation.txt 2>&1
           cat loop-comment-validation.txt
       - name: Upload diagnostics
