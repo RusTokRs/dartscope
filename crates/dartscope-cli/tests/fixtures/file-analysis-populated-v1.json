@@ -1,0 +1,65 @@
+{
+  "schema": "dartscope.file-analysis",
+  "version": 1,
+  "data": {
+    "path": "lib/main.dart",
+    "language": "dart",
+    "library": null,
+    "imports": [
+      {
+        "uri": "package:foo/bar.dart",
+        "configurations": [],
+        "is_deferred": false,
+        "prefix": null,
+        "combinators": [],
+        "span": {
+          "byte_start": 0,
+          "byte_end": 27,
+          "start_line": 1,
+          "start_column": 1,
+          "end_line": 1,
+          "end_column": 28
+        }
+      }
+    ],
+    "exports": [],
+    "parts": [],
+    "part_of": null,
+    "declarations": [
+      {
+        "name": "MyClass",
+        "kind": "class",
+        "span": {
+          "byte_start": 0,
+          "byte_end": 15,
+          "start_line": 2,
+          "start_column": 1,
+          "end_line": 2,
+          "end_column": 16
+        },
+        "extends": null,
+        "mixes_in": [],
+        "symbol_id": "lib/main.dart::class:MyClass",
+        "declaration_span": {
+          "byte_start": 0,
+          "byte_end": 15,
+          "start_line": 2,
+          "start_column": 1,
+          "end_line": 2,
+          "end_column": 16
+        }
+      }
+    ],
+    "string_constants": [],
+    "graphql_operations": [],
+    "graphql_operation_uses": [],
+    "flutter": {
+      "imports_flutter": false,
+      "widgets": [],
+      "routes": [],
+      "assets": [],
+      "localizations": []
+    },
+    "diagnostics": []
+  }
+}

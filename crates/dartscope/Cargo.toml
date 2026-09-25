@@ -20,6 +20,7 @@ index = ["dep:dartscope-index"]
 lints = ["dep:dartscope-lints"]
 json = ["dep:dartscope-json"]
 flutter = ["dep:dartscope-flutter"]
+lsp = ["dep:dartscope-lsp"]
 
 [dependencies]
 dartscope-core.workspace = true
@@ -29,3 +30,4 @@ dartscope-index = { workspace = true, optional = true }
 dartscope-lints = { workspace = true, optional = true }
 dartscope-flutter = { workspace = true, optional = true }
 dartscope-json = { workspace = true, optional = true }
+dartscope-lsp = { workspace = true, optional = true }

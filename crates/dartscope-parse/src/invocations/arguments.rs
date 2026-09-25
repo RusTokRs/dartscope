@@ -180,29 +180,7 @@ fn trim_range(source: &str, mut start: usize, mut end: usize) -> (usize, usize) 
 }
 
 pub(super) fn string_literal_value(expression: &str) -> Option<String> {
-    let expression = expression.trim();
-    let (raw, expression) = expression
-        .strip_prefix('r')
-        .map_or((false, expression), |rest| (true, rest));
-    let quote = *expression.as_bytes().first()?;
-    if !matches!(quote, b'\'' | b'"') {
-        return None;
-    }
-    let triple = expression.as_bytes().starts_with(&[quote, quote, quote]);
-    let width = if triple { 3 } else { 1 };
-    if expression.len() < width * 2
-        || !expression.as_bytes()[expression.len() - width..]
-            .iter()
-            .all(|byte| *byte == quote)
-    {
-        return None;
-    }
-    let value = &expression[width..expression.len() - width];
-    if raw {
-        Some(value.to_string())
-    } else {
-        Some(value.replace("\\'", "'").replace("\\\"", "\""))
-    }
+    crate::literals::single_string_literal_value(expression)
 }
 
 #[cfg(test)]

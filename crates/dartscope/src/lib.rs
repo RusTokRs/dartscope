@@ -49,6 +49,9 @@ pub use dartscope_flutter::{
     extract_flutter_inventory, extract_flutter_inventory_with_catalogs,
 };
 
+#[cfg(feature = "lsp")]
+pub use dartscope_lsp::{DartLspServer, LspError};
+
 /// Parses one Dart file and explicitly applies optional Flutter convention extraction.
 #[cfg(all(feature = "parse", feature = "flutter"))]
 pub fn analyze_file_with_flutter(input: DartFileInput) -> DartFileAnalysis {

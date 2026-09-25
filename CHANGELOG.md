@@ -35,6 +35,12 @@ pre-1.0.
   without flaky absolute timing thresholds.
 - Pinned RustSec advisory and unused-dependency CI gates with expiring, owner-attributed exception policy.
 - Five nightly libFuzzer targets with reviewed malformed-input seeds and a bounded panic-free CI corpus.
+- Canonical Dart literal and metadata scanners (`crates/dartscope-parse/src/literals.rs` and `metadata.rs`) consolidating string, numeric and annotation character classes; `lexical.rs` and `invocations/arguments.rs` now share `identifiers::is_identifier_continue` (`$`) and `single_string_literal_value`.
+- Incremental workspace index fingerprints are now span-invariant (`name`/`kind`/`symbol_id` only) so formatting-only edits no longer rebuild dependents.
+- Direct inherited instance members via `extends`/`with` (and `mixin on`) and extension member fallback without receiver inference.
+- `extension on T` declarations now retain their `on` type in `DartDeclaration.extends` for future on-type-aware extension selection.
+- Populated v1 golden fixtures (`file-analysis-populated-v1.json` / `project-analysis-populated-v1.json`) with one file, one import and one declaration to catch regressions inside entry objects.
+- New optional crate `dartscope-lsp` with UTF-16 ↔ UTF-8 coordinate conversion (LF, CRLF, surrogate pairs), incremental `DartLspServer` (initialize, didOpen/didChange/didClose, definition, references, hover, documentSymbol, diagnostics) and a minimal stdio binary `dartscope-lsp`.
 
 ### Changed
 
@@ -42,6 +48,7 @@ pre-1.0.
   Linux/Windows workspace matrix, workflow policy, RustSec, unused-dependency, and bounded-fuzz checks.
 - Project traversal and command-facing path handling are deterministic across normalized duplicate
   inputs, deep directory trees, platform path separators, and supported symlink cases.
+- `dartscope-cli` project traversal now uses a `VecDeque` breadth-first queue with per-directory sorted `entries` so `max_pending_directories` and `max_directory_entries` diagnostics are lexicographically deterministic.
 
 ### Fixed
 
@@ -95,6 +102,8 @@ pre-1.0.
   every member of their body. The declaration carries an empty name and a stable
   `<path>::extension:` symbol ID, its members keep it as parent, and the naming lint accepts the
   nameless declaration and any dollar-decorated name.
+- `lexical.rs:is_identifier_byte`, `member_references::is_identifier_continue` and `has_constructor_keyword`, `declaration_inventory/scanner.rs:annotations_end`, and `flutter/conventions.rs` interpolation now include `$` so `foo$r'bar'`, `count$`, `@_$Annotation`, `my$const` and `_$kAssetBase` are handled like `identifiers.rs`.
+- `pubspec_yaml_marked.rs` no longer panics on malformed mappings with a missing key; the malformed input now produces a `pubspec_invalid_yaml` diagnostic and keeps the fuzz corpus panic-free.
 
 ### Compatibility
 

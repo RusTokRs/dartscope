@@ -10,6 +10,7 @@ members = [
     "crates/dartscope-flutter",
     "crates/dartscope-json",
     "crates/dartscope-cli",
+    "crates/dartscope-lsp",
 ]
 
 [workspace.package]
@@ -30,6 +31,7 @@ dartscope-core = { version = "0.1.0", path = "crates/dartscope-core" }
 dartscope-parse = { version = "0.1.0", path = "crates/dartscope-parse" }
 dartscope-index = { version = "0.1.0", path = "crates/dartscope-index" }
 dartscope-lints = { version = "0.1.0", path = "crates/dartscope-lints" }
+dartscope-lsp = { version = "0.1.0", path = "crates/dartscope-lsp" }
 dartscope-resolve = { version = "0.1.0", path = "crates/dartscope-resolve" }
 dartscope-flutter = { version = "0.1.0", path = "crates/dartscope-flutter" }
 dartscope-json = { version = "0.1.0", path = "crates/dartscope-json" }

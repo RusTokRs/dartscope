@@ -179,7 +179,7 @@ fn invocation_member_range(
 fn has_constructor_keyword(source: &str, start: usize) -> bool {
     let before = source.get(..start).unwrap_or_default().trim_end();
     let token = before
-        .rsplit(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+        .rsplit(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_' && ch != '$')
         .next()
         .unwrap_or_default();
     matches!(token, "new" | "const")
@@ -205,5 +205,5 @@ fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
 }
 
 fn is_identifier_continue(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
+    crate::identifiers::is_identifier_continue(byte)
 }

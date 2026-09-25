@@ -11,6 +11,8 @@ mod graphql;
 mod identifier_references;
 mod identifiers;
 mod invocations;
+mod literals;
+mod metadata;
 mod lexical;
 mod lexical_bindings;
 mod lexical_reads;

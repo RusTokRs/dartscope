@@ -240,7 +240,14 @@ impl<'a> Receiver<'a> {
                         }
                         *pending_key = Some(node);
                     } else {
-                        let key_node = pending_key.take().expect("mapping key must exist");
+                        let Some(key_node) = pending_key.take() else {
+                            new_diagnostics.push(DartDiagnostic::error(
+                                \"pubspec_invalid_yaml\",
+                                \"pubspec YAML mapping is malformed: missing key for value\",
+                                Some(node.span.clone()),
+                            ));
+                            continue;
+                        };
                         if let NodeKind::Scalar(key) = key_node.kind {
                             entries.push(Entry {
                                 key,
