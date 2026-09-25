@@ -51,6 +51,30 @@ Implemented on `main`:
 8. No serialized field or command-facing v1 envelope changed. The slice extends only the existing
    opt-in reference analysis behavior.
 
+## Completed Slice: Unqualified Same-Owner Members
+
+The ordered slice from the previous update is implemented on the branch:
+
+1. Parser-side `unqualified_member_references` classifies an unqualified spelling as a member fact only
+   when the enclosing callable supplies one exact owner symbol ID and that owner directly declares a
+   matching method, field, getter, or setter. Calls, reads, and writes emit the existing
+   `MemberInvocation*`/`MemberProperty*` static-or-instance kinds with high confidence and exact spans;
+   no new public reference kind or serialized field was added.
+2. Suppression is explicit: `this`/`super` roots stay excluded, and visible parameters, block-locals,
+   import prefixes, enclosing-owner members, and local function declarations always win or suppress the
+   member heuristic, including a declaration-shaped local function scanned inside the masked callable
+   body.
+3. Compound assignment and increment targets emit the paired read-then-write facts for a directly
+   declared field instead of one fabricated target; a write to a getter-only or method member, or a read
+   of a setter-only member, is suppressed rather than guessed.
+4. Index resolution reuses the directly declared exact-owner member inventory: static shortcuts keep
+   working for `::` owner prefixes, private-library visibility and validated parts are preserved, and
+   missing members retain the owner fallback evidence.
+5. Focused fixtures cover resolution kinds, same-file evidence, missing members, incremental versus
+   full-build parity, and rename invalidation
+   (`crates/dartscope-parse/tests/unqualified_member_references.rs`,
+   `crates/dartscope-index/tests/navigation_unqualified_members.rs`).
+
 ## Current Limits
 
 Direct member navigation remains intentionally bounded to parser-produced exact owner evidence.
@@ -58,24 +82,17 @@ Arbitrary receiver type inference, inherited-member traversal, extension selecti
 null-aware or cascade forms, patterns, and flow-sensitive behavior remain deferred. Compound index
 assignment and increment/decrement semantics also remain deferred.
 
-Unqualified instance references are not yet classified as same-owner member facts. A local variable,
-parameter, local function, or imported/top-level declaration with the same spelling must continue to
-win or suppress the member heuristic before that syntax can be resolved safely.
+Unqualified member evidence is now produced safely, but only for directly declared members of the exact
+enclosing owner. Inherited members, extension members, and implicit constructor selection still need
+their own focused slices; local functions are also not modeled as lexical bindings yet, so the guard
+only suppresses member evidence when it recognizes a declaration-shaped local function.
 
 ## Next Ordered Slice
 
-Continue `DS-INDEX-006` with unqualified same-owner members inside an exact enclosing type:
-
-1. Add bounded parser facts for unqualified `method()` calls, property reads, and property writes only
-   when the enclosing callable supplies one exact owner symbol ID.
-2. Suppress a member fact whenever a visible lexical binding, parameter, local function, or other
-   exact non-member declaration shadows the spelling at that position.
-3. Keep invocation, read, write, and static-versus-instance evidence explicit. Resolve only directly
-   declared methods, fields, getters, and setters on the exact owner.
-4. Preserve private-library behavior, validated parts, deterministic reverse references, missing-owner
-   fallback, and full-build versus immutable-snapshot parity.
-5. Keep inherited members, extension selection, arbitrary receiver inference, cascades, null-aware
-   access, dynamic dispatch, patterns, and flow-sensitive behavior behind later focused slices.
+Continue `DS-INDEX-006` with the next bounded, evidence-gated slice: inherited-member or extension
+selection for an exact owner type, or local-function binding modeling. Each slice must arrive with
+nearby-shadowing fixtures, exact spans, an explicit compatibility note, and full-build versus
+immutable-snapshot parity before it enters public output.
 
 ## Verification Contract
 

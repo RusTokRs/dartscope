@@ -390,14 +390,21 @@ fn collect_sources(
                 directory.display()
             ))
         })?;
+        let mut entries = entries
+            .map(|entry| {
+                entry.map_err(|error| {
+                    CliError::input(format!(
+                        "failed to read directory entry in {}: {error}",
+                        directory.display()
+                    ))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        // Directory iteration order is filesystem-dependent. Sorting each directory keeps traversal,
+        // and therefore every traversal-limit diagnostic, reproducible across hosts.
+        entries.sort_by_key(|entry| entry.path());
 
         for entry in entries {
-            let entry = entry.map_err(|error| {
-                CliError::input(format!(
-                    "failed to read directory entry in {}: {error}",
-                    directory.display()
-                ))
-            })?;
             let path = entry.path();
             traversal.record_directory_entry(&path, limits)?;
             let file_type = entry.file_type().map_err(|error| {
@@ -1003,6 +1010,29 @@ mod project_input_limit_tests {
         assert_eq!(error.kind, CliErrorKind::Input);
         assert!(error.message.contains("project_traversal_limit_exceeded"));
         assert!(error.message.contains("directory entry limit of 1"));
+    }
+
+    #[test]
+    fn cli_reports_the_sorted_first_entry_when_the_entry_limit_is_hit() {
+        let temp = TempDirectory::new("directory-entry-order");
+        fs::write(temp.path.join("b.txt"), "ignored").unwrap();
+        fs::write(temp.path.join("a.dart"), "void a() {}\n").unwrap();
+
+        let error = collect_project_sources_with_limits(
+            temp.path.to_str().unwrap(),
+            false,
+            input_limits::InputLimits::new(10, 10, 100).with_traversal_limits(1, 10),
+        )
+        .err()
+        .expect("traversal limit error");
+
+        assert_eq!(error.kind, CliErrorKind::Input);
+        assert!(
+            error.message.contains("a.dart"),
+            "directory entries are inspected in sorted order, so the first limit diagnostic must name \
+             a.dart: {}",
+            error.message
+        );
     }
 
     #[test]

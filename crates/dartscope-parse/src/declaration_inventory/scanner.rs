@@ -171,6 +171,125 @@ pub(super) fn first_code_byte(line: SourceLine<'_>, source: &str) -> usize {
     line.byte_start + text.len().saturating_sub(text.trim_start().len())
 }
 
+/// Returns the next non-whitespace byte in `source[start..end]`.
+///
+/// Masked comment and string bytes are spaces, so this walks over them without skipping real code.
+pub(super) fn next_code_byte(source: &str, start: usize, end: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let limit = end.min(bytes.len());
+    let mut index = start.min(limit);
+    while index < limit {
+        if !bytes[index].is_ascii_whitespace() {
+            return Some(index);
+        }
+        index += 1;
+    }
+    None
+}
+
+/// Returns the brace depth at `at` given the depth measured at the start of `line`.
+///
+/// The position may be anywhere inside the line, so declarations that do not start a source line are
+/// measured exactly like line-leading declarations.
+pub(super) fn depth_within_line(
+    source: &str,
+    line: SourceLine<'_>,
+    line_depth: usize,
+    at: usize,
+) -> usize {
+    let start = line.byte_start.min(source.len());
+    let end = at.clamp(line.byte_start, line.byte_end().min(source.len()));
+    source.as_bytes()[start..end]
+        .iter()
+        .fold(line_depth, |depth, byte| match byte {
+            b'{' => depth + 1,
+            b'}' => depth.saturating_sub(1),
+            _ => depth,
+        })
+}
+
 pub(super) fn source_line_text<'a>(source: &'a str, line: SourceLine<'_>) -> &'a str {
     &source[line.byte_start..line.byte_end()]
+}
+
+/// Returns the first byte after any leading metadata annotations and their trailing whitespace.
+///
+/// Annotations may span source lines, so the returned position can be beyond the caller's line. When
+/// no complete annotation is present at `start` the position is returned unchanged, and a malformed
+/// annotation yields `limit` so the caller never parses a partial annotation as a declaration.
+pub(super) fn annotations_end(source: &str, start: usize, limit: usize) -> usize {
+    let bytes = source.as_bytes();
+    let limit = limit.min(bytes.len());
+    let mut at = start.min(limit);
+    while at < limit && bytes[at] == b'@' {
+        let mut next = at + 1;
+        let identifier_start = next;
+        while next < limit
+            && (bytes[next].is_ascii_alphanumeric() || matches!(bytes[next], b'_' | b'.'))
+        {
+            next += 1;
+        }
+        if next == identifier_start {
+            return at;
+        }
+        at = next;
+        if let Some(close) = matching_angle(source, at, limit) {
+            at = close + 1;
+        }
+        if at < limit && bytes[at] == b'(' {
+            let Some(close) = matching_close(source, at, limit) else {
+                return limit;
+            };
+            at = close + 1;
+        }
+        while at < limit && bytes[at].is_ascii_whitespace() {
+            at += 1;
+        }
+    }
+    at
+}
+
+fn matching_angle(source: &str, open: usize, limit: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    if bytes.get(open) != Some(&b'<') {
+        return None;
+    }
+    let limit = limit.min(bytes.len());
+    let mut depth = 0usize;
+    for (offset, byte) in bytes[open..limit].iter().copied().enumerate() {
+        match byte {
+            b'<' => depth += 1,
+            b'>' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(open + offset);
+                }
+            }
+            b'(' | b')' | b'[' | b']' | b'{' | b'}' | b';' | b'=' => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Returns the byte index of the delimiter closing the group opened at `open`.
+fn matching_close(source: &str, open: usize, limit: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let limit = limit.min(bytes.len());
+    let mut depth = 0usize;
+    let mut index = open;
+    while index < limit {
+        match bytes[index] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    None
 }

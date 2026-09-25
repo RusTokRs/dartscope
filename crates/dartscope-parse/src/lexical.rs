@@ -174,3 +174,74 @@ mod tests {
         assert!(mask.code.contains("PlatformApi;"), "{}", mask.code);
     }
 }
+
+/// Byte ranges of one terminated Dart string literal.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct StringLiteralRange {
+    /// First byte of the literal content, after `r` and the opening delimiter.
+    pub(crate) content_start: usize,
+    /// Byte index of the closing delimiter, so `source[content_start..content_end]` is the raw content.
+    pub(crate) content_end: usize,
+    /// Byte index directly after the closing delimiter.
+    pub(crate) end: usize,
+}
+
+/// Returns the first byte that starts a terminated string literal at or after `from`.
+pub(crate) fn find_string_literal_start(source: &str, from: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut index = from.min(bytes.len());
+    while index < bytes.len() {
+        if string_start(bytes, index).is_some() && string_literal_range(source, index).is_some() {
+            return Some(index);
+        }
+        index += 1;
+    }
+    None
+}
+
+/// Locates the terminated string literal starting at `start`.
+///
+/// The scan follows the same rules as lexical masking, so raw strings, triple quotes, and escaped
+/// quotes all resolve the way the rest of the parser treats them. Unterminated literals are rejected
+/// instead of being reported with a truncated value.
+pub(crate) fn string_literal_range(source: &str, start: usize) -> Option<StringLiteralRange> {
+    let bytes = source.as_bytes();
+    if start >= bytes.len() {
+        return None;
+    }
+    let (content_start, quote, triple, raw) = string_start(bytes, start)?;
+    let (next, terminated) = consume_string(bytes, content_start, quote, triple, raw);
+    if !terminated {
+        return None;
+    }
+    let delimiter = if triple { 3 } else { 1 };
+    Some(StringLiteralRange {
+        content_start,
+        content_end: next.checked_sub(delimiter)?,
+        end: next,
+    })
+}
+
+/// Concatenates the adjacent string literals that begin at `start`, as Dart compiles them.
+///
+/// Returns the raw content between delimiters together with the byte index after the last literal.
+/// Content is not unescaped: consumers receive the literal's source text.
+pub(crate) fn string_literals_value(source: &str, start: usize) -> Option<(String, usize)> {
+    let bytes = source.as_bytes();
+    let mut value = String::new();
+    let mut end = None;
+    let mut cursor = start.min(bytes.len());
+    loop {
+        let Some(range) = string_literal_range(source, cursor) else {
+            break;
+        };
+        value.push_str(&source[range.content_start..range.content_end]);
+        end = Some(range.end);
+        let mut next = range.end;
+        while next < bytes.len() && bytes[next].is_ascii_whitespace() {
+            next += 1;
+        }
+        cursor = next;
+    }
+    end.map(|end| (value, end))
+}

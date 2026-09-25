@@ -1,3 +1,4 @@
+use crate::identifiers::{is_identifier_continue, is_identifier_start};
 use std::cmp::Reverse;
 
 use dartscope_core::{
@@ -8,6 +9,7 @@ use dartscope_core::{
 use crate::lexical_reads::deferred::read_regions;
 use crate::lexical_regions::analyze_lexical_regions;
 use crate::source_lines::span_for_byte_range;
+use crate::unqualified_member_references::{enclosing_member, local_function_shadows};
 
 #[derive(Debug, Clone, Copy)]
 struct IdentifierToken<'source> {
@@ -70,7 +72,17 @@ fn collect_for_in_write_references(
             {
                 return None;
             }
-            select_visible_binding(bindings, token)?;
+            if select_visible_binding(bindings, token).is_none() {
+                return member_property_references(
+                    source,
+                    masked_source,
+                    analysis,
+                    token,
+                    MemberTargetMode::Write,
+                )
+                .into_iter()
+                .next();
+            }
             Some(DartIdentifierReference {
                 source_path: analysis.path.clone(),
                 name: target.name,
@@ -99,6 +111,89 @@ pub(crate) fn collect_lexical_update_references(
         existing_references,
         LexicalTargetMode::CombinedUpdate,
     )
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MemberTargetMode {
+    Write,
+    ReadThenWrite,
+}
+
+fn member_target_references(
+    source: &str,
+    masked_source: &str,
+    analysis: &DartFileAnalysis,
+    token: IdentifierToken<'_>,
+    mode: LexicalTargetMode,
+) -> Vec<DartIdentifierReference> {
+    let target_mode = match mode {
+        LexicalTargetMode::SimpleAssignment => MemberTargetMode::Write,
+        LexicalTargetMode::CombinedUpdate => MemberTargetMode::ReadThenWrite,
+    };
+    member_property_references(source, masked_source, analysis, token, target_mode)
+}
+
+fn member_property_references(
+    source: &str,
+    masked_source: &str,
+    analysis: &DartFileAnalysis,
+    token: IdentifierToken<'_>,
+    mode: MemberTargetMode,
+) -> Vec<DartIdentifierReference> {
+    let Some(member) = enclosing_member(analysis, masked_source, token.text, token.start) else {
+        return Vec::new();
+    };
+    if local_function_shadows(masked_source, &member, token.text) {
+        return Vec::new();
+    }
+    let kinds: &[DartIdentifierReferenceKind] = match mode {
+        MemberTargetMode::Write => {
+            if !member.owns_writable() {
+                return Vec::new();
+            }
+            &[DartIdentifierReferenceKind::MemberPropertyWriteInstance]
+        }
+        MemberTargetMode::ReadThenWrite => {
+            if !member.owns_named_value() {
+                return Vec::new();
+            }
+            &[
+                DartIdentifierReferenceKind::MemberPropertyReadInstance,
+                DartIdentifierReferenceKind::MemberPropertyWriteInstance,
+            ]
+        }
+    };
+    kinds
+        .iter()
+        .map(|kind| {
+            let kind = if member.is_static {
+                static_property_kind(*kind)
+            } else {
+                *kind
+            };
+            DartIdentifierReference {
+                source_path: analysis.path.clone(),
+                name: token.text.to_string(),
+                prefix: Some(member.owner_symbol_id.to_string()),
+                kind,
+                confidence: Confidence::High,
+                enclosing_symbol_id: innermost_callable_symbol(analysis, token.start),
+                span: span_for_byte_range(source, token.start, token.end),
+            }
+        })
+        .collect()
+}
+
+fn static_property_kind(kind: DartIdentifierReferenceKind) -> DartIdentifierReferenceKind {
+    match kind {
+        DartIdentifierReferenceKind::MemberPropertyReadInstance => {
+            DartIdentifierReferenceKind::MemberPropertyReadStatic
+        }
+        DartIdentifierReferenceKind::MemberPropertyWriteInstance => {
+            DartIdentifierReferenceKind::MemberPropertyWriteStatic
+        }
+        _ => kind,
+    }
 }
 
 fn collect_lexical_target_references(
@@ -140,6 +235,13 @@ fn collect_lexical_target_references(
         }
 
         let Some(binding) = select_visible_binding(bindings, token) else {
+            references.extend(member_target_references(
+                source,
+                masked_source,
+                analysis,
+                token,
+                mode,
+            ));
             continue;
         };
         let enclosing_symbol_id = Some(
@@ -390,12 +492,4 @@ fn next_non_whitespace(bytes: &[u8], mut at: usize) -> Option<usize> {
         at += 1;
     }
     (at < bytes.len()).then_some(at)
-}
-
-fn is_identifier_start(byte: u8) -> bool {
-    byte.is_ascii_alphabetic() || byte == b'_'
-}
-
-fn is_identifier_continue(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
 }

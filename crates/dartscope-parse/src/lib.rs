@@ -9,6 +9,7 @@ mod declarations;
 pub mod fuzzing;
 mod graphql;
 mod identifier_references;
+mod identifiers;
 mod invocations;
 mod lexical;
 mod lexical_bindings;
@@ -30,14 +31,13 @@ mod pubspec_source;
 mod pubspec_syntax;
 #[cfg(test)]
 mod pubspec_yaml_contract;
-#[allow(dead_code)]
 mod pubspec_yaml_marked;
 mod pubspec_yaml_marked_analysis;
 mod pubspec_yaml_marked_configuration;
-#[allow(dead_code)]
 mod pubspec_yaml_marked_dependencies;
 mod pubspec_yaml_subset;
 mod source_lines;
+mod unqualified_member_references;
 
 use dartscope_core::{DartProjectAnalysis, DartProjectInput, DartProjectReferenceAnalysis};
 

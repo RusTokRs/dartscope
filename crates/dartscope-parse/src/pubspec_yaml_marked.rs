@@ -23,12 +23,6 @@ pub(crate) struct MarkedYamlDocument {
     pub(crate) diagnostics: Vec<DartDiagnostic>,
 }
 
-impl MarkedYamlDocument {
-    pub(crate) fn into_diagnostics(self) -> Vec<DartDiagnostic> {
-        self.diagnostics
-    }
-}
-
 #[derive(Debug)]
 pub(crate) struct Node {
     pub(crate) kind: NodeKind,
@@ -529,7 +523,7 @@ mod tests {
 
     #[test]
     fn converts_scanner_failures_to_stable_diagnostics() {
-        let diagnostics = parse_marked_yaml("flutter: [unterminated\n").into_diagnostics();
+        let diagnostics = parse_marked_yaml("flutter: [unterminated\n").diagnostics;
 
         assert!(
             diagnostics

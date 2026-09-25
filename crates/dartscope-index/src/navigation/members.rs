@@ -249,6 +249,59 @@ fn resolve_instance_reference(
     finish_resolution(reference, refinements, Vec::new())
 }
 
+fn is_exact_owner_symbol_id(value: &str) -> bool {
+    value.contains("::")
+}
+
+/// Resolves a static member fact whose owner is carried as an exact symbol ID.
+///
+/// Unqualified static spellings inside the declaring type cannot name their owner lexically, so the
+/// parser records the exact enclosing owner symbol ID instead. Resolution then uses the same exact
+/// owner evidence as the instance path and only accepts directly declared static candidates.
+fn resolve_exact_owner_static_reference(
+    analysis: &DartProjectReferenceAnalysis,
+    namespace: &NamespaceResolver<'_, '_>,
+    member_index: &MemberIndex,
+    reference: DartIdentifierReference,
+    member_use: MemberUse,
+) -> ResolvedReference {
+    let owner_symbol_id = reference.prefix.as_deref().unwrap_or_default();
+    let mut owners = member_owner_candidates_by_symbol_id(
+        analysis,
+        namespace,
+        &reference.source_path,
+        owner_symbol_id,
+    );
+    owners.sort_by(|left, right| {
+        (
+            &left.declaration_path,
+            left.declaration_span.byte_start,
+            &left.name,
+        )
+            .cmp(&(
+                &right.declaration_path,
+                right.declaration_span.byte_start,
+                &right.name,
+            ))
+    });
+    owners.dedup();
+    let refinements = owners
+        .iter()
+        .map(|owner| {
+            refine_direct_member(
+                member_index,
+                namespace,
+                &reference.source_path,
+                owner,
+                &reference.name,
+                true,
+                member_use,
+            )
+        })
+        .collect::<Vec<_>>();
+    finish_resolution(reference, refinements, Vec::new())
+}
+
 fn resolve_static_reference(
     analysis: &DartProjectReferenceAnalysis,
     namespace: &NamespaceResolver<'_, '_>,
@@ -257,6 +310,19 @@ fn resolve_static_reference(
     reference: DartIdentifierReference,
     member_use: MemberUse,
 ) -> ResolvedReference {
+    if reference
+        .prefix
+        .as_deref()
+        .is_some_and(is_exact_owner_symbol_id)
+    {
+        return resolve_exact_owner_static_reference(
+            analysis,
+            namespace,
+            member_index,
+            reference,
+            member_use,
+        );
+    }
     let Some((import_prefix, owner_name)) = static_member_owner(&reference) else {
         return ResolvedReference {
             reference,

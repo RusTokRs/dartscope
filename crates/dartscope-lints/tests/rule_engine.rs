@@ -138,3 +138,62 @@ fn rule_ids_have_stable_serialized_names() {
         "\"dartscope.layer_boundary\""
     );
 }
+
+#[test]
+fn naming_convention_accepts_dollar_names_and_unnamed_extensions() {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        vec![DartFileInput::new(
+            "lib/generated.dart",
+            r#"
+class Widget$Base {
+  int count$ = 0;
+}
+
+void _$register() {}
+
+final version$ = 1;
+
+extension on List<int> {
+  int get total$ => length;
+}
+"#,
+        )],
+        vec![],
+    ));
+    let config = DartLintConfig::new([DartLintRuleId::NamingConvention]);
+
+    let analysis = lint_project(&project, &config);
+
+    assert!(
+        analysis.diagnostics.is_empty(),
+        "unexpected naming findings: {:?}",
+        analysis
+            .diagnostics
+            .iter()
+            .map(|diagnostic| (diagnostic.path.as_str(), diagnostic.message.as_str()))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn naming_convention_still_reports_a_snake_case_declaration() {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        vec![
+            DartFileInput::new("lib/bad_screen.dart", "class bad_screen {}\n"),
+            DartFileInput::new("lib/generated.dart", "class Widget$Base {}\n"),
+        ],
+        vec![],
+    ));
+    let config = DartLintConfig::new([DartLintRuleId::NamingConvention]);
+
+    let analysis = lint_project(&project, &config);
+
+    assert_eq!(analysis.diagnostics.len(), 1);
+    assert_eq!(analysis.diagnostics[0].path, "lib/bad_screen.dart");
+    assert_eq!(
+        analysis.diagnostics[0].rule_id,
+        DartLintRuleId::NamingConvention
+    );
+}

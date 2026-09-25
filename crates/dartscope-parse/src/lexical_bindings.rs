@@ -1,3 +1,4 @@
+use crate::identifiers::{is_identifier_continue, is_identifier_start};
 use std::collections::HashMap;
 
 use dartscope_core::{
@@ -676,12 +677,4 @@ fn supports_parameters(kind: DartDeclarationKind) -> bool {
             | DartDeclarationKind::Setter
             | DartDeclarationKind::Operator
     )
-}
-
-fn is_identifier_start(byte: u8) -> bool {
-    byte.is_ascii_alphabetic() || byte == b'_'
-}
-
-fn is_identifier_continue(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
 }

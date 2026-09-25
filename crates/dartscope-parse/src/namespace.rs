@@ -3,7 +3,8 @@ use dartscope_core::{
     DartUriConfiguration, SourceSpan,
 };
 
-use crate::declarations::{is_identifier, quoted_value};
+use crate::declarations::quoted_value;
+use crate::identifiers::is_identifier;
 use crate::source_lines::{SourceLine, source_lines};
 
 struct PendingNamespaceDirective {
@@ -240,16 +241,18 @@ fn uri_configurations(mut suffix: &str) -> (Vec<DartUriConfiguration>, &str) {
     (configurations, suffix)
 }
 
+/// Returns the URI literal at the start of `input` together with the directive suffix after it.
+///
+/// Raw strings, triple quotes, escaped quotes, and adjacent concatenation are handled by the shared
+/// lexical scanner, so a URI containing an escaped or interior quote is not truncated.
 fn quoted_value_with_suffix(input: &str) -> Option<(String, &str)> {
     let input = input.trim_start();
-    let quote_index = usize::from(input.starts_with('r'));
-    let quote = *input.as_bytes().get(quote_index)?;
-    if !matches!(quote, b'\'' | b'"') {
+    let start = crate::lexical::find_string_literal_start(input, 0)?;
+    if start != 0 {
         return None;
     }
-    let rest = &input[quote_index + 1..];
-    let end = rest.find(quote as char)?;
-    Some((rest[..end].to_string(), &rest[end + 1..]))
+    let (value, end) = crate::lexical::string_literals_value(input, start)?;
+    Some((value, &input[end..]))
 }
 
 fn directive_suffix_tokens(suffix: &str) -> Vec<&str> {

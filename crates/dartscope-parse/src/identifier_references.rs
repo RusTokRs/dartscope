@@ -8,7 +8,9 @@ use dartscope_core::{
 
 use self::typed::collect_typed_identifier_references;
 use self::typed_positions::collect_declaration_type_references;
+use crate::identifiers::{is_identifier_continue, is_identifier_start};
 use crate::source_lines::span_for_byte_range;
+use crate::unqualified_member_references;
 
 #[derive(Debug, Clone, Copy)]
 struct IdentifierToken<'source> {
@@ -28,15 +30,43 @@ pub(crate) fn collect_identifier_references(
         let Some(root) = identifier_at(masked_source, invocation.span.byte_start) else {
             continue;
         };
-        if matches!(root.text, "this" | "super")
-            || invocation_root_is_shadowed(
-                masked_source,
+        if matches!(root.text, "this" | "super") {
+            continue;
+        }
+        let enclosing_symbol_id = invocation.enclosing_symbol_id.as_deref();
+        if lexical_root_is_shadowed(masked_source, analysis, bindings, enclosing_symbol_id, root) {
+            continue;
+        }
+        if invocation.target == root.text
+            && let Some(member) = unqualified_member_references::enclosing_member(
                 analysis,
-                bindings,
-                invocation.enclosing_symbol_id.as_deref(),
-                root,
+                masked_source,
+                root.text,
+                root.start,
+            )
+            && member.owns_callable()
+            && !unqualified_member_references::local_function_shadows(
+                masked_source,
+                &member,
+                root.text,
             )
         {
+            references.push(DartIdentifierReference {
+                source_path: analysis.path.clone(),
+                name: root.text.to_string(),
+                prefix: Some(member.owner_symbol_id.to_string()),
+                kind: if member.is_static {
+                    DartIdentifierReferenceKind::MemberInvocationStatic
+                } else {
+                    DartIdentifierReferenceKind::MemberInvocationInstance
+                },
+                confidence: Confidence::High,
+                enclosing_symbol_id: invocation.enclosing_symbol_id.clone(),
+                span: span_for_byte_range(source, root.start, root.end),
+            });
+            continue;
+        }
+        if owner_member_shadows_invocation(analysis, enclosing_symbol_id, root) {
             continue;
         }
 
@@ -112,7 +142,7 @@ pub(crate) fn sort_identifier_references(references: &mut [DartIdentifierReferen
     });
 }
 
-fn invocation_root_is_shadowed(
+fn lexical_root_is_shadowed(
     masked_source: &str,
     analysis: &DartFileAnalysis,
     bindings: &[DartLexicalBinding],
@@ -144,7 +174,7 @@ fn invocation_root_is_shadowed(
         return true;
     }
 
-    if analysis.declarations.iter().any(|declaration| {
+    analysis.declarations.iter().any(|declaration| {
         declaration.kind == DartDeclarationKind::LocalVariable
             && declaration.name == root.text
             && declaration.parent_symbol_id.as_deref() == Some(owner_id)
@@ -152,10 +182,24 @@ fn invocation_root_is_shadowed(
                 span.byte_start < root.start
                     && local_scope_contains(masked_source, span.byte_start, root.start, owner)
             })
-    }) {
-        return true;
-    }
+    })
+}
 
+fn owner_member_shadows_invocation(
+    analysis: &DartFileAnalysis,
+    enclosing_symbol_id: Option<&str>,
+    root: IdentifierToken<'_>,
+) -> bool {
+    let Some(owner_id) = enclosing_symbol_id else {
+        return false;
+    };
+    let Some(owner) = analysis
+        .declarations
+        .iter()
+        .find(|declaration| declaration.symbol_id.as_deref() == Some(owner_id))
+    else {
+        return false;
+    };
     let Some(type_id) = owner.parent_symbol_id.as_deref() else {
         return false;
     };
@@ -416,12 +460,4 @@ fn skip_whitespace(bytes: &[u8], mut at: usize) -> usize {
         at += 1;
     }
     at
-}
-
-fn is_identifier_start(byte: u8) -> bool {
-    byte.is_ascii_alphabetic() || byte == b'_'
-}
-
-fn is_identifier_continue(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
 }

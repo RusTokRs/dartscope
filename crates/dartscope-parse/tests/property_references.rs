@@ -98,7 +98,28 @@ fn emits_exact_property_declaration_and_access_facts() {
             )
         })
         .collect::<Vec<_>>();
-    assert_eq!(accesses.len(), 11);
+    assert_eq!(accesses.len(), 12);
+    assert_eq!(
+        accesses
+            .iter()
+            .filter(|reference| reference.name == "count")
+            .map(|reference| (reference.kind, reference.prefix.as_deref()))
+            .collect::<Vec<_>>(),
+        [
+            (
+                DartIdentifierReferenceKind::MemberPropertyReadStatic,
+                Some("lib/properties.dart::class:Service"),
+            ),
+            (
+                DartIdentifierReferenceKind::MemberPropertyReadStatic,
+                Some("Service"),
+            ),
+            (
+                DartIdentifierReferenceKind::MemberPropertyWriteStatic,
+                Some("Service"),
+            ),
+        ]
+    );
     assert_eq!(
         accesses
             .iter()
