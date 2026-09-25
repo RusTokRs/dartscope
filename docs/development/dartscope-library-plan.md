@@ -1097,7 +1097,7 @@ Status: implemented. Priority: P2. Prerequisites: DS-INDEX-005, DS-INDEX-006, DS
 
 Implemented (2026-09-25):
 
-1. Added optional `dartscope-lsp` crate (`lsp-types` 0.97, `url`, `serde_json`, `thiserror`) as workspace member, umbrella `lsp` feature, and `tools/release-crates.txt` entry.
+1. Added optional `dartscope-lsp` crate (internal `crate::types` mirroring `lsp-types` 0.97 shape, `serde_json`, `thiserror`) as workspace member, umbrella `lsp` feature, and `tools/release-crates.txt` entry.
 2. Implemented `coordinates` module with `byte_offset_to_lsp_position` / `lsp_position_to_byte_offset` handling LF, CRLF and surrogate pairs (emoji 2 UTF-16 units), plus `source_span_to_lsp_range` / `lsp_range_to_source_span` and tests.
 3. Implemented `DartLspServer` with lifecycle (`initialize` returning `TextDocumentSyncKind::INCREMENTAL`, `definition`, `references`, `hover`, `documentSymbol`), incremental `didOpen`/`didChange` (incremental `Range` in UTF-16) / `didClose`, `diagnostics` via `DartWorkspaceIndex` + `DartWorkspaceResolutionContext`, no hidden filesystem scan.
 4. Added stdio binary `crates/dartscope-lsp/src/bin/dartscope-lsp.rs` with `Content-Length` framing, `initialize`/`initialized`/`shutdown`/`exit`/`$/cancelRequest` and honest `null` for unsupported methods.
