@@ -5,8 +5,9 @@ use dartscope_core::DartDeclarationKind;
 use super::scanner::EndMode;
 use crate::declarations::{
     class_declaration_name, extension_declaration_name, extension_type_declaration_name,
-    is_identifier, mixin_declaration_name, name_after_keyword,
+    mixin_declaration_name, name_after_keyword,
 };
+use crate::identifiers::{is_identifier, is_identifier_continue, leading_identifier};
 
 pub(super) fn type_header(header: &str) -> Option<(String, DartDeclarationKind)> {
     class_declaration_name(header)
@@ -109,6 +110,37 @@ fn field_names(header: &str) -> Vec<String> {
     declared_names(header, true)
 }
 
+/// Normalized names of a top-level `const`/`final`/`var` or explicitly typed variable declaration.
+///
+/// The keyword forms and the explicitly typed form share the field/declarator splitting rules, so
+/// `int counter = 0;`, `late final int total = 1;`, and `int first, second;` are all recognized while
+/// callable headers, directives, and control statements are rejected by the same guards.
+pub(super) fn top_level_variables(header: &str, indent: usize) -> Vec<String> {
+    if indent != 0 {
+        return Vec::new();
+    }
+    let header = header
+        .strip_prefix("late ")
+        .map(str::trim_start)
+        .unwrap_or(header);
+    if starts_control_keyword(header) || header.starts_with("get ") || header.starts_with("set ") {
+        return Vec::new();
+    }
+    // A keyword declaration keeps its name even when the initializer is a multi-line expression whose
+    // first top-level arrow token ends the scanned header, because `final x = ...` is never a getter.
+    if let Some(without_keyword) = ["var", "final", "const"]
+        .into_iter()
+        .find_map(|keyword| header.strip_prefix(keyword).map(str::trim_start))
+    {
+        let without_keyword = without_keyword
+            .strip_prefix("late ")
+            .map(str::trim_start)
+            .unwrap_or(without_keyword);
+        return declared_names(without_keyword, false);
+    }
+    field_names(header)
+}
+
 fn declared_names(header: &str, require_type: bool) -> Vec<String> {
     let header = header.trim_end_matches(';').trim();
     if header.is_empty() {
@@ -118,10 +150,7 @@ fn declared_names(header: &str, require_type: bool) -> Vec<String> {
     let segments = split_top_level_commas(header);
     let mut names = Vec::new();
     for (index, segment) in segments.into_iter().enumerate() {
-        let left = segment
-            .split_once('=')
-            .map_or(segment, |(left, _)| left)
-            .trim();
+        let left = assignment_left(segment).trim();
         if left.contains('(') {
             continue;
         }
@@ -175,18 +204,7 @@ fn strip_member_modifiers(mut header: &str) -> &str {
         let Some((first, rest)) = trimmed.split_once(char::is_whitespace) else {
             return trimmed;
         };
-        if matches!(
-            first,
-            "abstract"
-                | "augment"
-                | "const"
-                | "covariant"
-                | "external"
-                | "factory"
-                | "final"
-                | "late"
-                | "static"
-        ) {
+        if is_member_modifier(first) {
             header = rest;
         } else {
             return trimmed;
@@ -194,15 +212,29 @@ fn strip_member_modifiers(mut header: &str) -> &str {
     }
 }
 
+fn is_member_modifier(token: &str) -> bool {
+    matches!(
+        token,
+        "abstract"
+            | "augment"
+            | "const"
+            | "covariant"
+            | "external"
+            | "factory"
+            | "final"
+            | "late"
+            | "static"
+    )
+}
+
 fn name_after_token(header: &str, token: &str) -> Option<String> {
     let tokens: Vec<_> = header.split_whitespace().collect();
     let index = tokens.iter().position(|item| *item == token)?;
     tokens.get(index + 1).and_then(|item| {
-        let name: String = item
-            .chars()
-            .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
-            .collect();
-        is_identifier(&name).then_some(name)
+        let name = leading_identifier(item)?;
+        name.bytes()
+            .all(is_identifier_continue)
+            .then(|| name.to_string())
     })
 }
 
@@ -236,14 +268,42 @@ fn operator_name(header: &str) -> Option<String> {
     .then(|| name.to_string())
 }
 
-pub(super) fn is_concise_constructor(header: &str) -> bool {
-    let header = header.trim_start();
-    header.starts_with("new(")
-        || header.starts_with("new ")
-        || header.starts_with("const new")
-        || header.starts_with("factory(")
-        || header.starts_with("factory ")
-        || header.starts_with("const factory")
+/// Reports a constructor written in the Dart 3.13 concise-constructor form.
+///
+/// A leading `new` is always the concise form because it is not a constructor-declaration keyword in
+/// earlier Dart syntax. A leading `factory` is the concise form only when it is not qualified by the
+/// declaring type, so `factory A.named()` and `factory A()` remain ordinary declarations that
+/// `member_headers` collects instead of being skipped with a fabricated diagnostic.
+pub(super) fn is_concise_constructor(header: &str, owner_name: &str) -> bool {
+    let mut rest = header.trim_start();
+    loop {
+        let Some((token, tail)) = split_first_token(rest) else {
+            return false;
+        };
+        match token {
+            "new" => return true,
+            "factory" => {
+                let qualified = tail
+                    .trim_start()
+                    .strip_prefix(owner_name)
+                    .is_some_and(|rest| rest.starts_with('(') || rest.starts_with('.'));
+                return !qualified;
+            }
+            _ if is_member_modifier(token) => rest = tail,
+            _ => return false,
+        }
+    }
+}
+
+fn split_first_token(value: &str) -> Option<(&str, &str)> {
+    let trimmed = value.trim_start();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let end = trimmed
+        .find(|ch: char| ch.is_whitespace() || ch == '(')
+        .unwrap_or(trimmed.len());
+    Some((&trimmed[..end], &trimmed[end..]))
 }
 
 pub(super) fn has_primary_constructor(header: &str, name: &str) -> bool {
@@ -325,4 +385,41 @@ impl SymbolIdAllocator {
             format!("{base}#{}", *count)
         }
     }
+}
+
+/// Returns the text before the first top-level assignment `=`.
+///
+/// Arrow (`=>`), equality (`==`), and comparison (`<=`, `>=`, `!=`) operators are not assignments, and
+/// an `=` nested inside parentheses, brackets, braces, or type arguments belongs to a nested
+/// expression such as a default value. Splitting on the real assignment keeps a function-typed
+/// declaration from reporting its first parameter as the declared name.
+fn assignment_left(segment: &str) -> &str {
+    let bytes = segment.as_bytes();
+    let mut parens = 0usize;
+    let mut brackets = 0usize;
+    let mut braces = 0usize;
+    let mut angles = 0usize;
+    for (index, byte) in bytes.iter().copied().enumerate() {
+        match byte {
+            b'(' => parens += 1,
+            b')' => parens = parens.saturating_sub(1),
+            b'[' => brackets += 1,
+            b']' => brackets = brackets.saturating_sub(1),
+            b'{' => braces += 1,
+            b'}' => braces = braces.saturating_sub(1),
+            b'<' if parens == 0 && brackets == 0 && braces == 0 => angles += 1,
+            b'>' if angles > 0 => angles -= 1,
+            b'=' if parens == 0 && brackets == 0 && braces == 0 && angles == 0 => {
+                let next = bytes.get(index + 1).copied();
+                let previous = index.checked_sub(1).map(|position| bytes[position]);
+                if next != Some(b'>')
+                    && !matches!(previous, Some(b'=') | Some(b'!') | Some(b'<') | Some(b'>'))
+                {
+                    return &segment[..index];
+                }
+            }
+            _ => {}
+        }
+    }
+    segment
 }

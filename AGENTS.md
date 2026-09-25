@@ -94,12 +94,18 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Continue `DS-INDEX-006` with unqualified same-owner members inside an exact enclosing type.
-Add bounded parser facts for unqualified `method()` calls, property reads, and property writes
-only when exact owner evidence exists and no visible lexical binding, parameter, local function,
-or other exact non-member declaration shadows the spelling. Keep invocation/read/write and
-static-versus-instance evidence explicit; resolve only directly declared methods, fields, getters,
-and setters. Preserve private-library behavior, validated parts, reverse references, missing-owner
-fallback, and snapshot parity. Keep inherited members, extension selection, arbitrary receiver
-inference, cascades, null-aware access, dynamic dispatch, patterns, and flow-sensitive behavior
-behind later focused slices.
+Unqualified same-owner member navigation is implemented and verified: parser-side
+`unqualified_member_references` emits invocation/read/write facts only when the enclosing callable
+supplies one exact owner symbol ID, the owner directly declares a matching method, field, getter, or
+setter, and no visible lexical binding, parameter, local function, or enclosing-owner member shadows
+the spelling. Continue `DS-INDEX-006` with the next bounded, evidence-gated slice: inherited-member or
+extension selection for an exact owner type, or local-function lexical bindings. Each slice must arrive
+with nearby-shadowing fixtures, exact spans, an explicit compatibility note, and full-build versus
+immutable-snapshot parity. Keep arbitrary receiver inference, cascades, null-aware access, dynamic
+dispatch, patterns, and flow-sensitive behavior behind later focused slices.
+
+Separately, the 2026-09-25 review consolidated Dart identifier scanning into
+`crates/dartscope-parse/src/identifiers.rs` after finding that thirteen local character classes had
+truncated every name containing `$`. The same consolidation for numeric literals, string escapes, and
+metadata handling is the highest-value next architectural slice; details and evidence are in
+`docs/development/audit-findings-2026-09-25.md`.

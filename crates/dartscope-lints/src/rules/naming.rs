@@ -82,6 +82,10 @@ fn is_lower_snake_case(value: &str) -> bool {
 }
 
 fn valid_declaration_name(kind: DartDeclarationKind, name: &str) -> bool {
+    if name.is_empty() {
+        // An unnamed extension declares no name, so there is no case convention to violate.
+        return true;
+    }
     match kind {
         DartDeclarationKind::Class
         | DartDeclarationKind::Mixin
@@ -94,28 +98,47 @@ fn valid_declaration_name(kind: DartDeclarationKind, name: &str) -> bool {
     }
 }
 
+/// Returns whether `value` is an upper camel case Dart name.
+///
+/// Leading underscores and dollars are decoration, and `$` is a Dart identifier character that
+/// generated names rely on, so it is accepted anywhere and never decides the case of the name.
 fn is_upper_camel_case(value: &str) -> bool {
-    let value = value.trim_start_matches('_');
-    if value.is_empty() || !value.is_ascii() || value.contains('_') {
-        return !value.is_ascii();
+    let Some(name) = case_checkable_name(value) else {
+        return false;
+    };
+    if !name.is_ascii() {
+        return true;
     }
-    value.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
-        && value
+    name.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
+        && name
             .as_bytes()
             .iter()
-            .all(|byte| byte.is_ascii_alphanumeric())
+            .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'$')
 }
 
+/// Returns whether `value` is a lower camel case Dart name; see [`is_upper_camel_case`].
 fn is_lower_camel_case(value: &str) -> bool {
-    let value = value.trim_start_matches('_');
-    if value.is_empty() || !value.is_ascii() || value.contains('_') {
-        return !value.is_ascii();
+    let Some(name) = case_checkable_name(value) else {
+        return false;
+    };
+    if !name.is_ascii() {
+        return true;
     }
-    value.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
-        && value
+    name.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
+        && name
             .as_bytes()
             .iter()
-            .all(|byte| byte.is_ascii_alphanumeric())
+            .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'$')
+}
+
+/// Strips the leading underscores and dollars that decorate a private or generated name.
+///
+/// Returns `None` when nothing is left to check, which happens for a name such as `_` that carries no
+/// case at all. Interior underscores are rejected by the callers, because underscores separate words
+/// only in lower snake case.
+fn case_checkable_name(value: &str) -> Option<&str> {
+    let name = value.trim_start_matches(['_', '$']);
+    (!name.is_empty() && !name.contains('_')).then_some(name)
 }
 
 fn kind_label(kind: DartDeclarationKind) -> &'static str {

@@ -1,4 +1,7 @@
-use dartscope_core::{DartPartOfKind, DartStringConstant, SourceSpan};
+use dartscope_core::{DartPartOfKind, DartStringConstant};
+
+use crate::identifiers::{is_identifier, leading_identifier};
+use crate::source_lines::span_for_byte_range;
 
 pub(crate) fn library_directive_name(trimmed: &str) -> Option<Option<String>> {
     let rest = trimmed.strip_prefix("library")?;
@@ -26,12 +29,13 @@ pub(crate) fn part_of_value(trimmed: &str) -> Option<(String, DartPartOfKind)> {
         })
 }
 
+/// Returns the content of the first string literal in `input`.
+///
+/// Raw strings, triple quotes, escaped quotes, and adjacent literal concatenation are handled through
+/// the lexical scanner, so a directive URI is never truncated at an escaped or interior quote.
 pub(crate) fn quoted_value(input: &str) -> Option<String> {
-    let quote = input.find(['\'', '"'])?;
-    let quote_char = input.as_bytes()[quote] as char;
-    let rest = &input[quote + 1..];
-    let end = rest.find(quote_char)?;
-    Some(rest[..end].to_string())
+    let start = crate::lexical::find_string_literal_start(input, 0)?;
+    crate::lexical::string_literals_value(input, start).map(|(value, _)| value)
 }
 
 pub(crate) fn class_declaration_name(trimmed: &str) -> Option<String> {
@@ -69,12 +73,21 @@ pub(crate) fn extension_type_declaration_name(trimmed: &str) -> Option<String> {
     next_identifier(rest)
 }
 
+/// Returns the declared name of an extension, or an empty name for `extension on T { ... }`.
+///
+/// An unnamed extension has no declarable name, so the inventory reports it with an empty name rather
+/// than dropping the declaration together with every member of its body. `extension type`
+/// declarations belong to [`extension_type_declaration_name`].
 pub(crate) fn extension_declaration_name(trimmed: &str) -> Option<String> {
-    let rest = trimmed.strip_prefix("extension ")?.trim_start();
-    if rest.starts_with("on ") || rest.starts_with("type ") {
+    let rest = trimmed.trim_start().strip_prefix("extension")?;
+    if !rest.starts_with(char::is_whitespace) {
         return None;
     }
-    next_identifier(rest)
+    match rest.split_whitespace().next()? {
+        "type" => None,
+        "on" => Some(String::new()),
+        name => next_identifier(name),
+    }
 }
 
 pub(crate) fn name_after_keyword(trimmed: &str, keyword: &str) -> Option<String> {
@@ -103,17 +116,15 @@ pub(crate) fn values_after_keyword(trimmed: &str, keyword: &str) -> Vec<String> 
 }
 
 pub(crate) fn next_identifier(input: &str) -> Option<String> {
-    let ident: String = input
-        .chars()
-        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
-        .collect();
-    (!ident.is_empty()).then_some(ident)
+    leading_identifier(input).map(str::to_string)
 }
 
 fn next_qualified_identifier(input: &str) -> Option<String> {
     let value: String = input
         .chars()
-        .take_while(|ch| ch.is_ascii_alphanumeric() || matches!(*ch, '_' | '.'))
+        .take_while(|ch| {
+            ch.is_ascii() && (crate::identifiers::is_identifier_continue(*ch as u8) || *ch == '.')
+        })
         .collect();
     (!value.is_empty() && value.split('.').all(is_identifier) && !value.ends_with('.'))
         .then_some(value)
@@ -121,6 +132,9 @@ fn next_qualified_identifier(input: &str) -> Option<String> {
 
 pub(crate) fn top_level_function(trimmed: &str, indent: usize) -> Option<String> {
     if indent != 0 {
+        return None;
+    }
+    if trimmed.starts_with("get ") || trimmed.starts_with("set ") {
         return None;
     }
     if !trimmed.ends_with('{') && !trimmed.ends_with("=>") && !trimmed.contains('(') {
@@ -140,44 +154,49 @@ pub(crate) fn top_level_function(trimmed: &str, indent: usize) -> Option<String>
     is_identifier(name).then_some(name.to_string())
 }
 
-pub(crate) fn top_level_variable(trimmed: &str, indent: usize) -> Option<String> {
-    if indent != 0 {
-        return None;
-    }
-    ["const", "final", "var"]
-        .iter()
-        .find_map(|keyword| variable_name_after_keyword(trimmed, keyword))
-}
-
 pub(crate) fn variable_name_after_keyword(trimmed: &str, keyword: &str) -> Option<String> {
     let rest = trimmed.strip_prefix(keyword)?.trim_start();
     let before_equals = rest.split_once('=').map_or(rest, |(left, _)| left).trim();
     before_equals.split_whitespace().last().map(str::to_string)
 }
 
-pub(crate) fn string_constant_from_line(
-    trimmed: &str,
+/// Collects a top-level `const`/`final` string constant whose initializer is a string literal.
+///
+/// The initializer may span source lines and may be built from adjacent literals; the returned span is
+/// the exact literal range rather than the declaration line. An initializer that is not a literal, for
+/// example `final value = readString('key');`, is deliberately not reported as a string constant.
+pub(crate) fn string_constant_at(
+    source: &str,
+    line: &str,
     indent: usize,
-    span: SourceSpan,
+    byte_start: usize,
 ) -> Option<DartStringConstant> {
     if indent != 0 {
         return None;
     }
-    let (left, right) = trimmed.trim_end_matches(';').split_once('=')?;
-    let left = left.trim();
-    let right = right.trim();
+    let (left, _) = line.trim_end_matches(';').split_once('=')?;
     let name = ["const", "final"]
         .iter()
-        .find_map(|keyword| variable_name_after_keyword(left, keyword))?;
-    let value = quoted_value(right)?;
+        .find_map(|keyword| variable_name_after_keyword(left.trim(), keyword))?;
+    let leading = line.len().saturating_sub(line.trim_start().len());
+    let literal_start = literal_position(source, byte_start + leading + left.len() + 1)?;
+    let (value, end) = crate::lexical::string_literals_value(source, literal_start)?;
 
-    Some(DartStringConstant { name, value, span })
+    Some(DartStringConstant {
+        name,
+        value,
+        span: span_for_byte_range(source, literal_start, end),
+    })
 }
 
-pub(crate) fn is_identifier(value: &str) -> bool {
-    let mut chars = value.chars();
-    matches!(chars.next(), Some(ch) if ch.is_ascii_alphabetic() || ch == '_')
-        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+/// Returns the byte index of a literal that starts right after the assignment, ignoring whitespace.
+fn literal_position(source: &str, from: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut at = from.min(bytes.len());
+    while at < bytes.len() && bytes[at].is_ascii_whitespace() {
+        at += 1;
+    }
+    crate::lexical::string_literal_range(source, at).map(|_| at)
 }
 
 fn is_library_name(value: &str) -> bool {

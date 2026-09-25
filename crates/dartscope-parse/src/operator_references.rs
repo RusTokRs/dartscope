@@ -3,6 +3,7 @@ use dartscope_core::{
     DartIdentifierReferenceKind,
 };
 
+use crate::identifiers::{is_identifier_continue, is_identifier_start};
 use crate::member_reference_syntax::{declaration_name_range, declaration_span};
 use crate::source_lines::span_for_byte_range;
 
@@ -324,12 +325,4 @@ fn identifier_end(bytes: &[u8], mut at: usize) -> usize {
         at += 1;
     }
     at
-}
-
-fn is_identifier_start(byte: u8) -> bool {
-    byte.is_ascii_alphabetic() || byte == b'_'
-}
-
-fn is_identifier_continue(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
 }

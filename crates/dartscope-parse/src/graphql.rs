@@ -3,7 +3,8 @@ use dartscope_core::{
     DartGraphqlOperationType, DartGraphqlOperationUse, SourceSpan,
 };
 
-use crate::declarations::{is_identifier, next_identifier, variable_name_after_keyword};
+use crate::declarations::variable_name_after_keyword;
+use crate::identifiers::{is_identifier, leading_identifier};
 use crate::source_lines::{SourceLine, source_lines};
 
 pub(crate) fn extract_graphql_operations(
@@ -122,7 +123,20 @@ fn graphql_operation_name(rest: &str) -> Option<String> {
     if rest.starts_with('{') || rest.is_empty() {
         return None;
     }
-    next_identifier(rest)
+    next_graphql_name(rest)
+}
+
+/// Returns the leading GraphQL name: `[_A-Za-z][_0-9A-Za-z]*`.
+///
+/// GraphQL names never contain `$`, which is only a variable sigil in that language, so the GraphQL
+/// scanner does not use the Dart identifier rules from [`crate::identifiers`].
+fn next_graphql_name(input: &str) -> Option<String> {
+    let name: String = input
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+        .collect();
+    name.starts_with(|ch: char| ch.is_ascii_alphabetic() || ch == '_')
+        .then_some(name)
 }
 
 fn graphql_operation_variable_names(rest: &str) -> Vec<String> {
@@ -432,7 +446,7 @@ fn gql_constant_from_line(trimmed: &str) -> Option<String> {
     {
         return None;
     }
-    next_identifier(rest)
+    leading_identifier(rest).map(str::to_string)
 }
 
 fn callable_name_from_line(trimmed: &str) -> Option<String> {

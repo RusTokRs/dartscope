@@ -58,6 +58,43 @@ pre-1.0.
 - Loop lexical regions now retain exact reads, writes, and navigation through multi-declarator classic
   loops, existing-variable `for-in` targets, nested unbraced control statements, `try`/`on`/`catch`/
   `finally` bodies, and comments between chained clauses without leaking bindings after the loop.
+- Unqualified member calls, reads, and writes inside a callable with one exact enclosing type now
+  produce same-owner member facts only when the owner directly declares a matching method, field,
+  getter, or setter and no visible lexical binding, parameter, local function, or enclosing-owner
+  member shadows the spelling. Static-versus-instance evidence stays explicit, compound assignment and
+  increment targets keep their paired read-then-write facts, and missing or shadowed spellings remain
+  suppressed instead of fabricated.
+- The flattened `version_or_source` dependency string is now a lossless round trip of the typed
+  pubspec dependency source: values containing the `;` field separator are escaped on render and
+  unescaped on flatten, scalar `git`/`hosted` shorthands rebuild their typed source including a sibling
+  `version` key, and unknown `key=value` shapes degrade to the explicit `Other` variant.
+- `dartscope-cli` project traversal now sorts collected directory entries before descending, so
+  traversal-order diagnostics and traversal limits are deterministic across filesystems.
+- Declaration inventory is no longer line-anchored: declarations that do not start their source line
+  (one-line type bodies, second members or locals on a line, specifically typed and `late` top-level
+  variables, declarations after masked comments) are collected with exact spans, while multi-line
+  expression continuations never fabricate a declaration.
+- Metadata annotations no longer hide their declaration. `@override int get x => 1;`,
+  `@Deprecated('x') void f() {}`, annotated fields and locals, multi-line annotation arguments, and a
+  declaration sharing its line with an annotation's closing parenthesis are all reported.
+- Ordinary named factory constructors are collected as constructors instead of being skipped with a
+  fabricated `unsupported_concise_constructor` warning; only the unprefixed Dart 3.13 concise forms
+  emit that diagnostic, and declarations after them are still collected.
+- Top-level `const`/`final` string constants now report the complete literal value and its exact span:
+  triple-quoted and raw literals, literals spanning several lines, adjacent literal concatenation, and
+  escaped quotes are no longer truncated to an empty or partial value, and a non-literal initializer
+  such as `final value = readString('key');` is no longer reported as a string constant. Directive
+  URIs use the same literal scanner.
+- Dart identifiers are scanned with the language rule everywhere, including the dollar sign that
+  generated and framework-facing sources use (`_$UserFromJson`, `UrlRequestCallbackProxy$Interface`,
+  `jni$_`). Declaration names, import prefixes, combinators, type annotations, member and property
+  references, invocations, and the naming lint share one canonical scanner instead of twelve local
+  character classes, so `class Widget$Base` is no longer truncated to `Widget` and `count$` is no
+  longer confused with `count`. GraphQL names keep their own dollar-free grammar.
+- Unnamed `extension on T { ... }` declarations are reported instead of being dropped together with
+  every member of their body. The declaration carries an empty name and a stable
+  `<path>::extension:` symbol ID, its members keep it as parent, and the naming lint accepts the
+  nameless declaration and any dollar-decorated name.
 
 ### Compatibility
 

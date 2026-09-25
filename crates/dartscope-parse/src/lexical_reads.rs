@@ -1,3 +1,4 @@
+use crate::identifiers::{is_identifier_continue, is_identifier_start};
 use std::cmp::Reverse;
 
 use dartscope_core::{
@@ -6,6 +7,7 @@ use dartscope_core::{
 };
 
 use crate::source_lines::span_for_byte_range;
+use crate::unqualified_member_references::{enclosing_member, local_function_shadows};
 
 pub(crate) mod deferred;
 
@@ -55,6 +57,9 @@ pub(crate) fn collect_lexical_read_references(
         }
 
         let Some(binding) = select_visible_binding(bindings, token) else {
+            if let Some(reference) = member_read_reference(source, masked_source, analysis, token) {
+                reads.push(reference);
+            }
             continue;
         };
         reads.push(DartIdentifierReference {
@@ -72,6 +77,31 @@ pub(crate) fn collect_lexical_read_references(
     }
 
     reads
+}
+
+fn member_read_reference(
+    source: &str,
+    masked_source: &str,
+    analysis: &DartFileAnalysis,
+    token: IdentifierToken<'_>,
+) -> Option<DartIdentifierReference> {
+    let member = enclosing_member(analysis, masked_source, token.text, token.start)?;
+    if !member.owns_readable() || local_function_shadows(masked_source, &member, token.text) {
+        return None;
+    }
+    Some(DartIdentifierReference {
+        source_path: analysis.path.clone(),
+        name: token.text.to_string(),
+        prefix: Some(member.owner_symbol_id.to_string()),
+        kind: if member.is_static {
+            DartIdentifierReferenceKind::MemberPropertyReadStatic
+        } else {
+            DartIdentifierReferenceKind::MemberPropertyReadInstance
+        },
+        confidence: Confidence::High,
+        enclosing_symbol_id: innermost_callable_symbol(analysis, token.start),
+        span: span_for_byte_range(source, token.start, token.end),
+    })
 }
 
 fn select_visible_binding<'a>(
@@ -411,12 +441,4 @@ fn next_non_whitespace(bytes: &[u8], mut at: usize) -> Option<usize> {
         at += 1;
     }
     (at < bytes.len()).then_some(at)
-}
-
-fn is_identifier_start(byte: u8) -> bool {
-    byte.is_ascii_alphabetic() || byte == b'_'
-}
-
-fn is_identifier_continue(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
 }

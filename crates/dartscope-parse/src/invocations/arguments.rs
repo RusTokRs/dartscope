@@ -1,7 +1,7 @@
 use dartscope_core::{DartInvocationArgument, DartMapEntry};
 
 use super::scanner::matching_delimiter;
-use crate::declarations::is_identifier;
+use crate::identifiers::is_identifier;
 use crate::source_lines::{line_span_for_byte, span_for_byte_range};
 
 pub(super) fn invocation_arguments(

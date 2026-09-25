@@ -1,4 +1,5 @@
 use super::IdentifierToken;
+use crate::identifiers::{is_identifier_continue, is_identifier_start};
 
 pub(super) fn arrow_parameter_range(source: &str, arrow: usize) -> Option<(usize, usize, usize)> {
     let bytes = source.as_bytes();
@@ -320,14 +321,6 @@ pub(super) fn next_non_whitespace(bytes: &[u8], mut at: usize) -> Option<usize> 
         at += 1;
     }
     (at < bytes.len()).then_some(at)
-}
-
-fn is_identifier_start(byte: u8) -> bool {
-    byte.is_ascii_alphabetic() || byte == b'_'
-}
-
-fn is_identifier_continue(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
 #[derive(Debug, Default)]

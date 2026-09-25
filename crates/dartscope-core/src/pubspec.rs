@@ -43,6 +43,211 @@ pub enum PubspecDependencySource {
     },
 }
 
+impl PubspecDependencySource {
+    /// Builds the typed source from flattened pubspec dependency fields.
+    ///
+    /// Keys use the flattened pubspec shape, such as `git.url`, `hosted.name`, `sdk`, `path`,
+    /// `version`, or a bare `workspace` flag. Unknown shapes are retained as [`Self::Other`] instead
+    /// of being reinterpreted as a version constraint.
+    pub fn from_flattened_fields(
+        fields: &std::collections::BTreeMap<String, String>,
+    ) -> Option<Self> {
+        if fields.is_empty() {
+            return None;
+        }
+        if fields
+            .get("workspace")
+            .is_some_and(|value| matches!(value.as_str(), "true" | "yes" | "on"))
+        {
+            return Some(Self::Workspace);
+        }
+        if let Some(sdk) = fields.get("sdk") {
+            return Some(Self::Sdk { sdk: sdk.clone() });
+        }
+        if let Some(path) = fields.get("path") {
+            return Some(Self::Path { path: path.clone() });
+        }
+        if has_source_prefix(fields, "git") {
+            return Some(Self::Git {
+                url: fields.get("git.url").or_else(|| fields.get("git")).cloned(),
+                reference: fields.get("git.ref").cloned(),
+                path: fields.get("git.path").cloned(),
+                version: fields.get("version").cloned(),
+                additional_fields: additional_source_fields(fields, "git"),
+            });
+        }
+        if has_source_prefix(fields, "hosted") {
+            return Some(Self::Hosted {
+                name: fields.get("hosted.name").cloned(),
+                url: fields
+                    .get("hosted.url")
+                    .or_else(|| fields.get("hosted"))
+                    .cloned(),
+                version: fields.get("version").cloned(),
+                additional_fields: additional_source_fields(fields, "hosted"),
+            });
+        }
+        if fields.len() == 1
+            && let Some(version) = fields.get("version")
+        {
+            return Some(Self::Version {
+                constraint: version.clone(),
+            });
+        }
+        Some(Self::Other {
+            value: fields
+                .iter()
+                .map(|(key, value)| format!("{key}={}", escape_source_field(value)))
+                .collect::<Vec<_>>()
+                .join(";"),
+        })
+    }
+
+    /// Renders the deterministic legacy `version_or_source` representation of this source.
+    ///
+    /// The rendering is derived from the typed source, so the typed model and its pre-1.0
+    /// compatibility projection cannot disagree. Field values escape `;` as `\;` so that URLs and
+    /// constraints containing field separators survive the legacy representation.
+    pub fn to_normalized_source(&self) -> String {
+        match self {
+            Self::Version { constraint } => constraint.clone(),
+            Self::Sdk { sdk } => format!("sdk:{sdk}"),
+            Self::Path { path } => format!("path:{path}"),
+            Self::Workspace => "workspace".to_string(),
+            Self::Other { value } => value.clone(),
+            Self::Git {
+                url,
+                reference,
+                path,
+                version,
+                additional_fields,
+            } => {
+                if additional_fields.is_empty()
+                    && reference.is_none()
+                    && path.is_none()
+                    && version.is_none()
+                    && let Some(url) = url
+                {
+                    return format!("git:{}", escape_source_field(url));
+                }
+                render_source_fields(
+                    "git",
+                    url.as_deref(),
+                    vec![
+                        ("path", path.clone()),
+                        ("ref", reference.clone()),
+                        ("url", url.clone()),
+                        ("version", version.clone()),
+                    ],
+                    additional_fields,
+                )
+            }
+            Self::Hosted {
+                name,
+                url,
+                version,
+                additional_fields,
+            } => {
+                if additional_fields.is_empty()
+                    && name.is_none()
+                    && version.is_none()
+                    && let Some(url) = url
+                {
+                    return format!("hosted:{}", escape_source_field(url));
+                }
+                render_source_fields(
+                    "hosted",
+                    name.as_deref(),
+                    vec![
+                        ("name", name.clone()),
+                        ("url", url.clone()),
+                        ("version", version.clone()),
+                    ],
+                    additional_fields,
+                )
+            }
+        }
+    }
+}
+
+fn has_source_prefix(fields: &std::collections::BTreeMap<String, String>, kind: &str) -> bool {
+    fields.contains_key(kind)
+        || fields
+            .keys()
+            .any(|key| key.starts_with(&format!("{kind}.")))
+}
+
+fn additional_source_fields(
+    fields: &std::collections::BTreeMap<String, String>,
+    kind: &str,
+) -> Vec<PubspecDependencySourceField> {
+    let prefix = format!("{kind}.");
+    fields
+        .iter()
+        .filter(|(key, _)| key.starts_with(&prefix) && !is_known_source_field(key, kind))
+        .map(|(key, value)| PubspecDependencySourceField {
+            key: key.trim_start_matches(&prefix).to_string(),
+            value: value.clone(),
+        })
+        .collect()
+}
+
+fn is_known_source_field(key: &str, kind: &str) -> bool {
+    match kind {
+        "git" => matches!(key, "git.url" | "git.ref" | "git.path"),
+        _ => matches!(key, "hosted.name" | "hosted.url"),
+    }
+}
+
+fn render_source_fields(
+    kind: &str,
+    bare: Option<&str>,
+    mut fields: Vec<(&str, Option<String>)>,
+    additional_fields: &[PubspecDependencySourceField],
+) -> String {
+    let mut rendered = additional_fields
+        .iter()
+        .map(|field| (field.key.clone(), escape_source_field(&field.value)))
+        .collect::<Vec<_>>();
+    rendered.extend(fields.drain(..).filter_map(|(key, value)| {
+        value.map(|value| (key.to_string(), escape_source_field(&value)))
+    }));
+    rendered.sort_by(|left, right| left.0.cmp(&right.0));
+    if rendered.is_empty() {
+        return bare.map_or_else(|| kind.to_string(), |bare| format!("{kind}:{bare}"));
+    }
+    let joined = rendered
+        .into_iter()
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect::<Vec<_>>()
+        .join(";");
+    format!("{kind}:{joined}")
+}
+
+fn escape_source_field(value: &str) -> String {
+    value.replace(';', "\\;")
+}
+
+fn split_source_fields(source: &str) -> Vec<&str> {
+    let mut fields = Vec::new();
+    let mut start = 0usize;
+    let bytes = source.as_bytes();
+    let mut at = 0usize;
+    while at < bytes.len() {
+        if bytes[at] == b';' && (at == 0 || bytes[at - 1] != b'\\') {
+            fields.push(&source[start..at]);
+            start = at + 1;
+        }
+        at += 1;
+    }
+    fields.push(&source[start..]);
+    fields
+}
+
+fn unescape_source_field(value: &str) -> String {
+    value.replace("\\;", ";")
+}
+
 /// A dependency source field outside the common git or hosted shape.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PubspecDependencySourceField {
@@ -201,10 +406,11 @@ impl PubspecDependency {
         span: SourceSpan,
     ) -> Self {
         debug_assert_eq!(
-            source,
-            version_or_source
+            version_or_source.as_deref(),
+            source
+                .as_ref()
+                .map(PubspecDependencySource::to_normalized_source)
                 .as_deref()
-                .map(parse_normalized_dependency_source)
         );
         let mut dependency = Self {
             name: name.into(),
@@ -262,7 +468,7 @@ pub fn parse_normalized_dependency_source(value: &str) -> PubspecDependencySourc
 fn parse_git_source(source: &str) -> PubspecDependencySource {
     if !looks_like_field_list(source) {
         return PubspecDependencySource::Git {
-            url: non_empty(source),
+            url: non_empty(&unescape_source_field(source)),
             reference: None,
             path: None,
             version: None,
@@ -298,7 +504,7 @@ fn parse_hosted_source(source: &str) -> PubspecDependencySource {
     if !looks_like_field_list(source) {
         return PubspecDependencySource::Hosted {
             name: None,
-            url: non_empty(source),
+            url: non_empty(&unescape_source_field(source)),
             version: None,
             additional_fields: Vec::new(),
         };
@@ -327,7 +533,7 @@ fn parse_hosted_source(source: &str) -> PubspecDependencySource {
 
 fn looks_like_field_list(source: &str) -> bool {
     !source.is_empty()
-        && source.split(';').all(|field| {
+        && split_source_fields(source).iter().all(|field| {
             field.split_once('=').is_some_and(|(key, _)| {
                 !key.is_empty()
                     && key
@@ -338,13 +544,13 @@ fn looks_like_field_list(source: &str) -> bool {
 }
 
 fn parse_fields(source: &str) -> Vec<PubspecDependencySourceField> {
-    source
-        .split(';')
+    split_source_fields(source)
+        .into_iter()
         .filter_map(|field| {
             let (key, value) = field.split_once('=')?;
             Some(PubspecDependencySourceField {
                 key: key.to_string(),
-                value: value.to_string(),
+                value: unescape_source_field(value),
             })
         })
         .collect()

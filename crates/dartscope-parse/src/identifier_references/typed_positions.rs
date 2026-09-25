@@ -5,6 +5,7 @@ use dartscope_core::{
     DartIdentifierReferenceKind, SourceSpan,
 };
 
+use crate::identifiers::{is_identifier_continue, is_identifier_start};
 use crate::source_lines::span_for_byte_range;
 
 #[derive(Debug, Clone, Copy)]
@@ -841,12 +842,4 @@ fn is_type_declaration(kind: DartDeclarationKind) -> bool {
             | DartDeclarationKind::Extension
             | DartDeclarationKind::ExtensionType
     )
-}
-
-fn is_identifier_start(byte: u8) -> bool {
-    byte.is_ascii_alphabetic() || byte == b'_'
-}
-
-fn is_identifier_continue(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
 }

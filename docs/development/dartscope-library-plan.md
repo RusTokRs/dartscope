@@ -369,19 +369,74 @@ Implemented slices:
 1. Normalized methods, traditional constructors, fields, getters, setters, operators, and
    local variables for class, mixin, enum, extension, and extension-type bodies.
 2. Deterministic hierarchical `symbol_id` and `parent_symbol_id` values for top-level,
-   member, and local declarations.
-3. Additive optional `declaration_span` values covering the complete supported declaration;
-   the existing `span` remains the compatibility anchor for the declaration's source line.
-4. Multiple fields in one declaration and both inferred and explicitly typed local variables.
+   member, and local declarations. Repeated names receive deterministic `#2`, `#3`, ... suffixes.
+3. Additive optional `declaration_span` values covering the complete supported declaration; the
+   existing `span` is a source-line anchor only, so it starts at column 1 rather than the declaration
+   when the declaration does not start its line.
+4. Multiple fields in one declaration, multiple top-level variables in one declaration, `late` and
+   `late final` prefixes, and both inferred and explicitly typed local variables.
 5. Body-depth filtering that excludes constructor calls and other expressions from the
    declaration inventory.
 6. Explicit `unsupported_primary_constructor` and `unsupported_concise_constructor`
    diagnostics for Dart 3.13 syntax until language-version-aware parsing is implemented.
+7. **Defect fixed:** the inventory was line-anchored, so a declaration that did not begin its source
+   line was dropped and its line was not rescanned. Type bodies, annotated members, explicitly typed
+   and `late` top-level variables, same-line member/local declarations, and declarations after C-style
+   or line comments are now collected from their exact byte position while every span keeps its
+   source-line evidence. Multi-line expression continuations, masked comments, and multi-line
+   initializer arrows are covered by negatives so no declaration is fabricated from them.
+8. **Defect fixed:** leading metadata annotations were treated as an unparseable header, so
+   `@override int get x => 1;`, `@Deprecated('x') void f() {}`, annotated fields/locals, and a
+   declaration sharing its line with an annotation's closing parenthesis were all invisible. An
+   annotation-aware scanner now skips metadata before classifying the declaration.
+9. **Defect fixed:** ordinary named factory constructors such as `factory A.fromJson()` and
+   `const factory A.aliased() = B;` were misclassified as unsupported concise-constructor syntax and
+   skipped with a fabricated warning. Only the unprefixed Dart 3.13 forms (`new(...)`,
+   `factory <unqualified-name>(...)`) emit that diagnostic now, and declarations after a concise
+   constructor on the same line are still collected.
+10. **Defect fixed:** every scanner used a local character class that excluded `$`, so Dart names that
+    generated sources depend on were truncated at the first dollar sign. `class Widget$Base` was
+    reported as `Widget`, `Widget$Base? lookup$()` as `lookup`, and `count$` was indistinguishable from
+    `count`, which also corrupted import prefixes, combinators, type annotations, and member
+    references. One canonical module (`crates/dartscope-parse/src/identifiers.rs`) now owns
+    `IDENTIFIER_START`/`IDENTIFIER_PART` for the whole parser, twelve duplicated predicates are gone,
+    and GraphQL keeps its own dollar-free `Name` grammar.
+11. **Defect fixed:** an unnamed `extension on T { ... }` produced no declaration at all, so the
+    inventory lost the extension *and* every member of its body. Such an extension is now reported with
+    an empty name and the symbol ID `<path>::extension:` (repeat names keep `#2`, `#3`, ...), and its
+    members keep it as parent.
+
+Findings and limits:
+
+- An unnamed extension is reported with an empty `name`; the alternative would be dropping a
+  declaration that owns real members. Consumers that group declarations by name see one bucket with an
+  empty key, and the naming-convention rule treats it as "no convention to check".
+- Identifier rules are byte-based and ASCII-only, matching every other scanner in the parser backend.
+  Non-ASCII Dart identifiers are outside the conservative heuristic backend for now.
+- Enum constants are intentionally not modeled: `DartDeclarationKind` has no enum-constant variant, so
+  enum member scanning starts after the constant list's semicolon. Adding a public kind requires its own
+  compatibility decision.
+- Top-level `get`/`set` accessors are not part of the inventory. The task scope is declaration *bodies*,
+  so a top-level accessor is neither a variable nor a function and must not be fabricated as one.
+- Indentation still separates a declaration from an expression continuation at file scope, so a
+  multi-line expression whose continuation line happens to look like a declaration is not reported.
 
 Verification:
 
 - focused fixtures cover every required owner and member category, full spans, stable parents,
   local ownership, multiple fields, typed locals, and nearby constructor-call negatives;
+- `crates/dartscope-parse/tests/declaration_inventory_layout.rs`,
+  `crates/dartscope-parse/tests/declaration_inventory_constructors.rs`, and
+  `crates/dartscope-parse/tests/declaration_inventory_annotations.rs` cover one-line type bodies,
+  one-line members, multiple declarations per line, comment masking, annotated declarations,
+  annotated members and locals, multi-line annotation arguments, factory constructors, and
+  multi-line expression continuations;
+- `crates/dartscope-parse/tests/declaration_inventory_dollar_names.rs` and
+  `crates/dartscope-parse/tests/dollar_identifier_references.rs` plus
+  `crates/dartscope-index/tests/dollar_identifier_navigation.rs` cover dollar-decorated classes,
+  fields, getters, setters, methods, extension types, enums, locals, import prefixes, combinators,
+  privacy, and GraphQL constant names, and `crates/dartscope-parse/tests/string_constants.rs` covers
+  the literal scanner shared by string constants and directive URIs;
 - exact Rust 1.95 workspace tests, all-feature tests, formatting, and Clippy with warnings denied
   pass before finalization;
 - the finalization workflow repeats the repository checks before committing to `main`.
@@ -428,6 +483,14 @@ Implemented slices:
     `PubspecFlutterAssetSelectorPolicy::V1`, and older JSON defaulted to no default flavor plus
     policy `v1`. Commit `88e65e3c017b58ec9b64907efdeaa0e8d2ee67af` passed every hosted Rust 1.95.0
     Linux/Windows quality, test, edition, and feature context plus aggregate `dartscope/ci`.
+11. **Defect fixed:** the flattened `version_or_source` compatibility string was not a lossless
+    projection of the typed `PubspecDependencySource`. Values containing the `;` field separator and
+    scalar `git`/`hosted` shorthand lost or corrupted the source when a consumer echoed the string
+    back. `to_normalized_source`, `from_flattened_fields`, and the parse-side field splitter now share
+    one escaping contract, the constructor debug assertion compares against the rendered projection,
+    and `crates/dartscope-parse/tests/pubspec_dependency_sources.rs` covers the round trip for URL
+    values containing `;`, scalar git plus `version`, unknown `key=value` shapes, canonical legacy
+    strings, and bare `git:<url>` shorthand.
 
 Acceptance:
 
@@ -973,6 +1036,22 @@ Progress (2026-07-20):
     creating a new binding. Iterable-expression reads and body accesses remain independent and resolve
     through the same visible parameter or local interval; declared, pattern, member/index, and
     single-statement targets retain their existing conservative behavior.
+13. Added unqualified same-owner member facts for `method()` calls, property reads, and property
+    writes. A spelling is classified as a member only when the enclosing callable supplies one exact
+    owner symbol ID and that owner directly declares a matching method, field, getter, or setter, so
+    no member fact is fabricated from inheritance, extension lookup, or receiver inference.
+14. Suppression is explicit and evidence-based: `this`/`super` roots stay excluded, visible parameters,
+    block-locals, import prefixes, enclosing-owner members, and local function declarations always win
+    or suppress the member heuristic, and a compound assignment or increment emits the paired
+    read-then-write facts instead of one fabricated target.
+15. Static-versus-instance evidence is carried per fact, so `count` resolving to a static field and a
+    static `log()` call produce the static member kinds while instance members keep the existing
+    instance kinds. No new public reference kind or serialized field was added; the slice extends the
+    existing opt-in reference analysis output only.
+16. Index resolution reuses the directly declared exact-owner member inventory and keeps missing-owner
+    fallback, private-library visibility, validated parts, deterministic reverse references,
+    full-build versus immutable-snapshot parity, and rename invalidation covered by focused parser and
+    index fixtures.
 
 Findings and limits:
 
@@ -981,8 +1060,12 @@ Findings and limits:
   multi-declarator loops, single-statement/collection control flow,
   retroactive pre-declaration shadowing across earlier statements, definite-assignment/flow analysis,
   inherited members, extension lookup, implicit constructor selection, nested generic arguments,
-  SDK/external namespaces, metadata, type inference, member/index writes, and destructuring remain
+  SDK/external namespaces, metadata, type inference, member/index writes, destructuring, cascades,
+  null-aware access, and flow-sensitive behavior remain
   follow-up work.
+- Local function declarations are still not modeled as declarations; the unqualified-member guard
+  scans the masked callable body for a declaration-shaped occurrence and only ever suppresses member
+  evidence. Modeling local functions as bindings is a separate evidence-gated slice.
 - Every future reference kind remains opt-in and requires an explicit compatibility contract plus exact
   span and nearby-shadowing fixtures before it can enter public output.
 
@@ -1172,7 +1255,9 @@ Status: verified.
 
 LF and CRLF byte starts are derived from original source segments. File, pubspec, and
 package-config diagnostics carry normalized paths. Regression tests cover CRLF GraphQL,
-part directives, and flattened project diagnostics.
+part directives, and flattened project diagnostics. String constants and directive URIs are
+read through one lexical literal scanner, so raw strings, triple quotes, escaped quotes,
+adjacent concatenation, and multi-line literals keep exact spans and complete values.
 
 ### DS-PARSE-003: Modern Top-Level Type Forms
 
@@ -1331,8 +1416,16 @@ Do not resolve these conditions by silently expanding scope.
 
 ## Current Recommended Next Step
 
-Continue `DS-INDEX-006` with conservative unqualified variable read references resolved only
-through the new parser-produced lexical binding intervals. Write/assignment classification should
-remain a separate follow-up until compound assignments, increments, destructuring, and initializer
-ordering have explicit fixtures. Member/extension lookup and implicit constructor selection remain
-separate evidence-gated slices; `DS-COMPAT-001` remains research.
+Continue `DS-INDEX-006` with the next evidence-gated slice. Unqualified same-owner member calls, reads,
+and writes, explicit-`this` operator targets, constructor/direct-member navigation, and lexical
+variable read/write/update facts are now implemented and covered. The remaining bounded slices are
+inherited-member traversal, extension selection, implicit constructor selection, and receiver-type
+inference; each one requires its own fixtures and compatibility note before it enters public output.
+`DS-COMPAT-001` remains research.
+
+The 2026-09-25 review (see `docs/development/audit-findings-2026-09-25.md`) also identified the
+conservative backend's hand-written lexical scanning as the largest architectural risk: independent
+character classes had drifted from the Dart grammar and silently truncated every name containing `$`
+until `crates/dartscope-parse/src/identifiers.rs` became the single source of identifier rules. The
+same consolidation remains open for numbers, string escapes, and annotation/metadata handling, and is
+the prerequisite for language-version-aware parsing.

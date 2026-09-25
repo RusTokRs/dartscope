@@ -156,18 +156,22 @@ fn resolves_exact_field_getter_and_setter_targets() {
         "Service",
     );
 
+    let getter_read = occurrence(TYPES, "=> count;", "count");
+    let setter_write = occurrence(TYPES, "{ count = value; }", "count");
     let count_target =
         resolution_at(&batch.resolutions, "lib/client.dart", count_read).targets[0].clone();
     let references = context.find_references(std::slice::from_ref(&count_target));
     assert_eq!(references.results.len(), 1);
     assert_eq!(references.results[0].target, count_target);
-    assert_eq!(references.results[0].references.len(), 2);
+    assert_eq!(references.results[0].references.len(), 4);
     assert!(
         references.results[0]
             .references
             .iter()
             .all(|reference| reference.span.byte_start == count_read
-                || reference.span.byte_start == count_write)
+                || reference.span.byte_start == count_write
+                || reference.span.byte_start == getter_read
+                || reference.span.byte_start == setter_write)
     );
 }
 

@@ -10,8 +10,7 @@ use dartscope_resolve::parse_package_config;
 use crate::backend::{DartParser, HeuristicDartParser};
 use crate::declaration_inventory::collect_declaration_inventory;
 use crate::declarations::{
-    directive_like_without_semicolon, library_directive_name, part_of_value,
-    string_constant_from_line,
+    directive_like_without_semicolon, library_directive_name, part_of_value, string_constant_at,
 };
 use crate::graphql::{extract_graphql_operation_uses, extract_graphql_operations};
 use crate::identifier_references::{collect_identifier_references, sort_identifier_references};
@@ -81,7 +80,13 @@ impl FileAnalysisState {
             .count();
 
         self.observe_merge_conflict(code_trimmed, &span);
-        self.observe_dart_item(code_trimmed, source_trimmed, indent, &span);
+        self.observe_dart_item(
+            code_trimmed,
+            source_trimmed,
+            indent,
+            &span,
+            source_line.byte_start + line.len() - line.trim_start().len(),
+        );
 
         if directive_like_without_semicolon(code_trimmed) {
             self.analysis.diagnostics.push(DartDiagnostic::warning(
@@ -108,6 +113,7 @@ impl FileAnalysisState {
         source_trimmed: &str,
         indent: usize,
         span: &SourceSpan,
+        source_start: usize,
     ) {
         if let Some(name) = library_directive_name(code_trimmed) {
             self.analysis.library = Some(DartLibraryDirective {
@@ -131,7 +137,8 @@ impl FileAnalysisState {
             });
         }
 
-        if let Some(constant) = string_constant_from_line(source_trimmed, indent, span.clone()) {
+        let constant = string_constant_at(&self.source, source_trimmed, indent, source_start);
+        if let Some(constant) = constant {
             self.analysis.string_constants.push(constant);
         }
     }

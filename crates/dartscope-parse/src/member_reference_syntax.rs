@@ -1,3 +1,4 @@
+use crate::identifiers::{is_identifier_continue, is_identifier_start};
 use dartscope_core::{DartDeclaration, DartDeclarationKind, SourceSpan};
 
 pub(crate) fn declaration_name_range(
@@ -285,12 +286,4 @@ fn identifier_end(bytes: &[u8], mut at: usize) -> usize {
         at += 1;
     }
     at
-}
-
-fn is_identifier_start(byte: u8) -> bool {
-    byte.is_ascii_alphabetic() || byte == b'_'
-}
-
-fn is_identifier_continue(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
 }

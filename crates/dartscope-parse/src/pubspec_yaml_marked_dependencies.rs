@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use dartscope_core::pubspec::PubspecDependencySource;
 use dartscope_core::{
     DartDiagnostic, PubspecAnalysis, PubspecDependency, PubspecDependencySection, PubspecInput,
     normalize_path,
@@ -102,14 +103,13 @@ fn parse_dependency_section(
         return;
     };
     for entry in entries {
-        let DependencySourceParse::Valid(version_or_source) =
-            dependency_source(entry, syntax, path, analysis)
+        let DependencySourceParse::Valid(source) = dependency_source(entry, syntax, path, analysis)
         else {
             continue;
         };
-        let source = version_or_source
-            .as_deref()
-            .map(parse_normalized_dependency_source);
+        let version_or_source = source
+            .as_ref()
+            .map(PubspecDependencySource::to_normalized_source);
         analysis.dependencies.push(PubspecDependency::new(
             entry.key.clone(),
             section,
@@ -121,7 +121,7 @@ fn parse_dependency_section(
 }
 
 enum DependencySourceParse {
-    Valid(Option<String>),
+    Valid(Option<PubspecDependencySource>),
     Invalid,
 }
 
@@ -133,16 +133,19 @@ fn dependency_source(
 ) -> DependencySourceParse {
     match &entry.value.kind {
         NodeKind::Scalar(value) => {
-            if syntax.is_bare_wildcard_line(entry.key_span.start_line) {
-                DependencySourceParse::Valid(Some("*".to_string()))
+            let scalar = if syntax.is_bare_wildcard_line(entry.key_span.start_line) {
+                "*"
             } else {
-                DependencySourceParse::Valid(Some(value.clone()))
-            }
+                value.as_str()
+            };
+            DependencySourceParse::Valid(Some(parse_normalized_dependency_source(scalar)))
         }
         NodeKind::Mapping(entries) => {
             let mut fields = BTreeMap::new();
             if flatten_fields(entries, "", &mut fields, path, analysis) {
-                DependencySourceParse::Valid(normalize_dependency_source(&fields))
+                DependencySourceParse::Valid(PubspecDependencySource::from_flattened_fields(
+                    &fields,
+                ))
             } else {
                 DependencySourceParse::Invalid
             }
@@ -198,60 +201,6 @@ fn flatten_fields(
         }
     }
     valid
-}
-
-fn normalize_dependency_source(fields: &BTreeMap<String, String>) -> Option<String> {
-    if fields.is_empty() {
-        return None;
-    }
-    if fields
-        .get("workspace")
-        .is_some_and(|value| matches!(value.as_str(), "true" | "yes" | "on"))
-    {
-        return Some("workspace".to_string());
-    }
-    if let Some(value) = fields.get("sdk") {
-        return Some(format!("sdk:{value}"));
-    }
-    if let Some(value) = fields.get("path") {
-        return Some(format!("path:{value}"));
-    }
-    if fields.contains_key("git") || fields.keys().any(|key| key.starts_with("git.")) {
-        return Some(format_source_fields("git", fields));
-    }
-    if fields.contains_key("hosted") || fields.keys().any(|key| key.starts_with("hosted.")) {
-        return Some(format_source_fields("hosted", fields));
-    }
-    if fields.len() == 1
-        && let Some(version) = fields.get("version")
-    {
-        return Some(version.clone());
-    }
-    Some(
-        fields
-            .iter()
-            .map(|(key, value)| format!("{key}={value}"))
-            .collect::<Vec<_>>()
-            .join(";"),
-    )
-}
-
-fn format_source_fields(kind: &str, fields: &BTreeMap<String, String>) -> String {
-    let mut parts = Vec::new();
-    for (key, value) in fields {
-        if key == kind {
-            parts.push(value.clone());
-        } else if let Some(suffix) = key.strip_prefix(&format!("{kind}.")) {
-            parts.push(format!("{suffix}={value}"));
-        } else if key == "version" {
-            parts.push(format!("version={value}"));
-        }
-    }
-    if parts.is_empty() {
-        kind.to_string()
-    } else {
-        format!("{kind}:{}", parts.join(";"))
-    }
 }
 
 fn scalar_value(node: &Node) -> Option<&str> {

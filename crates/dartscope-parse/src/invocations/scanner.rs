@@ -1,3 +1,5 @@
+use crate::identifiers::{is_identifier_continue, is_identifier_start};
+
 #[derive(Debug, Clone)]
 pub(super) struct CallCandidate {
     pub(super) target: String,
@@ -130,7 +132,7 @@ fn is_chain_start(bytes: &[u8], at: usize) -> bool {
     if at == 0 {
         return true;
     }
-    !matches!(bytes[at - 1], b'.' | b'$') && !is_identifier_continue(bytes[at - 1])
+    !matches!(bytes[at - 1], b'.') && !is_identifier_continue(bytes[at - 1])
 }
 
 fn identifier_end(bytes: &[u8], mut at: usize) -> usize {
@@ -148,14 +150,6 @@ fn skip_whitespace(bytes: &[u8], mut at: usize) -> usize {
         at += 1;
     }
     at
-}
-
-fn is_identifier_start(byte: u8) -> bool {
-    byte.is_ascii_alphabetic() || byte == b'_'
-}
-
-fn is_identifier_continue(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
 fn is_reserved_target(target: &str) -> bool {
