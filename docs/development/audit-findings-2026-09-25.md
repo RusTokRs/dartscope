@@ -26,7 +26,8 @@ started from `b9134c6` ("Bound CLI project traversal (#149)").
 | `python3 -m unittest discover -s tools/tests` | 22 passed |
 | `tools/check-repository-consistency.py`, `check-workflow-policy.py`, `check-dependency-policy.py` | pass |
 | CLI smoke: success path, expected failure, `lint` findings/config exit codes | pass |
-| Corpus differential check: `dart-lang/http`, `felangel/bloc`, `dart-lang/shelf` | 0 missing / 0 extra type declarations after finding 9 |
+| Corpus differential check: `dart-lang/http`, `felangel/bloc`, `dart-lang/shelf` (1053 Dart files) | 0 missing / 0 extra type declarations after finding 9 |
+| `cargo metadata --no-deps --locked` on a pristine export | pass (`Cargo.lock` matches every manifest) |
 
 Local verification uses the pinned workspace sources with a locally assembled Rust 1.88 toolchain and
 path-patched dependency checkouts, because this environment cannot reach `static.rust-lang.org`,
@@ -236,9 +237,33 @@ These were reviewed and left alone; each is recorded so the next cycle does not 
 - **`cargo package --locked` cannot be exercised here.** Cargo rejects packaging with the path-patched
   vendored dependency set, and the sandbox cannot reach `crates.io`; archive validation remains a hosted
   CI gate. Likewise `cargo test --workspace --locked` is meaningful only in the repository checkout,
-  because the offline build copy rewrites `Cargo.lock` for the patched dependency set.
+  because the offline build copy rewrites `Cargo.lock` for the patched dependency set. What *was*
+  verified locally is that the committed lock is consistent with every manifest:
+  `cargo metadata --no-deps --locked` exits 0 on a pristine `git archive` export of the reviewed commit.
+- **Nested entry schemas are not frozen by the checked-in goldens.** `file-analysis-v1.json` and
+  `project-analysis-v1.json` serialise empty `files`, `declarations`, and related lists, so a change to
+  a field *inside* an entry would not fail
+  `checked_in_v1_golden_contracts_match_public_models`. The entry models are covered by the parser,
+  index, and CLI tests instead; adding a populated golden is a compatibility-policy decision, not a
+  defect, and is left for the next JSON-contract slice.
 - **Exact-toolchain and platform gates.** macOS arm64, Windows, fuzzing, RustSec, `cargo-machete`, and
   the benchmark signal are hosted-only; nothing in this review changed their configuration.
+
+## Reviewed And Found Sound
+
+These suspicions were chased to a conclusion and produced no change:
+
+- **`aggregate_graphql_contracts` iteration order.** The aggregation walks `cache.values()` over a
+  `BTreeMap<String, _>` and then calls `sort_contract_analysis`, so the result does not depend on
+  insertion or hash order.
+- **CLI JSON fixtures versus the public models.** No fixture references a field that the model does not
+  have, and no model field is missing from the golden contracts. The earlier suspicion about `members`
+  and `enclosing_symbol_id` was unfounded: `members` is not a field of any public model, and
+  `enclosing_symbol_id` appears only on index-facing reference and lexical-binding models, which no CLI
+  contract serialises.
+- **`var _ = 1;` symbol IDs.** A wildcard declaration keeps a deterministic `.../local_variable:_`
+  symbol ID (`#2`, `#3`, ... for repeats) that no reference can resolve to, because namespace and
+  lexical resolution both exclude wildcard names.
 
 ## Changed Paths
 
