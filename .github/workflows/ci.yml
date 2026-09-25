@@ -204,6 +204,32 @@ jobs:
         run: python3 tools/check-repository-consistency.py
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Surface Clippy diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          cargo clippy --workspace --all-targets --locked --message-format=json -- -D warnings > clippy.json 2>/dev/null || true
+          python3 - <<'PY'
+          import json
+          seen = set()
+          for line in open("clippy.json", errors="replace"):
+              try:
+                  message = json.loads(line)
+              except ValueError:
+                  continue
+              body = message.get("message") or {}
+              if body.get("level") not in ("error", "warning"):
+                  continue
+              code = (body.get("code") or {}).get("code") or "no-code"
+              spans = body.get("spans") or []
+              location = f"{spans[0]['file_name']}:{spans[0]['line_start']}:{spans[0]['column_start']}" if spans else "?"
+              key = (code, location)
+              if key in seen:
+                  continue
+              seen.add(key)
+              text = body.get("message", "").replace("%", "%25").replace("\n", " ")
+              print(f"::error::CLIPPY {code} {location} :: {text[:180]}")
+          PY
       - name: Build documentation
         env:
           RUSTDOCFLAGS: -D warnings
