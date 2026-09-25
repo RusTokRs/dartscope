@@ -231,10 +231,7 @@ pub(crate) fn string_literals_value(source: &str, start: usize) -> Option<(Strin
     let mut value = String::new();
     let mut end = None;
     let mut cursor = start.min(bytes.len());
-    loop {
-        let Some(range) = string_literal_range(source, cursor) else {
-            break;
-        };
+    while let Some(range) = string_literal_range(source, cursor) {
         value.push_str(&source[range.content_start..range.content_end]);
         end = Some(range.end);
         let mut next = range.end;
