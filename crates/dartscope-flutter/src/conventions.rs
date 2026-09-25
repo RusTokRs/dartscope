@@ -397,7 +397,7 @@ fn resolve_interpolated_string(value: &str, constants: &HashMap<&str, &str>) -> 
         }
         let mut name = String::new();
         while let Some(next) = chars.peek().copied() {
-            if next.is_ascii_alphanumeric() || next == '_' {
+            if next.is_ascii_alphanumeric() || matches!(next, '_' | '$') {
                 name.push(next);
                 chars.next();
             } else {

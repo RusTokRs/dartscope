@@ -1,0 +1,91 @@
+{
+  "schema": "dartscope.project-analysis",
+  "version": 1,
+  "data": {
+    "root": ".",
+    "files": [
+      {
+        "path": "lib/main.dart",
+        "language": "dart",
+        "library": null,
+        "imports": [
+          {
+            "uri": "package:foo/bar.dart",
+            "configurations": [],
+            "is_deferred": false,
+            "prefix": null,
+            "combinators": [],
+            "span": {
+              "byte_start": 0,
+              "byte_end": 27,
+              "start_line": 1,
+              "start_column": 1,
+              "end_line": 1,
+              "end_column": 28
+            }
+          }
+        ],
+        "exports": [],
+        "parts": [],
+        "part_of": null,
+        "declarations": [
+          {
+            "name": "MyClass",
+            "kind": "class",
+            "span": {
+              "byte_start": 0,
+              "byte_end": 15,
+              "start_line": 2,
+              "start_column": 1,
+              "end_line": 2,
+              "end_column": 16
+            },
+            "extends": null,
+            "mixes_in": [],
+            "symbol_id": "lib/main.dart::class:MyClass",
+            "declaration_span": {
+              "byte_start": 0,
+              "byte_end": 15,
+              "start_line": 2,
+              "start_column": 1,
+              "end_line": 2,
+              "end_column": 16
+            }
+          }
+        ],
+        "string_constants": [],
+        "graphql_operations": [],
+        "graphql_operation_uses": [],
+        "flutter": {
+          "imports_flutter": false,
+          "widgets": [],
+          "routes": [],
+          "assets": [],
+          "localizations": []
+        },
+        "diagnostics": []
+      }
+    ],
+    "pubspecs": [],
+    "package_configs": [],
+    "summary": {
+      "dart_files": 1,
+      "pubspecs": 0,
+      "package_configs": 0,
+      "imports": 1,
+      "exports": 0,
+      "parts": 0,
+      "declarations": 1,
+      "string_constants": 0,
+      "graphql_operations": 0,
+      "graphql_operation_uses": 0,
+      "flutter_widgets": 0,
+      "flutter_routes": 0,
+      "flutter_assets": 0,
+      "flutter_localizations": 0,
+      "package_dependencies": 0,
+      "diagnostics": 0
+    },
+    "diagnostics": []
+  }
+}

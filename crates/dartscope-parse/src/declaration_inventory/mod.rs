@@ -212,11 +212,16 @@ fn top_level_records(
             name: name.clone(),
             kind,
             span: anchor.clone(),
-            extends: (kind == DartDeclarationKind::Class)
-                .then(|| value_after_keyword(header, "extends"))
-                .flatten(),
+            extends: match kind {
+                DartDeclarationKind::Class => value_after_keyword(header, "extends"),
+                DartDeclarationKind::Extension => value_after_keyword(header, "on"),
+                _ => None,
+            },
             mixes_in: if kind == DartDeclarationKind::Class {
                 values_after_keyword(header, "with")
+            } else if kind == DartDeclarationKind::Mixin {
+                // `mixin M on A, B` — treat `on` constraints as ancestors
+                values_after_keyword(header, "on")
             } else {
                 Vec::new()
             },

@@ -232,20 +232,36 @@ fn resolve_instance_reference(
             ))
     });
     owners.dedup();
-    let refinements = owners
+    let mut refinements = owners
         .iter()
         .map(|owner| {
-            refine_direct_member(
+            refine_instance_member_with_inheritance(
+                analysis,
                 member_index,
                 namespace,
                 &reference.source_path,
                 owner,
                 &reference.name,
-                false,
                 member_use,
             )
         })
         .collect::<Vec<_>>();
+    if refinements.is_empty()
+        || refinements
+            .iter()
+            .all(|refinement| refinement.status == DartDefinitionResolutionStatus::Missing)
+    {
+        if let Some(extension) = refine_extension_member(
+            analysis,
+            member_index,
+            namespace,
+            &reference.source_path,
+            &reference.name,
+            member_use,
+        ) {
+            refinements.push(extension);
+        }
+    }
     finish_resolution(reference, refinements, Vec::new())
 }
 
@@ -505,6 +521,246 @@ fn refine_direct_member(
             .into_iter()
             .map(DartDefinitionTarget::Namespace)
             .collect(),
+    }
+}
+
+fn refine_instance_member_with_inheritance(
+    analysis: &DartProjectReferenceAnalysis,
+    member_index: &MemberIndex,
+    namespace: &NamespaceResolver<'_, '_>,
+    source_path: &str,
+    owner: &DartSymbolCandidate,
+    member_name: &str,
+    member_use: MemberUse,
+) -> MemberRefinement {
+    let direct = refine_direct_member(
+        member_index,
+        namespace,
+        source_path,
+        owner,
+        member_name,
+        false,
+        member_use,
+    );
+    if direct.status != DartDefinitionResolutionStatus::Missing {
+        return direct;
+    }
+    if let Some(inherited) = refine_inherited_instance_member(
+        analysis,
+        member_index,
+        namespace,
+        source_path,
+        owner,
+        member_name,
+        member_use,
+    ) {
+        return inherited;
+    }
+    if let Some(extension) = refine_extension_member(
+        analysis,
+        member_index,
+        namespace,
+        source_path,
+        member_name,
+        member_use,
+    ) {
+        return extension;
+    }
+    direct
+}
+
+fn refine_inherited_instance_member(
+    analysis: &DartProjectReferenceAnalysis,
+    member_index: &MemberIndex,
+    namespace: &NamespaceResolver<'_, '_>,
+    source_path: &str,
+    owner: &DartSymbolCandidate,
+    member_name: &str,
+    member_use: MemberUse,
+) -> Option<MemberRefinement> {
+    let owner_symbol_id = owner.symbol_id.as_deref()?;
+    let owner_decl = find_declaration_by_symbol_id(analysis, owner_symbol_id)?;
+    let mut ancestors: Vec<String> = Vec::new();
+    if let Some(extends) = &owner_decl.extends {
+        ancestors.push(extends.clone());
+    }
+    ancestors.extend(owner_decl.mixes_in.clone());
+    if ancestors.is_empty() {
+        return None;
+    }
+    let mut inherited_targets: Vec<DartSymbolCandidate> = Vec::new();
+    let mut inherited_statuses: Vec<DartDefinitionResolutionStatus> = Vec::new();
+    for qualified in ancestors {
+        let (prefix, name) = split_qualified(&qualified);
+        let query = DartSymbolQuery {
+            source_path: owner.declaration_path.clone(),
+            name,
+            prefix,
+        };
+        let resolution =
+            resolve_member_owner_with_resolver(&analysis.project, query, namespace);
+        for candidate in resolution.candidates {
+            let refinement = refine_direct_member(
+                member_index,
+                namespace,
+                source_path,
+                &candidate,
+                member_name,
+                false,
+                member_use,
+            );
+            if refinement.status != DartDefinitionResolutionStatus::Missing {
+                inherited_statuses.push(refinement.status);
+                inherited_targets.extend(
+                    refinement
+                        .targets
+                        .iter()
+                        .filter_map(|target| match target {
+                            DartDefinitionTarget::Namespace(candidate) => Some(candidate.clone()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>(),
+                );
+            }
+        }
+    }
+    if inherited_targets.is_empty() {
+        return None;
+    }
+    inherited_targets.sort_by(|left, right| {
+        (
+            &left.declaration_path,
+            left.declaration_span.byte_start,
+            &left.name,
+            left.kind,
+            &left.symbol_id,
+        )
+            .cmp(&(
+                &right.declaration_path,
+                right.declaration_span.byte_start,
+                &right.name,
+                right.kind,
+                &right.symbol_id,
+            ))
+    });
+    inherited_targets.dedup();
+    let targets = inherited_targets
+        .into_iter()
+        .map(DartDefinitionTarget::Namespace)
+        .collect::<Vec<_>>();
+    let status = combine_statuses(&inherited_statuses, targets.len());
+    Some(MemberRefinement { status, targets })
+}
+
+fn refine_extension_member(
+    analysis: &DartProjectReferenceAnalysis,
+    member_index: &MemberIndex,
+    namespace: &NamespaceResolver<'_, '_>,
+    source_path: &str,
+    member_name: &str,
+    member_use: MemberUse,
+) -> Option<MemberRefinement> {
+    let mut extension_candidates: Vec<DartSymbolCandidate> = Vec::new();
+    let mut extension_statuses: Vec<DartDefinitionResolutionStatus> = Vec::new();
+    for member in &member_index.members {
+        if member.is_static {
+            continue;
+        }
+        if member.candidate.name != member_name {
+            continue;
+        }
+        if !candidate_matches_use(member.candidate.kind, member_use) {
+            continue;
+        }
+        let Some(owner_decl) =
+            find_declaration_by_symbol_id(analysis, member.owner_symbol_id.as_str())
+        else {
+            continue;
+        };
+        if !matches!(
+            owner_decl.kind,
+            DartDeclarationKind::Extension | DartDeclarationKind::ExtensionType
+        ) {
+            continue;
+        }
+        // Without receiver inference we accept any extension with a matching member name.
+        // A future `on`-type-aware filter can be added once receiver-type inference is available:
+        //   if owner_decl.extends.as_deref() != Some(inferred_receiver) { continue; }
+        let is_private = member_name.starts_with('_');
+        let same_library =
+            namespace.same_library(source_path, &member.candidate.declaration_path);
+        let visible = !is_private || same_library;
+        let mut candidate = member.candidate.clone();
+        if !visible {
+            candidate.basis = DartSymbolResolutionBasis::NotVisible;
+            extension_statuses.push(DartDefinitionResolutionStatus::NotVisible);
+        } else {
+            let basis = if member.candidate.declaration_path == source_path {
+                DartSymbolResolutionBasis::SameFile
+            } else if same_library {
+                DartSymbolResolutionBasis::SameLibrary
+            } else {
+                // Extension from an imported library — conservatively report as DirectImport.
+                // Exact import-graph check is deferred; the resolver is intentionally permissive
+                // without receiver inference.
+                DartSymbolResolutionBasis::DirectImport
+            };
+            candidate.basis = basis;
+            extension_statuses.push(DartDefinitionResolutionStatus::Resolved);
+        }
+        extension_candidates.push(candidate);
+    }
+    if extension_candidates.is_empty() {
+        return None;
+    }
+    extension_candidates.sort_by(|left, right| {
+        (
+            &left.declaration_path,
+            left.declaration_span.byte_start,
+            &left.name,
+            left.kind,
+            &left.symbol_id,
+        )
+            .cmp(&(
+                &right.declaration_path,
+                right.declaration_span.byte_start,
+                &right.name,
+                right.kind,
+                &right.symbol_id,
+            ))
+    });
+    extension_candidates.dedup();
+    let targets = extension_candidates
+        .into_iter()
+        .map(DartDefinitionTarget::Namespace)
+        .collect::<Vec<_>>();
+    let status = combine_statuses(&extension_statuses, targets.len());
+    Some(MemberRefinement { status, targets })
+}
+
+fn find_declaration_by_symbol_id<'a>(
+    analysis: &'a DartProjectReferenceAnalysis,
+    symbol_id: &str,
+) -> Option<&'a dartscope_core::DartDeclaration> {
+    for file in &analysis.project.files {
+        for declaration in &file.declarations {
+            if declaration.symbol_id.as_deref() == Some(symbol_id) {
+                return Some(declaration);
+            }
+        }
+    }
+    None
+}
+
+fn split_qualified(qualified: &str) -> (Option<String>, String) {
+    if let Some((head, tail)) = qualified.rsplit_once('.') {
+        if head.is_empty() || tail.is_empty() {
+            (None, qualified.to_string())
+        } else {
+            (Some(head.to_string()), tail.to_string())
+        }
+    } else {
+        (None, qualified.to_string())
     }
 }
 

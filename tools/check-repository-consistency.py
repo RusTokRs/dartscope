@@ -11,7 +11,7 @@ import sys
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_PACKAGES = 9
+EXPECTED_PACKAGES = 10
 EXPECTED_WORKFLOWS = {"ci.yml", "release.yml"}
 STALE_PLAN_FRAGMENTS = (
     "Baseline reviewed on 2026-07-16.",

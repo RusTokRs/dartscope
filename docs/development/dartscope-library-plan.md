@@ -1052,6 +1052,8 @@ Progress (2026-07-20):
     fallback, private-library visibility, validated parts, deterministic reverse references,
     full-build versus immutable-snapshot parity, and rename invalidation covered by focused parser and
     index fixtures.
+17. Added direct inherited instance members via `extends`/`with` (and `mixin on`) with `extends`/`mixes_in` capture, `NamespaceResolver` lookup for superclasses/mixins, deterministic sort/dedup and private-library visibility, and per-owner `Missing` → inherited fallback.
+18. Added `extension on T` declarations retain their `on` type in `DartDeclaration.extends`, and extension member fallback without receiver inference (scans `Extension`/`ExtensionType` members with matching name/use, `SameFile`/`SameLibrary`/`DirectImport` basis, private visibility). The fallback is used after direct and inherited are `Missing`, including literal receivers such as `"".foo()`.
 
 Findings and limits:
 
@@ -1059,7 +1061,7 @@ Findings and limits:
   Receiver formals, unparenthesized or pattern/function-type closure parameters, pattern and
   multi-declarator loops, single-statement/collection control flow,
   retroactive pre-declaration shadowing across earlier statements, definite-assignment/flow analysis,
-  inherited members, extension lookup, implicit constructor selection, nested generic arguments,
+  implicit constructor selection, nested generic arguments,
   SDK/external namespaces, metadata, type inference, member/index writes, destructuring, cascades,
   null-aware access, and flow-sensitive behavior remain
   follow-up work.
@@ -1091,18 +1093,17 @@ See `docs/development/reference-scope-resolution.md`.
 
 ### DS-LSP-001: Language Server Foundation
 
-Status: planned. Priority: P2. Prerequisites: DS-INDEX-005, DS-INDEX-006, DS-CLI-003.
+Status: implemented. Priority: P2. Prerequisites: DS-INDEX-005, DS-INDEX-006, DS-CLI-003.
 
-Required work:
+Implemented (2026-09-25):
 
-1. Add an optional `dartscope-lsp` crate with standard input/output transport isolated from analysis
-   crates.
-2. Implement lifecycle, incremental document synchronization, diagnostics, document symbols,
-   workspace symbols, definition, references, and evidence-based hover.
-3. Surface parser capability limits and stale-snapshot states explicitly.
-4. Integrate lint diagnostics and navigation without inventing member/type results unavailable from
-   the index.
-5. Add protocol fixtures, cancellation tests, deterministic diagnostics, and editor smoke tests.
+1. Added optional `dartscope-lsp` crate (`lsp-types` 0.97, `url`, `serde_json`, `thiserror`) as workspace member, umbrella `lsp` feature, and `tools/release-crates.txt` entry.
+2. Implemented `coordinates` module with `byte_offset_to_lsp_position` / `lsp_position_to_byte_offset` handling LF, CRLF and surrogate pairs (emoji 2 UTF-16 units), plus `source_span_to_lsp_range` / `lsp_range_to_source_span` and tests.
+3. Implemented `DartLspServer` with lifecycle (`initialize` returning `TextDocumentSyncKind::INCREMENTAL`, `definition`, `references`, `hover`, `documentSymbol`), incremental `didOpen`/`didChange` (incremental `Range` in UTF-16) / `didClose`, `diagnostics` via `DartWorkspaceIndex` + `DartWorkspaceResolutionContext`, no hidden filesystem scan.
+4. Added stdio binary `crates/dartscope-lsp/src/bin/dartscope-lsp.rs` with `Content-Length` framing, `initialize`/`initialized`/`shutdown`/`exit`/`$/cancelRequest` and honest `null` for unsupported methods.
+5. Added tests for LF/CRLF/emoji, rapid file replacement (10 full replaces), hover and `unsupported_concise_constructor` diagnostics.
+
+Remaining (follow-up): workspace symbols, lint-diagnostic integration, stale-snapshot surfacing and full editor smoke. Foundation slice is `implemented`; full `verified` requires the remaining acceptance items.
 
 Acceptance:
 

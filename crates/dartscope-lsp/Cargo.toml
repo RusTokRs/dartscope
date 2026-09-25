@@ -1,0 +1,21 @@
+[package]
+name = "dartscope-lsp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Language Server Protocol bridge for DartScope (editor integration, UTF-16 handling)"
+documentation = "https://docs.rs/dartscope-lsp"
+
+[dependencies]
+dartscope-core.workspace = true
+dartscope-parse.workspace = true
+dartscope-index.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

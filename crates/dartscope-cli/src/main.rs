@@ -1,6 +1,7 @@
 mod input_limits;
 mod lint_command;
 
+use std::collections::VecDeque;
 use std::env;
 use std::fmt;
 use std::fs;
@@ -380,10 +381,13 @@ fn collect_sources(
     budget: &mut input_limits::ProjectInputBudget,
     traversal: &mut input_limits::ProjectTraversalBudget,
 ) -> Result<(), CliError> {
-    let mut pending_directories = vec![directory.to_path_buf()];
+    // Breadth-first queue (VecDeque + pop_front/push_back) keeps traversal order deterministic
+    // and sorted: each directory's entries are sorted, then enqueued in that order, so siblings
+    // are visited lexicographically and diagnostics are reproducible across hosts.
+    let mut pending_directories = VecDeque::from([directory.to_path_buf()]);
     traversal.ensure_pending_directories(directory, pending_directories.len(), limits)?;
 
-    while let Some(directory) = pending_directories.pop() {
+    while let Some(directory) = pending_directories.pop_front() {
         let entries = fs::read_dir(&directory).map_err(|error| {
             CliError::input(format!(
                 "failed to read directory {}: {error}",
@@ -418,7 +422,7 @@ fn collect_sources(
                         pending_directories.len(),
                         limits,
                     )?;
-                    pending_directories.push(path);
+                    pending_directories.push_back(path);
                 }
                 continue;
             }
