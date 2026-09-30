@@ -906,27 +906,68 @@ PY
 | `cargo package --workspace --locked --allow-dirty --no-verify` | 10 архивов |
 | `cargo clippy --workspace --all-targets --locked -- -D warnings` | **красный: 6 ошибок** (5 в LSP: `needless_update` ×2, `collapsible_if` ×2, `result_unit_err`; 1 — `nonminimal_bool` в моей правке теста) |
 
-Три красных LSP-теста, по-видимому, **дефекты самих тестов/ожиданий**: `handles_crlf` неверно нумерует байты (§3.4);
-`diagnostics_published_for_unsupported_syntax` ждёт диагностику на `class Foo { Foo.new(); }`, а это
-обычный именованный конструктор, не «concise»; `did_open_and_definition_round_trip` ждёт определение `bar` в
-`Foo().bar()`, но тип приёмника-выражения парсер не выводит (в плане «receiver inference» вне scope). Причины двух последних
-установлены по коду и месту падения (`server.rs:489`, `:510`), а не отдельным экспериментом.
+**Три красных LSP-теста — дефекты самих тестов [CI]** (после правки ожиданий патчем `lsp-test-fixes` все три зелёные, см.
+таблицу ниже): 
 
-Второй патч — `audit-2026-09-30-clippy-followup.patch` — закрывает те 6 ошибок Clippy. **Он не проверялся на CI**:
-к этому моменту токен GitHub в песочнице истёк и перезапустить зонд было невозможно (§1.3). Применять после первого,
-затем снова `cargo fmt --all` и `cargo clippy … -D warnings`; возможны новые замечания Clippy в бинарнике LSP,
-которые скрыты до компиляции lib-части.
+* `coordinates::tests::handles_crlf` — неверная нумерация байтов в ожиданиях: в `"a\r\nb\r\nc"` байт 3 — это `b`, первая буква
+  строки 1; реализация возвращает `(1, 0)` — верно, тест требовал `(0, 1)`;
+* `server::tests::diagnostics_published_for_unsupported_syntax` — входной `class Foo { Foo.new(); }` — обычный безымянный
+  конструктор; «concise»-форма Dart 3.13 — это ведущее `new` (`new();`), как в собственном тесте крейта `parse`
+  (`reports_dart_3_13_constructor_syntax_without_fabricating_members`);
+* `server::tests::did_open_and_definition_round_trip` — ждёт определение члена `bar` у приёмника-выражения `Foo().bar()`, но
+  вывод типа такого приёмника не реализован (в плане «receiver inference» вне scope); тест заменён на определение класса по
+  вызову `Foo()`. Исходный замысел (член через выражение-приёмник) остаётся **пробелом функциональности**.
 
-### 14.1а Приложенные патчи (в `docs/development/`)
+**Второй и третий патчи.** `audit-2026-09-30-clippy-followup.patch` закрывает остальные ошибки Clippy (6 из первой проверки и
+ещё 2 `unnecessary_cast` в тестовом коде LSP, которые проявились только после устранения первых — они были скрыты до
+компиляции lib-части; обнаружены повторной проверкой, исходная версия патча их пропускала). `audit-2026-09-30-lsp-test-fixes.patch`
+правит ожидания трёх тестов выше.
+
+### 14.1а Приложенные патчи (в `docs/development/`) и итог проверки
+
+Порядок применения (из корня репозитория):
+
+```
+git apply docs/development/audit-2026-09-30-unblock.patch
+git apply docs/development/audit-2026-09-30-clippy-followup.patch
+git apply docs/development/audit-2026-09-30-lsp-test-fixes.patch
+cargo fmt --all
+git apply docs/development/audit-2026-09-30-regression-tests.patch   # необязательно
+cargo fmt --all
+```
 
 | Файл | Назначение | Статус проверки |
 | --- | --- | --- |
-| `audit-2026-09-30-unblock.patch` | минимальный путь к компилируемому workspace: lock, `pubspec_yaml_marked`, мёртвый код, тест `literals`, `incremental.rs`, число крейтов, компиляция LSP | **проверен на CI** (macOS, прогон 36779944962; таблица выше) |
-| `audit-2026-09-30-clippy-followup.patch` | 6 оставшихся ошибок Clippy (LSP + моя правка теста); применять **после** первого | **не проверен** (см. §1.3) |
-| `audit-2026-09-30-regression-tests.patch` | 5 новых тестовых файлов: executable-спецификации находок (9 тестов с `#[ignore = "…"]`, пока дефекты не исправлены) + 5 проходящих тестов на циклы/глубокие цепочки | спецификации **компилировались и падали именно так, как описано** (macOS/Windows); после `git apply` нужен `cargo fmt --all` |
+| `audit-2026-09-30-unblock.patch` | минимальный путь к компилируемому workspace: lock, `pubspec_yaml_marked`, мёртвый код, тест `literals`, `incremental.rs`, число крейтов, компиляция LSP | **CI**: macOS, Ubuntu, Windows (прогоны 36779944962, 36785287092, 36785607267) |
+| `audit-2026-09-30-clippy-followup.patch` | оставшиеся ошибки Clippy (LSP, тест `literals`, 2 × `unnecessary_cast`) | **CI**: `cargo clippy --workspace --all-targets --locked -- -D warnings` зелёный |
+| `audit-2026-09-30-lsp-test-fixes.patch` | ожидания трёх красных тестов LSP (дефекты тестов) | **CI**: `cargo test --workspace --locked` — 401 passed, 0 failed, 1 ignored |
+| `audit-2026-09-30-regression-tests.patch` | 5 новых тестовых файлов: 9 executable-спецификаций с `#[ignore = "…"]` (пока дефекты не исправлены), 2 «сторожа» для §5.2 (проходят после первого патча), 8 проходящих проверок (5 на циклы/глубокие цепочки, 2 навигации, 1 лексики) | **CI**: набор по умолчанию — 411 passed, 0 failed, 10 ignored; с `--include-ignored` 9 спецификаций падают именно так, как описано |
 
-Порядок: `git apply …unblock.patch && git apply …clippy-followup.patch && cargo fmt --all`, затем
-`git apply …regression-tests.patch && cargo fmt --all`. Убирайте `#[ignore]` по мере исправления соответствующего пункта.
+**Итоговая проверка всех патчей подряд** (Rust 1.95.0; прогоны 36784982608 (macOS), 36785287092 (macOS, Ubuntu),
+36785607267 (Windows)): 
+
+| Стадия | `fmt --check` | `clippy -D warnings` | `cargo test --workspace --locked --no-fail-fast` |
+| --- | --- | --- | --- |
+| unblock + clippy-followup + lsp-test-fixes, затем `cargo fmt --all` | успех (macOS, Ubuntu) | **успех** (macOS, Ubuntu) | **401 passed, 0 failed, 1 ignored** (88 тестовых бинарников; macOS, Ubuntu) |
+| + regression-tests, затем `cargo fmt --all` | успех (macOS, Ubuntu) | **успех** (macOS, Ubuntu) | **411 passed, 0 failed, 10 ignored** (93 бинарника; macOS, Ubuntu) |
+| `--include-ignored` для 5 файлов регрессионных тестов | — | — | циклы 5/5 ✓; инкрементальность 2/2 ✓; навигация 2 ✓ + 4 ✗; Flutter 1 ✗; парсер 1 ✓ + 4 ✗ — 9 ✗ ожидаемы (macOS, Ubuntu) |
+| скрипты репозитория на дереве после патчей (чистая копия без файлов зонда) | `check-repository-consistency.py`, `check-workflow-policy.py`, `check-dependency-policy.py` — **успех**; `tools/tests` 22/22 (macOS, Ubuntu) | | |
+
+**Windows** (прогон 36785607267, `windows-2025`, checkout с `core.eol=lf`): все четыре патча применяются; `fmt --check` и
+`clippy -D warnings` — успех; `cargo test --workspace` — **394 passed, 0 failed, 1 ignored**, с регрессионным набором
+**404 / 0 / 10** (на 7 тестов меньше, чем на Unix, — это тесты под `cfg(unix)`; такая же разница наблюдалась до патчей:
+381 против 388). Скрипты-гейты в этом Windows-прогоне **не выполнены** (огрех моей подготовки копии дерева, не дефект репозитория)
+— они проверены только на macOS и Ubuntu.
+
+**Важно для Windows-разработчиков [CI]** (прогон 36785607267, job `applycheck`). При стандартном checkout Git for Windows
+(`core.autocrlf=true` в системном gitconfig) файлы `*.patch` получают CRLF: в `.gitattributes` для них нет правила, действует
+`* text=auto`. В результате **`git apply` отвергает каждый из четырёх патчей целиком** (`patch does not apply` даже для файлов с
+`eol=lf`), а `git apply --ignore-whitespace` применяет все четыре (проверено; для добавляемых файлов git предупреждает о
+лишних пробелах/CR). Обходы: `git apply --ignore-whitespace …` либо выкачать патчи с LF. Рекомендация: добавить в
+`.gitattributes` строку `*.patch text eol=lf` — сейчас на Windows-checkout также `tools/*.py` получают CRLF (`w/crlf`).
+
+Что **не** проверялось: полный `ci.yml` на дереве с патчами (джобы `fuzz` и `benchmark_report`, сборка целей `cargo fuzz`
+на nightly, сравнение бенчмарка «база против кандидата»), а также `release.yml`; это нужно сделать в PR.
 
 ### 14.2 Дальше по приоритетам
 
@@ -950,9 +991,11 @@ PY
 
 ### 15.1 Доказательная база (где искать)
 
-Результаты получены прогонами временного зонда на ветке `arena/01a0f406-dartscope` (коммиты
-`c5dc807…ca945ce`; скрипты: `audit-probe/`, workflow: `.github/workflows/audit-probe*.yml` — **в итоговом
-изменении удалены**, но сохранены в истории ветки; восстановить: `git checkout ca945ce -- audit-probe .github/workflows`). Прогоны (GitHub Actions):
+Результаты получены прогонами временного зонда на ветке `arena/01a0f406-dartscope` (коммиты `c5dc807…5f742b6`; скрипты:
+`audit-probe/`, workflow: `.github/workflows/audit-probe*.yml` — **в итоговом изменении удалены**, но сохранены в истории
+ветки). Восстановление: `git checkout 5f742b6 -- audit-probe .github/workflows/audit-probe-final.yml` (скрипты всех
+раундов и workflow заключительного раунда), `git checkout ca945ce -- .github/workflows` (workflow ранних раундов). Хеши
+существуют, пока существует ветка аудита (при squash-merge они останутся только в ней). Прогоны (GitHub Actions):
 
 | Что | Run | ОС |
 | --- | --- | --- |
@@ -965,26 +1008,43 @@ PY
 | верификация патча §14.1 | 36779944962 (`unblock`) | macOS, Windows |
 | масштабирование, мутационный fuzz, реальный корпус (shelf/bloc/riverpod/samples) | 36777676975 (`runtime-long`: job 110100168263, 110100168220) | macOS arm64 (31 мин), Ubuntu 24.04 (33 мин) |
 | циклы/глубокие цепочки и релизные гейты, повтор | 36779605707 (`extra`) | Ubuntu, Windows |
+| протокольный прогон LSP по проводу (G01–G16, §3.7) | 36783493869 (job 110119249858, `lsp`) | macOS arm64 |
+| матрица форм A3, `package_config`/`uri-graph` (C09/C10), замер `analyze-file` по каждому файлу `flutter/samples` | 36783493869 (job 110119250277, `runtime_final`) | macOS arm64 |
+| первая проверка всех патчей подряд (выявила 2 `unnecessary_cast`) | 36783493869 (job 110119250055, `patches`) | macOS arm64 |
+| повторная проверка, профиль callgrind | 36784291516 (job 110121850595, 110121850920) | macOS arm64, Ubuntu 24.04 |
+| патчи + тесты LSP, атрибуция профиля по вызывающим | 36784982608 (job 110124125405, 110124124957) | macOS arm64, Ubuntu 24.04 |
+| итоговая проверка патчей на трёх ОС, гейты репозитория | 36785287092 (jobs 110125114489, 110125114627, 110125114291), 36785607267 (jobs 110126155447, `applycheck`) | macOS, Ubuntu, Windows |
 
-### 15.2 Что не завершилось (и почему — без домыслов)
+### 15.2 Что не выполнено или выполнено частично (без домыслов)
 
-* `runtime-long` (macOS — 31 мин, Ubuntu — 33 мин; результаты — §10, §11). Лимит аннотации (4096 символов/шт.) обрезал хвост
-  корпусного отчёта (macOS: `shelf`, кроме `analyze-project`; Linux: `samples`, кроме `analyze-project` и `lint`), поэтому по
-  `flutter/samples` нет полного набора команд на обеих ОС. RSS на Linux не использован (искажён наследованием пика родителя).
-* Дифференциальная проверка против `package:analyzer` — **не выполнена**: установка упала на `dart pub get`
-  (analyzer 6.11.0 требует пакет `_macros`, которого нет в Dart SDK 3.13.5; предложено `analyzer ^14.4.0`, API
-  другое). Харнес остаётся в истории ветки (`audit-probe/diff/`, коммит `70cb749`) и требует адаптации.
-  Следствие: корректность инвентаря сверена только с ожиданиями из README и моими минимальными примерами, а не с эталонным
-  парсером Dart; возможны пропуски, которых я не искал.
-
+* **Дифференциальная проверка против `package:analyzer` — не выполнена**: установка упала на `dart pub get` (analyzer 6.11.0
+  требует пакет `_macros`, которого нет в Dart SDK 3.13.5; `analyzer ^14.4.0` имеет другой API). Харнес остаётся в истории
+  ветки (`audit-probe/diff/`, коммит `70cb749`) и требует адаптации. Следствие: корректность инвентаря сверена только с
+  ожиданиями из README и моими минимальными примерами (34 формы A3 и др.), а не с эталонным парсером Dart; возможны
+  пропуски, которых я не искал.
+* **Полный `ci.yml` и `release.yml` на дереве с патчами не запускались.** Проверены по отдельности `fmt`, `clippy`, `test`,
+  `doc`, `package`, скрипты политик и `tools/tests`; **не** проверены джобы `fuzz` (сборка целей `cargo fuzz` на nightly),
+  `benchmark_report` (сравнение «база — кандидат») и сам `release.yml`. Fuzz-цели (`cargo fuzz`) не запускались.
+* **LSP**: прогон по проводу выполнен на macOS, debug-сборка после компиляционного патча, скриптовым клиентом — не VS Code /
+  Neovim; чтение `rootUri` (п. 2 §3.2) и часть пунктов §3.3–3.6 остаются **[стат.]**; поведение на Linux/Windows (в частности на
+  огромный `Content-Length`) не проверялось.
+* **Реальный корпус**: `flutter/samples` на Linux — только `analyze-project` и `lint` (хвост отчёта обрезан лимитом аннотации
+  4096 символов), на macOS — SIGKILL по таймауту; у `shelf` (macOS) виден только `analyze-project`. Классификация
+  53 + 297 naming-предупреждений на «истинные/ложные» не проводилась. RSS на Linux не использован (искажён наследованием пика
+  родителя).
+* **Производительность**: профиль снят на синтетическом входе (600 и 1 200 классов) на Linux; эффект исправления не
+  измерялся (оценки в §10.3 — экстраполяция); вклад `collect_members`/`collect_locals` отдельно не атрибутирован.
+* **Гейты репозитория** (`check-repository-consistency.py` и др.) проверены на macOS и Ubuntu; на Windows в итоговом прогоне не
+  выполнялись (огрех подготовки копии дерева в зонде).
+* Живая загрузка SARIF в GitHub Code Scanning не проверялась (§7).
 
 ### 15.3 Сводка по количеству
 
 | Категория | Число |
 | --- | --- |
 | Блокеры сборки/CI (P0) | 6 групп (§0) |
-| Функциональные дефекты, подтверждённые исполнением (P1/P2) | 16 (квадратичная стоимость анализа файла; ложная Error на пустом `flutter:` (падение `lint` на `flutter/samples`); BOM; ложные Flutter-виджеты; выдуманные цели навигации; устаревшие спаны; перегрузка `extends`/`mixes_in`; паника на не-UTF-8 аргументе; паника на EPIPE; отказ на symlink-каталоге; отказ на не-UTF-8 файле; молчаливый пропуск каталогов; `root` с абсолютным путём; ложный `unterminated_string`; ложные naming-срабатывания; обход lint через `export`/conditional) |
-| Дефекты LSP (компиляция + статический разбор) | 24 пункта (§3) |
+| Функциональные дефекты, подтверждённые исполнением (P1/P2) | 18 (квадратичная стоимость анализа файла; ложная Error на пустом `flutter:` (падение `lint` на `flutter/samples`); функции и методы с `<T>`/функциональным типом результата выпадают из инвентаря; enum-константы и top-level accessors; BOM; ложные Flutter-виджеты; выдуманные цели навигации; устаревшие спаны; перегрузка `extends`/`mixes_in`; паника на не-UTF-8 аргументе; паника на EPIPE; отказ на symlink-каталоге; отказ на не-UTF-8 файле; молчаливый пропуск каталогов; `root` с абсолютным путём; ложный `unterminated_string`; ложные naming-срабатывания; обход lint через `export`/conditional) |
+| Дефекты LSP (компиляция, статический разбор, прогон по проводу) | 25 пунктов (§3), из них 13 подтверждены прогоном по проводу (§3.7) |
 | Пробелы реализации | 9 (§13) |
 | Расхождения документации/прошлых аудитов | 12 + 7 (§12) |
 
@@ -1002,6 +1062,10 @@ dartscope analyze-file big.dart | head -c 16 >/dev/null; echo "exit=${PIPESTATUS
 # отказ всего прогона из-за symlink на каталог — как в ios/.symlinks (§8.3)
 mkdir -p p/ios/.symlinks/plugins && ln -s /tmp p/ios/.symlinks/plugins/plugin
 dartscope analyze-project p; echo "exit=$?"                                 # exit=3
+
+# функции и методы с type-параметрами не инвентаризируются (§4.2)
+printf 'T first<T>(List<T> items) => items.first;\nclass Box {\n  R map<R>(R a) => a;\n}\n' > g.dart
+dartscope analyze-file g.dart | python3 -c "import json,sys; print([d['name'] for d in json.load(sys.stdin)['data']['declarations']])"   # нет `first` и `map`
 
 # lint без конфигурации ничего не проверяет (§7.1)
 dartscope lint . | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['summary'])"   # enabled_rules: 0
