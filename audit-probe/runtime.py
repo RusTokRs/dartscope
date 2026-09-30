@@ -620,8 +620,8 @@ def section_corpus():
     for root in roots:
         name = os.path.basename(root.rstrip("/"))
         dart_files = sum(1 for _b, _d, fs in os.walk(root) for f in fs if f.endswith(".dart"))
-        for command in (["analyze-project", root], ["lint", root, "--config", cfg]):
-            result = run(command, timeout=300)
+        for command in (["analyze-project", root], ["lint", root, "--config", cfg], ["flutter-inventory", root], ["uri-graph", root], ["graphql-contracts", root]):
+            result = run(command, timeout=240)
             doc = parse_json(result)
             note = ""
             if doc and command[0] == "analyze-project":
@@ -648,8 +648,16 @@ def section_corpus():
                 note += f" spans={checked} checked/{bad} bad"
                 if examples:
                     note += f" e.g. {examples[:2]}"
+            elif doc and command[0] == "lint":
+                import re as _re
+                patterns = {}
+                for d in doc["data"].get("diagnostics", []):
+                    key = _re.sub(r"`[^`]*`", "`X`", d["message"])[:70] + " | " + d["rule_id"].split(".")[-1]
+                    patterns[key] = patterns.get(key, 0) + 1
+                note = f"lint summary={doc['data']['summary']} top={dict(sorted(patterns.items(), key=lambda kv: -kv[1])[:5])}"
             elif doc:
-                note = f"lint summary={doc['data']['summary']}"
+                data = doc.get("data", {})
+                note = f"keys={sorted(data)[:8]} summary={str(data.get('summary'))[:160]}"
             else:
                 note = f"err={first_line(result['err'], 200)!r}"
             say(f"{name:14s} dart_files={dart_files:5d} {command[0]:16s} exit={result['code']} {result['secs']:.1f}s rss={result['rss_mb']:.0f}MB out={len(result['out'])//1024}KB {note}")
