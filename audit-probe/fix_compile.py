@@ -8,5 +8,10 @@ fixed = source.replace('\\"pubspec_invalid_yaml\\"', '"pubspec_invalid_yaml"').r
     '\\"pubspec YAML mapping is malformed: missing key for value\\"',
     '"pubspec YAML mapping is malformed: missing key for value"',
 )
+marker = 'let Some(key_node) = pending_key.take() else {'
+head, sep, tail = fixed.partition(marker)
+if sep:
+    tail = tail.replace("continue;", "return;", 1)
+    fixed = head + sep + tail
 path.write_text(fixed, encoding="utf-8")
-print("fixed stray backslashes in pubspec_yaml_marked.rs" if fixed != source else "nothing to fix")
+print("patched pubspec_yaml_marked.rs (stray backslashes, continue->return)" if fixed != source else "nothing to fix")
