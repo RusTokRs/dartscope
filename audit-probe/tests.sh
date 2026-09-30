@@ -6,8 +6,10 @@ cargo update --workspace >/dev/null 2>&1
 
 run test_workspace cargo test --workspace --exclude dartscope-lsp --no-fail-fast
 run test_lsp cargo test -p dartscope-lsp --no-fail-fast
+run test_fuzzing_feature cargo test -p dartscope-parse --features fuzzing --no-fail-fast
+run test_umbrella_allfeatures_nolsp cargo test -p dartscope --features parse,resolve,index,lints,json,flutter --no-fail-fast
 
-for f in test_workspace test_lsp; do
+for f in test_workspace test_lsp test_fuzzing_feature test_umbrella_allfeatures_nolsp; do
   grep -E '^(test result:|failures:|error(\[|:)|warning: unused|thread .* panicked|test .* FAILED|     Running|   Doc-tests)' "$OUT/$f.log" > "$OUT/$f.summary" 2>&1 || true
   {
     echo "--- totals ---"

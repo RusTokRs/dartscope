@@ -8,11 +8,19 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: audit-probe
+  cancel-in-progress: true
+
 jobs:
   baseline:
-    name: probe-baseline
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    name: baseline (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -20,12 +28,17 @@ jobs:
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
       - name: Baseline checks
+        shell: bash
         run: bash audit-probe/baseline.sh
 
   tests:
-    name: probe-tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    name: tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -33,4 +46,59 @@ jobs:
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal
       - name: Workspace tests
+        shell: bash
         run: bash audit-probe/tests.sh
+
+  runtime:
+    name: runtime (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal
+      - name: CLI runtime probe
+        shell: bash
+        run: bash audit-probe/runtime.sh
+
+  runtime-long:
+    name: runtime-long (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal
+      - name: Scaling, fuzzing and corpus probe
+        shell: bash
+        run: bash audit-probe/runtime2.sh
+
+  lsp:
+    name: lsp (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component clippy
+      - name: LSP probe
+        shell: bash
+        run: bash audit-probe/lsp.sh

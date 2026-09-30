@@ -4,7 +4,7 @@ source "$GITHUB_WORKSPACE/audit-probe/lib.sh"
 cd "$GITHUB_WORKSPACE"
 
 # --- annotation size experiment (how large may one annotation be?) ---
-python3 - <<'PY' >"$OUT/sizes.txt"
+"$PY" - <<'PY' >"$OUT/sizes.txt"
 import string
 for size in (10_000, 30_000, 60_000, 120_000):
     body = ("".join(string.ascii_lowercase[i % 26] for i in range(size - 20)))

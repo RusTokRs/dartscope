@@ -3,6 +3,8 @@
 set -u
 OUT="${RUNNER_TEMP:-/tmp}/probe-out"
 mkdir -p "$OUT"
+PY="$(command -v python3 || command -v python)"
+export PROBE_OUT="$OUT"
 
 # run NAME CMD...  -> $OUT/NAME.log with trailing [exit=..] marker; never aborts the script.
 run() {
@@ -21,5 +23,5 @@ run() {
 
 # emit TITLE FILE [emit.py args...]
 emit() {
-  python3 "$GITHUB_WORKSPACE/audit-probe/emit.py" "$@"
+  "$PY" "$GITHUB_WORKSPACE/audit-probe/emit.py" "$@"
 }
