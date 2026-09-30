@@ -57,10 +57,12 @@ for spec in spec_index spec_flutter spec_parse; do
   emit "$spec" "$OUT/$spec.sum" --chunk 3900 --max 1
 done
 
-# Repository consistency gate and python unit tests on a clean copy of the patched tree (without the probe files).
+# Repository gates on a clean, git-initialised copy of the patched tree (without the probe files).
 CLEAN="$RUNNER_TEMP/clean"; rm -rf "$CLEAN"; mkdir -p "$CLEAN"
 git ls-files -z --cached --others --exclude-standard | grep -zv -e '^audit-probe/' -e '^.github/workflows/audit-probe' | xargs -0 tar -cf - | tar -xf - -C "$CLEAN"
-( cd "$CLEAN" && run consistency "$PY" tools/check-repository-consistency.py )
+( cd "$CLEAN" && git init -q && git add -A && run consistency "$PY" tools/check-repository-consistency.py )
+( cd "$CLEAN" && run workflow_policy "$PY" tools/check-workflow-policy.py )
+( cd "$CLEAN" && run dependency_policy "$PY" tools/check-dependency-policy.py )
 ( cd "$CLEAN" && run pyunit "$PY" -m unittest discover -s tools/tests )
-{ tail -c 1500 "$OUT/consistency.log"; echo; tail -c 400 "$OUT/pyunit.log"; } > "$OUT/consistency.sum"
-emit consistency "$OUT/consistency.sum" --chunk 3000 --max 1
+{ for n in consistency workflow_policy dependency_policy pyunit; do echo "--- $n"; tail -c 700 "$OUT/$n.log"; echo; done; } > "$OUT/gates.sum"
+emit gates "$OUT/gates.sum" --chunk 3900 --max 1
