@@ -3,6 +3,7 @@
 source "$GITHUB_WORKSPACE/audit-probe/lib.sh"
 cd "$GITHUB_WORKSPACE"
 cargo update --workspace >/dev/null 2>&1
+"$PY" audit-probe/fix_compile.py
 
 run test_workspace cargo test --workspace --exclude dartscope-lsp --no-fail-fast
 run test_lsp cargo test -p dartscope-lsp --no-fail-fast

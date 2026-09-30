@@ -3,6 +3,7 @@
 source "$GITHUB_WORKSPACE/audit-probe/lib.sh"
 cd "$GITHUB_WORKSPACE"
 cargo update --workspace >/dev/null 2>&1
+"$PY" audit-probe/fix_compile.py
 
 run build_cli cargo build --release -p dartscope-cli --message-format short
 emit build_cli "$OUT/build_cli.log" --chunk 6000 --max 1 --tail

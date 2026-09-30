@@ -3,6 +3,7 @@
 source "$GITHUB_WORKSPACE/audit-probe/lib.sh"
 cd "$GITHUB_WORKSPACE"
 cargo update --workspace >/dev/null 2>&1
+"$PY" audit-probe/fix_compile.py
 
 run lsp_check_unpatched cargo check -p dartscope-lsp --all-targets --message-format short
 emit lsp_check_unpatched "$OUT/lsp_check_unpatched.log" --chunk 12000 --max 2
