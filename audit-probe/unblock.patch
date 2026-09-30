@@ -1,0 +1,212 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index e0cba57..9e462a0 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -184,7 +184,7 @@ jobs:
+         run: |
+           cargo +1.95.0 package --workspace --locked --allow-dirty --no-verify
+           archive_count="$(find target/package -maxdepth 1 -type f -name 'dartscope-*.crate' | wc -l | tr -d ' ')"
+-          test "$archive_count" = "9"
++          test "$archive_count" = "10"
+ 
+   quality:
+     name: Quality gates
+diff --git a/Cargo.lock b/Cargo.lock
+index dad9f48..a403e4d 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -17,6 +17,7 @@ dependencies = [
+  "dartscope-index",
+  "dartscope-json",
+  "dartscope-lints",
++ "dartscope-lsp",
+  "dartscope-parse",
+  "dartscope-resolve",
+ ]
+@@ -80,6 +81,18 @@ dependencies = [
+  "serde_json",
+ ]
+ 
++[[package]]
++name = "dartscope-lsp"
++version = "0.1.0"
++dependencies = [
++ "dartscope-core",
++ "dartscope-index",
++ "dartscope-parse",
++ "serde",
++ "serde_json",
++ "thiserror",
++]
++
+ [[package]]
+ name = "dartscope-parse"
+ version = "0.1.0"
+diff --git a/crates/dartscope-index/src/incremental.rs b/crates/dartscope-index/src/incremental.rs
+index aa71b7b..ebbff58 100644
+--- a/crates/dartscope-index/src/incremental.rs
++++ b/crates/dartscope-index/src/incremental.rs
+@@ -1046,6 +1046,7 @@ fn top_level_declaration_facts(
+     &str,
+     dartscope_core::DartDeclarationKind,
+     Option<&str>,
++    &dartscope_core::SourceSpan,
+ )> {
+     file.declarations
+         .iter()
+@@ -1055,6 +1056,7 @@ fn top_level_declaration_facts(
+                 declaration.name.as_str(),
+                 declaration.kind,
+                 declaration.symbol_id.as_deref(),
++                &declaration.span,
+             )
+         })
+         .collect()
+diff --git a/crates/dartscope-index/src/navigation/members.rs b/crates/dartscope-index/src/navigation/members.rs
+index bbea3c4..7d6cbb9 100644
+--- a/crates/dartscope-index/src/navigation/members.rs
++++ b/crates/dartscope-index/src/navigation/members.rs
+@@ -246,21 +246,20 @@ fn resolve_instance_reference(
+             )
+         })
+         .collect::<Vec<_>>();
+-    if refinements.is_empty()
++    if (refinements.is_empty()
+         || refinements
+             .iter()
+-            .all(|refinement| refinement.status == DartDefinitionResolutionStatus::Missing)
+-    {
+-        if let Some(extension) = refine_extension_member(
++            .all(|refinement| refinement.status == DartDefinitionResolutionStatus::Missing))
++        && let Some(extension) = refine_extension_member(
+             analysis,
+             member_index,
+             namespace,
+             &reference.source_path,
+             &reference.name,
+             member_use,
+-        ) {
+-            refinements.push(extension);
+-        }
++        )
++    {
++        refinements.push(extension);
+     }
+     finish_resolution(reference, refinements, Vec::new())
+ }
+diff --git a/crates/dartscope-parse/src/lexical.rs b/crates/dartscope-parse/src/lexical.rs
+index a625b17..3dae816 100644
+--- a/crates/dartscope-parse/src/lexical.rs
++++ b/crates/dartscope-parse/src/lexical.rs
+@@ -5,9 +5,7 @@ use crate::source_lines::span_for_byte_range;
+ 
+ // Re-export the canonical literal helpers so existing `crate::lexical::`
+ // call sites keep working while the implementation lives in `literals.rs`.
+-pub(crate) use crate::literals::{
+-    StringLiteralRange, find_string_literal_start, string_literal_range, string_literals_value,
+-};
++pub(crate) use crate::literals::{find_string_literal_start, string_literal_range, string_literals_value};
+ 
+ pub(crate) struct LexicalMask {
+     pub(crate) code: String,
+@@ -109,10 +107,6 @@ fn unterminated_diagnostic(
+     )
+ }
+ 
+-fn is_identifier_byte(byte: u8) -> bool {
+-    crate::identifiers::is_identifier_continue(byte)
+-}
+-
+ #[cfg(test)]
+ mod tests {
+     use super::mask_non_code;
+diff --git a/crates/dartscope-parse/src/literals.rs b/crates/dartscope-parse/src/literals.rs
+index 43a3b02..1bdeeb2 100644
+--- a/crates/dartscope-parse/src/literals.rs
++++ b/crates/dartscope-parse/src/literals.rs
+@@ -261,8 +261,10 @@ mod tests {
+ 
+     #[test]
+     fn dollar_in_identifier_does_not_break_raw_detection() {
+-        // `foo$r'bar'` should NOT be a raw string because `$` is identifier continue
+-        assert!(find_string_literal_start("foo$r'bar'", 0).is_none());
++        // `foo$r'bar'`: `$` continues the identifier `foo$r`, so `r'` is not a raw prefix; the plain
++        // literal `'bar'` that follows still starts at byte 5.
++        assert_eq!(find_string_literal_start("foo$r'bar'", 0), Some(5));
++        assert!(!super::string_start("foo$r'bar'".as_bytes(), 4).is_some());
+         // `foo r'bar'` after space IS a raw string
+         assert_eq!(find_string_literal_start("foo r'bar'", 3), Some(4));
+     }
+diff --git a/crates/dartscope-parse/src/pubspec_yaml_marked.rs b/crates/dartscope-parse/src/pubspec_yaml_marked.rs
+index 5c516f9..06823f6 100644
+--- a/crates/dartscope-parse/src/pubspec_yaml_marked.rs
++++ b/crates/dartscope-parse/src/pubspec_yaml_marked.rs
+@@ -214,7 +214,15 @@ impl<'a> Receiver<'a> {
+                     seen_keys,
+                     ..
+                 } => {
+-                    if pending_key.is_none() {
++                    if let Some(key_node) = pending_key.take() {
++                        if let NodeKind::Scalar(key) = key_node.kind {
++                            entries.push(Entry {
++                                key,
++                                key_span: key_node.span,
++                                value: node,
++                            });
++                        }
++                    } else {
+                         if let NodeKind::Scalar(key) = &node.kind {
+                             node.span = mapping_key_span(self.source, &node.span);
+                             if key == "<<" {
+@@ -239,22 +247,6 @@ impl<'a> Receiver<'a> {
+                             ));
+                         }
+                         *pending_key = Some(node);
+-                    } else {
+-                        let Some(key_node) = pending_key.take() else {
+-                            new_diagnostics.push(DartDiagnostic::error(
+-                                \"pubspec_invalid_yaml\",
+-                                \"pubspec YAML mapping is malformed: missing key for value\",
+-                                Some(node.span.clone()),
+-                            ));
+-                            continue;
+-                        };
+-                        if let NodeKind::Scalar(key) = key_node.kind {
+-                            entries.push(Entry {
+-                                key,
+-                                key_span: key_node.span,
+-                                value: node,
+-                            });
+-                        }
+                     }
+                 }
+             }
+diff --git a/tools/report_benchmark_regressions.py b/tools/report_benchmark_regressions.py
+index c6f20ec..5babb00 100644
+--- a/tools/report_benchmark_regressions.py
++++ b/tools/report_benchmark_regressions.py
+@@ -189,9 +189,9 @@ def run_package_workload(root: Path) -> Sample:
+     )
+     elapsed = time.perf_counter_ns() - started
+     archives = sorted(package_dir.glob("dartscope-*.crate"))
+-    if len(archives) != 9:
++    if len(archives) != 10:
+         raise BenchmarkError(
+-            f"cargo package created {len(archives)} DartScope archives instead of 9 in {package_dir}"
++            f"cargo package created {len(archives)} DartScope archives instead of 10 in {package_dir}"
+         )
+     size = sum(archive.stat().st_size for archive in archives)
+     return Sample(elapsed_ns=elapsed, units=size, digest=size)
+diff --git a/tools/tests/test_macos_portability_policy.py b/tools/tests/test_macos_portability_policy.py
+index 28e9666..1a82268 100644
+--- a/tools/tests/test_macos_portability_policy.py
++++ b/tools/tests/test_macos_portability_policy.py
+@@ -23,7 +23,7 @@ class MacosPortabilityPolicyTests(unittest.TestCase):
+         self.assertIn("cargo +1.95.0 check --workspace --all-targets --locked", body)
+         self.assertIn("cargo +1.95.0 test --workspace --locked --quiet", body)
+         self.assertIn("cargo +1.95.0 package --workspace", body)
+-        self.assertIn('test "$archive_count" = "9"', body)
++        self.assertIn('test "$archive_count" = "10"', body)
+ 
+     def test_signal_is_included_in_aggregate_status(self) -> None:
+         text = CI.read_text(encoding="utf-8")
