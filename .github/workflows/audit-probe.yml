@@ -4,6 +4,7 @@ name: Audit probe
 on:
   push:
     branches: ['arena/01a0f406-dartscope']
+    paths: ['audit-probe/trigger-main']
 
 permissions:
   contents: read
