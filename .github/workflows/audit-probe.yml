@@ -1,0 +1,36 @@
+name: Audit probe
+
+# TEMPORARY: engineering-audit probe. Runs only on the audit branch; removed before hand-off.
+on:
+  push:
+    branches: ['arena/01a0f406-dartscope']
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    name: probe-baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Baseline checks
+        run: bash audit-probe/baseline.sh
+
+  tests:
+    name: probe-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal
+      - name: Workspace tests
+        run: bash audit-probe/tests.sh
