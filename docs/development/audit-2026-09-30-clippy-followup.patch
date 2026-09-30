@@ -12,7 +12,7 @@ index 0a5a90a..d524d50 100644
                  break;
              }
 diff --git a/crates/dartscope-lsp/src/server.rs b/crates/dartscope-lsp/src/server.rs
-index 45af1c0..d408d6d 100644
+index 45af1c0..a46c104 100644
 --- a/crates/dartscope-lsp/src/server.rs
 +++ b/crates/dartscope-lsp/src/server.rs
 @@ -72,7 +72,6 @@ impl DartLspServer {
@@ -56,6 +56,24 @@ index 45af1c0..d408d6d 100644
  }
  
  fn path_to_uri(path: &str) -> Url {
+@@ -536,7 +533,7 @@ mod tests {
+                     text_document: crate::types::TextDocumentItem {
+                         uri: uri.clone(),
+                         language_id: "dart".to_string(),
+-                        version: i as i32,
++                        version: i,
+                         text: content.clone(),
+                     },
+                 });
+@@ -544,7 +541,7 @@ mod tests {
+                 server.did_change(DidChangeTextDocumentParams {
+                     text_document: crate::types::VersionedTextDocumentIdentifier {
+                         uri: uri.clone(),
+-                        version: i as i32,
++                        version: i,
+                     },
+                     content_changes: vec![crate::types::TextDocumentContentChangeEvent {
+                         range: None,
 diff --git a/crates/dartscope-lsp/src/types.rs b/crates/dartscope-lsp/src/types.rs
 index bfb70be..cb2f4bb 100644
 --- a/crates/dartscope-lsp/src/types.rs

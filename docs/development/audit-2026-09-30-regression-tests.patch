@@ -140,10 +140,10 @@ index 0000000..279a166
 +}
 diff --git a/crates/dartscope-index/tests/audit_incremental_snapshot_equivalence.rs b/crates/dartscope-index/tests/audit_incremental_snapshot_equivalence.rs
 new file mode 100644
-index 0000000..c7047e7
+index 0000000..a8a19b1
 --- /dev/null
 +++ b/crates/dartscope-index/tests/audit_incremental_snapshot_equivalence.rs
-@@ -0,0 +1,39 @@
+@@ -0,0 +1,37 @@
 +// Regression spec from the 2026-09-30 audit: is the incremental workspace snapshot identical to a stateless analysis after a formatting-only edit?
 +use dartscope_core::{DartFileInput, DartProjectInput, DartProjectReferenceAnalysis};
 +use dartscope_index::{DartIndexOptions, DartWorkspaceIndex, resolve_project_identifier_references_with_options};
@@ -158,7 +158,6 @@ index 0000000..c7047e7
 +}
 +
 +#[test]
-+#[ignore = "audit 2026-09-30 §5.2: stale declaration spans in dependents"]
 +fn formatting_only_edit_keeps_dependent_resolution_evidence_in_sync() {
 +    let a = "import 'b.dart';\nvoid useB() { B(); }\n";
 +    let mut index = DartWorkspaceIndex::from_reference_project(project(&[("lib/a.dart", a), ("lib/b.dart", "class B {}\n")]));
@@ -172,7 +171,6 @@ index 0000000..c7047e7
 +}
 +
 +#[test]
-+#[ignore = "audit 2026-09-30 §5.2: stale declaration spans in dependents"]
 +fn adding_a_member_keeps_dependent_resolution_evidence_in_sync() {
 +    let a = "import 'b.dart';\nvoid useB() { B(); }\n";
 +    let mut index = DartWorkspaceIndex::from_reference_project(project(&[("lib/a.dart", a), ("lib/b.dart", "class B {}\n")]));
@@ -285,10 +283,10 @@ index 0000000..8955007
 +}
 diff --git a/crates/dartscope-parse/tests/audit_bom_and_inventory_gaps.rs b/crates/dartscope-parse/tests/audit_bom_and_inventory_gaps.rs
 new file mode 100644
-index 0000000..d9f6568
+index 0000000..e8bf1d6
 --- /dev/null
 +++ b/crates/dartscope-parse/tests/audit_bom_and_inventory_gaps.rs
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,49 @@
 +// Regression spec from the 2026-09-30 audit: lexical/metadata/literal behaviours claimed by the canonical-scanner refactor.
 +use dartscope_core::DartFileInput;
 +use dartscope_parse::analyze_file;
@@ -312,6 +310,24 @@ index 0000000..d9f6568
 +    println!("spec P2 enum/accessors -> {got:?}");
 +    assert!(got.iter().any(|n| n.ends_with(":red")), "enum constants missing: {got:?}");
 +    assert!(got.iter().any(|n| n.starts_with("Getter:")), "top-level getter missing: {got:?}");
++}
++
++#[test]
++#[ignore = "audit 2026-09-30 §4.2: functions and methods with their own type parameters are not inventoried"]
++fn generic_functions_and_methods_are_inventoried() {
++    let got = names("T first<T>(List<T> items) => items.first;\nclass Box {\n  R map<R>(R a) => a;\n}\n");
++    println!("spec P4 generic function/method -> {got:?}");
++    assert!(got.iter().any(|n| n.ends_with(":first")), "generic top-level function missing: {got:?}");
++    assert!(got.iter().any(|n| n.ends_with(":map")), "generic method missing: {got:?}");
++}
++
++#[test]
++#[ignore = "audit 2026-09-30 §4.2: a function-type return type is parsed as a declaration named `Function`"]
++fn function_type_return_does_not_create_a_bogus_declaration() {
++    let got = names("void Function(int) make() => (i) {};\n");
++    println!("spec P5 function-type return -> {got:?}");
++    assert!(got.iter().any(|n| n.ends_with(":make")), "function missing: {got:?}");
++    assert!(!got.iter().any(|n| n.ends_with(":Function")), "bogus `Function` declaration: {got:?}");
 +}
 +
 +#[test]

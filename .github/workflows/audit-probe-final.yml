@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        job: [patches, lsp, runtime_final]
+        job: [patches]
     runs-on: macos-15
     timeout-minutes: 60
     steps:
@@ -33,3 +33,17 @@ jobs:
       - name: Run probe
         shell: bash
         run: bash audit-probe/final/${{ matrix.job }}.sh
+
+  profile:
+    name: profile (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Run probe
+        shell: bash
+        run: bash audit-probe/final/profile.sh
