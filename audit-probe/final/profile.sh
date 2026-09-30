@@ -22,5 +22,11 @@ PY
   { echo "== n=$n classes: top of callgrind_annotate (exclusive Ir) =="; sed -n 1,40p "$OUT/annotate_$n.log" | cut -c1-210; } > "$OUT/top_$n.txt"
   emit "profile_$n" "$OUT/top_$n.txt" --chunk 3900 --max 1
 done
+run annotate_incl callgrind_annotate --inclusive=yes "$OUT/cg1200.out"
+{ echo "== inclusive Ir, n=1200 =="; sed -n '/file:function/,$p' "$OUT/annotate_incl.log" | sed -n 2,34p | cut -c1-200; } > "$OUT/incl.txt"
+emit profile_inclusive "$OUT/incl.txt" --chunk 3900 --max 1
+run annotate_callers callgrind_annotate --tree=caller "$OUT/cg1200.out"
+{ echo "== callers of the hot functions, n=1200 =="; grep -E -B6 '\* .*(memchr_aligned|Vec<T> as alloc::vec::spec_from_iter_nested|span_for_byte_range|collect_declaration_inventory)' "$OUT/annotate_callers.log" | cut -c1-200 | head -80; } > "$OUT/callers.txt"
+emit profile_callers "$OUT/callers.txt" --chunk 3900 --max 2
 { echo "valgrind: $(cat "$OUT/vgver.txt")"; grep -h "Collected" "$OUT/annotate_600.log" "$OUT/annotate_1200.log"; } > "$OUT/collected.txt"
 emit profile_totals "$OUT/collected.txt" --chunk 1000 --max 1

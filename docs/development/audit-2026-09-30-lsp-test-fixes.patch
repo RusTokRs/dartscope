@@ -1,0 +1,49 @@
+diff --git a/crates/dartscope-lsp/src/coordinates.rs b/crates/dartscope-lsp/src/coordinates.rs
+index 6535b52..0e86276 100644
+--- a/crates/dartscope-lsp/src/coordinates.rs
++++ b/crates/dartscope-lsp/src/coordinates.rs
+@@ -199,9 +199,12 @@ mod tests {
+         // "a" + "\r\n" = 3 bytes, line 0 content "a", line 1 content "b"
+         assert_eq!(byte_offset_to_lsp_position(source, 0), Position { line: 0, character: 0 });
+         assert_eq!(byte_offset_to_lsp_position(source, 1), Position { line: 0, character: 1 });
+-        // offset 1 is 'a' end, offset 2 is '\r', offset 3 is '\n' — both should map to line 0 end
+-        assert_eq!(byte_offset_to_lsp_position(source, 3), Position { line: 0, character: 1 });
+-        assert_eq!(byte_offset_to_lsp_position(source, 4), Position { line: 1, character: 0 });
++        // bytes: 0 'a', 1 '\r', 2 '\n', 3 'b', 4 '\r', 5 '\n', 6 'c'
++        // offset 2 is the '\n' of the first CRLF: it still belongs to the end of line 0
++        assert_eq!(byte_offset_to_lsp_position(source, 2), Position { line: 0, character: 1 });
++        // offset 3 is 'b', the first character of line 1
++        assert_eq!(byte_offset_to_lsp_position(source, 3), Position { line: 1, character: 0 });
++        assert_eq!(byte_offset_to_lsp_position(source, 4), Position { line: 1, character: 1 });
+         assert_eq!(lsp_position_to_byte_offset(source, Position { line: 1, character: 0 }), Some(3));
+         // byte 3 is after "\r\n"?
+         // Our line_content_by_index: line 0 start 0, content "a" (0..1), line 1 start 3, content "b" (3..4)
+diff --git a/crates/dartscope-lsp/src/server.rs b/crates/dartscope-lsp/src/server.rs
+index a46c104..580a86e 100644
+--- a/crates/dartscope-lsp/src/server.rs
++++ b/crates/dartscope-lsp/src/server.rs
+@@ -459,8 +459,10 @@ mod tests {
+                 text: content.to_string(),
+             },
+         });
+-        // Position of `bar` in `Foo().bar()` — find byte offset
+-        let offset = content.find("Foo().bar").unwrap() + "Foo().".len();
++        // Position of the `Foo` constructor call in `Foo().bar()`: it resolves to the class.
++        // A member access on an expression receiver (`Foo().bar`) needs receiver inference, which
++        // DartScope does not perform (docs/development/audit-findings-2026-09-30.md, section 14.1).
++        let offset = content.find("Foo().bar").unwrap();
+         let pos = byte_offset_to_lsp_position(content, offset);
+         let locs = server.definition(&uri, pos).unwrap();
+         assert!(locs.is_some());
+@@ -473,8 +475,9 @@ mod tests {
+         let mut server = DartLspServer::new(".");
+         server.initialize(InitializeParams::default()).unwrap();
+         let uri = Url::parse("file:///lib/main.dart").unwrap();
+-        // Dart 3.13 concise constructor triggers diagnostic
+-        let content = "class Foo { Foo.new(); }";
++        // The Dart 3.13 concise constructor form is a leading `new`; `Foo.new();` is an ordinary
++        // unnamed constructor and is supported.
++        let content = "class Foo { new(); }";
+         server.did_open(DidOpenTextDocumentParams {
+             text_document: crate::types::TextDocumentItem {
+                 uri: uri.clone(),

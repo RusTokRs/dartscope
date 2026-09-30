@@ -23,12 +23,14 @@ summarize_specs() {
 
 run apply_unblock git apply --verbose "$P/audit-2026-09-30-unblock.patch"
 run apply_clippy git apply --verbose "$P/audit-2026-09-30-clippy-followup.patch"
+run apply_lsptests git apply --verbose "$P/audit-2026-09-30-lsp-test-fixes.patch"
 run fmt_apply cargo fmt --all
 run fmt_check cargo fmt --all -- --check
 run clippy_1 cargo clippy --workspace --all-targets --locked --keep-going --message-format short -- -D warnings
 run test_1 cargo test --workspace --locked --no-fail-fast
 emit apply_unblock "$OUT/apply_unblock.log" --chunk 500 --max 1 --tail
 emit apply_clippy "$OUT/apply_clippy.log" --chunk 500 --max 1 --tail
+emit apply_lsptests "$OUT/apply_lsptests.log" --chunk 500 --max 1 --tail
 emit fmt_check_1 "$OUT/fmt_check.log" --chunk 800 --max 1 --tail
 summarize_clippy clippy_1
 emit clippy_1 "$OUT/clippy_1.sum" --chunk 3900 --max 1
@@ -54,3 +56,11 @@ for spec in spec_index spec_flutter spec_parse; do
   summarize_specs "$spec"
   emit "$spec" "$OUT/$spec.sum" --chunk 3900 --max 1
 done
+
+# Repository consistency gate and python unit tests on a clean copy of the patched tree (without the probe files).
+CLEAN="$RUNNER_TEMP/clean"; rm -rf "$CLEAN"; mkdir -p "$CLEAN"
+git ls-files -z --cached --others --exclude-standard | grep -zv -e '^audit-probe/' -e '^.github/workflows/audit-probe' | xargs -0 tar -cf - | tar -xf - -C "$CLEAN"
+( cd "$CLEAN" && run consistency "$PY" tools/check-repository-consistency.py )
+( cd "$CLEAN" && run pyunit "$PY" -m unittest discover -s tools/tests )
+{ tail -c 1500 "$OUT/consistency.log"; echo; tail -c 400 "$OUT/pyunit.log"; } > "$OUT/consistency.sum"
+emit consistency "$OUT/consistency.sum" --chunk 3000 --max 1
