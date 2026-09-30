@@ -17,8 +17,8 @@ run probe_flutter cargo test -p dartscope-flutter --test audit_probe_flutter --n
 run probe_parse cargo test -p dartscope-parse --test audit_probe_parse --no-fail-fast -- --nocapture --test-threads=1
 for f in probe_index probe_flutter probe_parse; do
   { grep -E '^(AUDIT|test |error)' "$OUT/$f.log"; grep -A8 'panicked at' "$OUT/$f.log"; } | head -150 > "$OUT/$f.summary"
-  emit "$f" "$OUT/$f.summary" --chunk 9000 --max 1
-  emit "$f tail" "$OUT/$f.log" --chunk 9000 --max 1 --tail
+  emit "$f" "$OUT/$f.summary" --chunk 3900 --max 2
+  emit "$f tail" "$OUT/$f.log" --chunk 3900 --max 1 --tail
 done
 run test_lsp cargo test -p dartscope-lsp --no-fail-fast
 run test_fuzzing_feature cargo test -p dartscope-parse --features fuzzing --no-fail-fast
@@ -35,7 +35,7 @@ for f in test_workspace test_lsp test_fuzzing_feature test_umbrella_allfeatures_
     echo "--- compile errors ---"
     grep -E '^error' "$OUT/$f.log" | head -60 || true
   } > "$OUT/$f.totals"
-  emit "$f totals" "$OUT/$f.totals" --chunk 12000 --max 1
-  emit "$f tail" "$OUT/$f.log" --chunk 22000 --max 2 --tail
-  emit "$f summary" "$OUT/$f.summary" --chunk 12000 --max 1
+  emit "$f totals" "$OUT/$f.totals" --chunk 3900 --max 1
+  emit "$f tail" "$OUT/$f.log" --chunk 3900 --max 2 --tail
+  emit "$f summary" "$OUT/$f.summary" --chunk 3900 --max 1
 done

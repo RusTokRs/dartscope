@@ -30,6 +30,7 @@ def main() -> None:
         data = "<missing file>"
     if not data:
         data = "<empty>"
+    args.chunk = min(args.chunk, 3900)  # GitHub truncates each annotation message at 4096 chars
     limit = args.chunk * args.max_chunks
     truncated = ""
     if len(data) > limit:

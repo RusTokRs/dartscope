@@ -230,6 +230,56 @@ def section_battery():
     show_case("A30", "unicode escapes / emoji in identifiers-adjacent positions",
               "const s = '\\u{1F600}';\nconst t = 'a\u200db';\nclass AfterEmoji {}\n", ["class:AfterEmoji"])
     say()
+    say("## A3. Method/function form matrix (each line: form -> found?)")
+    forms = [
+        ("generic return", "List<int> f() => [];", "function:f"),
+        ("generic method", "T f<T>(T a) => a;", "function:f"),
+        ("generic return + generic method", "Map<String, List<int>> f<U>(U a) => {};", "function:f"),
+        ("Future<List<int>> async", "Future<List<int>> f() async => [];", "function:f"),
+        ("nullable return", "int? f() => null;", "function:f"),
+        ("record return", "(int, int) f() => (1, 2);", "function:f"),
+        ("function-type return", "void Function(int) f() => (i) {};", "function:f"),
+        ("named + default params", "void f({int a = 1, required String b}) {}", "function:f"),
+        ("annotated param", "void f(@deprecated int a) {}", "function:f"),
+        ("async* generator", "Stream<int> f() async* { yield 1; }", "function:f"),
+        ("sync* generator", "Iterable<int> f() sync* { yield 1; }", "function:f"),
+        ("external function", "external void f();", "function:f"),
+    ]
+    for label, code, expected in forms:
+        result, src = analyze_source(code + "\nclass Z {}\n")
+        doc = parse_json(result)
+        names = [f"{d['kind']}:{d['name']}" for d in doc["data"]["declarations"]] if doc else ["<no json>"]
+        say(f"[A3] top-level {label}: {'OK' if expected in names else 'MISSING ' + expected} {names[:4]}")
+    member_forms = [
+        ("generic return", "List<int> m() => [];", "method:m"),
+        ("generic method", "T m<T>(T a) => a;", "method:m"),
+        ("generic return + generic method", "Map<String, List<int>> m<U>(U a) => {};", "method:m"),
+        ("Future<List<int>> async", "Future<List<int>> m() async => [];", "method:m"),
+        ("nullable return", "int? m() => null;", "method:m"),
+        ("record return", "(int, int) m() => (1, 2);", "method:m"),
+        ("function-type return", "void Function(int) m() => (i) {};", "method:m"),
+        ("static generic getter", "static Map<String, int> get m => {};", "getter:m"),
+        ("getter block body", "int get m { return 1; }", "getter:m"),
+        ("setter", "set m(int v) {}", "setter:m"),
+        ("operator ==", "bool operator ==(Object o) => true;", "operator:=="),
+        ("operator []", "int operator [](int i) => i;", "operator:[]"),
+        ("abstract method", "void m();", "method:m"),
+        ("override toString", "@override\n  String toString() => '';", "method:toString"),
+        ("factory generic", "factory Z.from(Map<String, dynamic> j) => Z();", "constructor:Z.from"),
+        ("named-param const ctor", "const Z({required this.a, this.b = const []});\n  final int a;\n  final List<int> b;", "constructor:Z"),
+        ("initializer list ctor", "Z() : a = 1, b = 2;\n  final int a;\n  final int b;", "constructor:Z"),
+        ("late final field", "late final List<int> m;", "field:m"),
+        ("multiple declarators", "int a = 1, b = 2;", "field:b"),
+        ("nested generic >>>", "Map<String, Map<String, List<int>>> m() => {};", "method:m"),
+        ("covariant param", "void m(covariant int a) {}", "method:m"),
+        ("one-line class body", "void m() {} void n() {}", "method:n"),
+    ]
+    for label, code, expected in member_forms:
+        result, src = analyze_source("class Z {\n  " + code + "\n}\nclass After {}\n")
+        doc = parse_json(result)
+        names = [f"{d['kind']}:{d['name']}" for d in doc["data"]["declarations"] if d.get("parent_symbol_id")] if doc else ["<no json>"]
+        say(f"[A3] member {label}: {'OK' if expected in names else 'MISSING ' + expected} {names[:5]}")
+    say()
     say("## A2. Nesting / size stress (exit code must be 0; anything else is a crash)")
     for label, source in (
         ("parens x5000", "void f() { " + "(" * 5000 + ")" * 5000 + "; }\nclass Z {}\n"),
@@ -396,6 +446,23 @@ def section_projects():
             say(f"[C09] package_config[{label}]: exit={result['code']} refs={refs}")
         else:
             say(f"[C09] package_config[{label}]: exit={result['code']} err={first_line(result['err'], 120)!r}")
+
+    # C10 uri-graph edge cases
+    proj3 = os.path.join(TMP, "uri-edge")
+    write(os.path.join(proj3, "pubspec.yaml"), "name: app\nenvironment:\n  sdk: ^3.0.0\n")
+    write(os.path.join(proj3, "lib", "a.dart"),
+          "import '../../../../etc/passwd.dart';\nimport 'dart:io';\nimport 'http://example.com/x.dart';\nimport 'file:///abs/x.dart';\n"
+          "import 'b%20c.dart';\nimport 'b c.dart';\nimport 'B.dart';\nimport './b.dart';\nimport 'sub/../b.dart';\nimport 'package:app/b.dart';\n"
+          "import 'package:app/../secret.dart';\nimport 'package:other/x.dart';\nimport '';\nimport '   ';\nimport r'b.dart';\nimport 'b.dart' deferred as d;\n")
+    write(os.path.join(proj3, "lib", "b.dart"), "class B {}\n")
+    write(os.path.join(proj3, "lib", "b c.dart"), "class Bc {}\n")
+    result = run(["uri-graph", proj3], timeout=30)
+    doc = parse_json(result)
+    if doc:
+        for r in doc["data"].get("references", []):
+            say(f"[C10] {r['uri']!r:38} kind={r['kind']:6} resolution={r['resolution']:20} target={r.get('target_path')}")
+    else:
+        say(f"[C10] uri-graph failed exit={result['code']} err={first_line(result['err'])!r}")
 
 
 def section_cli():

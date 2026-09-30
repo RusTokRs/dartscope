@@ -1,0 +1,35 @@
+name: Audit probe diff
+
+# TEMPORARY: differential check against the official Dart parser. Removed before hand-off.
+on:
+  push:
+    branches: ['arena/01a0f406-dartscope']
+    paths:
+      - 'audit-probe/trigger-diff'
+      - '.github/workflows/audit-probe-diff.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-probe-diff
+  cancel-in-progress: true
+
+jobs:
+  diff:
+    name: diff (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal
+      - name: Differential probe
+        shell: bash
+        run: bash audit-probe/diff.sh

@@ -5,7 +5,7 @@ cd "$GITHUB_WORKSPACE"
 cargo update --workspace >/dev/null 2>&1
 "$PY" audit-probe/fix_compile.py
 run build_cli cargo build --release -p dartscope-cli --message-format short
-if [ ! -x "target/release/dartscope" ]; then echo "CLI did not build"; emit build_cli "$OUT/build_cli.log" --chunk 20000 --max 2 --tail; exit 0; fi
+if [ ! -x "target/release/dartscope" ]; then echo "CLI did not build"; emit build_cli "$OUT/build_cli.log" --chunk 3900 --max 2 --tail; exit 0; fi
 
 CORPUS="$RUNNER_TEMP/corpus"; mkdir -p "$CORPUS"
 for repo in dart-lang/shelf felangel/bloc rrousselGit/riverpod flutter/samples; do
@@ -16,9 +16,9 @@ export CORPUS_DIRS="$(ls -d "$CORPUS"/* | tr '\n' ':' | sed 's/:$//')"
 echo "corpus: $CORPUS_DIRS"
 
 run rt_perf "$PY" audit-probe/runtime.py perf
-emit "perf" "$OUT/runtime_perf.txt" --chunk 22000 --max 1
+emit "perf" "$OUT/runtime_perf.txt" --chunk 3900 --max 3
 FUZZ_SECONDS=300 run rt_fuzz "$PY" audit-probe/runtime.py fuzz
-emit "fuzz" "$OUT/runtime_fuzz.txt" --chunk 22000 --max 3
+emit "fuzz" "$OUT/runtime_fuzz.txt" --chunk 3900 --max 8
 run rt_corpus "$PY" audit-probe/runtime.py corpus
-emit "corpus" "$OUT/runtime_corpus.txt" --chunk 22000 --max 2
+emit "corpus" "$OUT/runtime_corpus.txt" --chunk 3900 --max 12
 emit "clone log" "$OUT/clone.log" --chunk 3000 --max 1

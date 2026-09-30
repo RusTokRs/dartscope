@@ -9,6 +9,17 @@ count = server.count("from_snapshot(index.snapshot())")
 server = server.replace("from_snapshot(index.snapshot())", "from_snapshot(&index.snapshot())")
 (root / "server.rs").write_text(server, encoding="utf-8")
 
+# bin: `server.document_symbols(&params.text_document.uri, params)` borrows and moves `params` (E0505)
+bin_path = root / "bin" / "dartscope-lsp.rs"
+binary = bin_path.read_text(encoding="utf-8")
+before = binary
+binary = binary.replace(
+    ".document_symbols(&params.text_document.uri, params)",
+    ".document_symbols(&params.text_document.uri.clone(), params)",
+)
+bin_path.write_text(binary, encoding="utf-8")
+print("patched bin document_symbols borrow:", binary != before)
+
 types = (root / "types.rs").read_text(encoding="utf-8")
 patched = []
 for name in ("Position", "Range", "Diagnostic"):
