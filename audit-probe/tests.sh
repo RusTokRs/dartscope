@@ -20,6 +20,6 @@ for f in test_workspace test_lsp test_fuzzing_feature test_umbrella_allfeatures_
     grep -E '^error' "$OUT/$f.log" | head -60 || true
   } > "$OUT/$f.totals"
   emit "$f totals" "$OUT/$f.totals" --chunk 12000 --max 1
-  emit "$f tail" "$OUT/$f.log" --chunk 22000 --max 3 --tail
-  emit "$f summary" "$OUT/$f.summary" --chunk 12000 --max 2
+  emit "$f tail" "$OUT/$f.log" --chunk 22000 --max 2 --tail
+  emit "$f summary" "$OUT/$f.summary" --chunk 12000 --max 1
 done
