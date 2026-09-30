@@ -1,0 +1,35 @@
+name: Audit probe final
+
+# TEMPORARY: last verification round of the engineering audit. Removed before hand-off.
+on:
+  push:
+    branches: ['arena/01a0f406-dartscope']
+    paths:
+      - 'audit-probe/trigger-final'
+      - '.github/workflows/audit-probe-final.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-probe-final
+  cancel-in-progress: true
+
+jobs:
+  final:
+    name: ${{ matrix.job }} (macos-15)
+    strategy:
+      fail-fast: false
+      matrix:
+        job: [patches, lsp, runtime_final]
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Run probe
+        shell: bash
+        run: bash audit-probe/final/${{ matrix.job }}.sh
