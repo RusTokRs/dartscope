@@ -1,7 +1,0 @@
-name: audit_ref
-description: Reference declaration extractor for the DartScope audit (not part of the product).
-publish_to: none
-environment:
-  sdk: '>=3.3.0 <4.0.0'
-dependencies:
-  analyzer: 6.11.0
