@@ -1,12 +1,12 @@
 //! Randomized equivalence test of the workspace index.
 //!
 //! An index that is updated one file at a time must end in the same state as an index built from
-//! scratch, whatever the text of the files is: editors send broken code all the time. The test edits
-//! two files with the same random damage a real session produces (see the parse crate's
-//! `robustness_mutations.rs`), applies the edit through `upsert_file_with_references`, compares
-//! every derived result of the snapshot with a stateless analysis, and then asks the resolution
-//! context for the definition and the references of every reference. Neither the updates nor the
-//! queries may panic.
+//! scratch, whatever the text of the files is: editors send broken code all the time. The test
+//! applies short random sequences of edits (the same random damage a real session produces, see the
+//! parse crate's `robustness_mutations.rs`), removals and re-additions of the two files of a pair
+//! through the incremental API, compares every derived result of the snapshot with a stateless
+//! analysis after each step, and asks the resolution context for the definition and the references
+//! of every reference. Neither the updates nor the queries may panic.
 
 use std::collections::BTreeMap;
 use std::panic::{self, AssertUnwindSafe, PanicHookInfo};
@@ -282,73 +282,124 @@ fn record_panic(info: &PanicHookInfo<'_>) {
         .push((place, message));
 }
 
-fn project(a: &str, b: &str) -> DartProjectReferenceAnalysis {
+const FILES: [&str; 2] = ["lib/a.dart", "lib/b.dart"];
+
+/// One change of the workspace.
+#[derive(Clone, Debug)]
+enum Step {
+    Edit(usize, String),
+    Remove(usize),
+    Add(usize, String),
+}
+
+impl Step {
+    fn with_text(&self, text: &str) -> Step {
+        match self {
+            Step::Edit(file, _) => Step::Edit(*file, text.to_string()),
+            Step::Add(file, _) => Step::Add(*file, text.to_string()),
+            Step::Remove(file) => Step::Remove(*file),
+        }
+    }
+
+    fn text(&self) -> Option<&str> {
+        match self {
+            Step::Edit(_, text) | Step::Add(_, text) => Some(text),
+            Step::Remove(_) => None,
+        }
+    }
+
+    fn describe(&self) -> String {
+        let name = |file: &usize| if *file == 0 { "a" } else { "b" };
+        match self {
+            Step::Edit(file, text) => format!("edit {} {:?}", name(file), text),
+            Step::Add(file, text) => format!("add {} {:?}", name(file), text),
+            Step::Remove(file) => format!("remove {}", name(file)),
+        }
+    }
+}
+
+fn project_of(files: &[Option<String>; 2]) -> DartProjectReferenceAnalysis {
     analyze_project_with_references(DartProjectInput::new(
         ".",
-        vec![
-            DartFileInput::new("lib/a.dart", a),
-            DartFileInput::new("lib/b.dart", b),
-        ],
+        FILES
+            .iter()
+            .zip(files)
+            .filter_map(|(path, text)| text.as_ref().map(|text| DartFileInput::new(*path, text.as_str())))
+            .collect(),
         vec![],
     ))
 }
 
-/// Updates an index built from `(a0, b0)` to `(a1, b1)`, one file at a time, and compares it with
-/// an index built from `(a1, b1)`. The name of the first component that differs, if any.
-fn divergence(a0: &str, b0: &str, a1: &str, b1: &str) -> Option<&'static str> {
+/// Applies `steps` to an index built from `initial` and compares it with a fresh analysis after every
+/// step. The number of the first step that diverges and the component that differs, if any.
+fn divergence(initial: (&str, &str), steps: &[Step]) -> Option<(usize, &'static str)> {
     let options = DartIndexOptions::default();
-    let mut index = DartWorkspaceIndex::from_reference_project(project(a0, b0));
-    if a1 != a0 {
-        let _ = index.upsert_file_with_references(analyze_file_with_references(
-            DartFileInput::new("lib/a.dart", a1),
-        ));
-    }
-    if b1 != b0 {
-        let _ = index.upsert_file_with_references(analyze_file_with_references(
-            DartFileInput::new("lib/b.dart", b1),
-        ));
-    }
-    let fresh = project(a1, b1);
-    let snapshot = index.snapshot();
-    if snapshot.project() != &fresh.project {
-        return Some("project");
-    }
-    if snapshot.uri_graph() != &build_uri_graph_with_options(&fresh.project, &options) {
-        return Some("uri graph");
-    }
-    if snapshot.part_links() != &analyze_part_links(&fresh.project) {
-        return Some("part links");
-    }
-    if snapshot.identifier_reference_resolutions()
-        != &resolve_project_identifier_references_with_options(&fresh, &options)
-    {
-        return Some("reference resolutions");
-    }
+    let mut files = [Some(initial.0.to_string()), Some(initial.1.to_string())];
+    let mut index = DartWorkspaceIndex::from_reference_project(project_of(&files));
+    for (number, step) in steps.iter().enumerate() {
+        match step {
+            Step::Edit(file, text) | Step::Add(file, text) => {
+                files[*file] = Some(text.clone());
+                let _ = index.upsert_file_with_references(analyze_file_with_references(
+                    DartFileInput::new(FILES[*file], text.as_str()),
+                ));
+            }
+            Step::Remove(file) => {
+                files[*file] = None;
+                let _ = index.remove_file(FILES[*file]);
+            }
+        }
+        let fresh = project_of(&files);
+        let snapshot = index.snapshot();
+        if snapshot.project() != &fresh.project {
+            return Some((number, "project"));
+        }
+        if snapshot.uri_graph() != &build_uri_graph_with_options(&fresh.project, &options) {
+            return Some((number, "uri graph"));
+        }
+        if snapshot.part_links() != &analyze_part_links(&fresh.project) {
+            return Some((number, "part links"));
+        }
+        if snapshot.identifier_reference_resolutions()
+            != &resolve_project_identifier_references_with_options(&fresh, &options)
+        {
+            return Some((number, "reference resolutions"));
+        }
 
-    let context = DartWorkspaceResolutionContext::from_snapshot(&snapshot);
-    for reference in &fresh.references {
-        let query =
-            DartDefinitionQuery::new(reference.source_path.clone(), reference.span.byte_start);
-        for resolution in context.find_definitions(&[query]).resolutions {
-            let _ = context.find_references(&resolution.targets);
+        let context = DartWorkspaceResolutionContext::from_snapshot(&snapshot);
+        for reference in &fresh.references {
+            let query =
+                DartDefinitionQuery::new(reference.source_path.clone(), reference.span.byte_start);
+            for resolution in context.find_definitions(&[query]).resolutions {
+                let _ = context.find_references(&resolution.targets);
+            }
         }
     }
     None
 }
 
-/// What running one edit produced: where it panicked, or how the index diverged.
+/// What running a sequence produced: where it panicked, or how the index diverged.
 enum Failure {
     Panic(String, String),
-    Divergence(&'static str),
+    Divergence(usize, &'static str),
 }
 
-fn run(a0: &str, b0: &str, a1: &str, b1: &str) -> Option<Failure> {
+impl Failure {
+    fn key(&self) -> String {
+        match self {
+            Failure::Panic(place, _) => format!("panic at {place}"),
+            Failure::Divergence(_, what) => format!("divergence in {what}"),
+        }
+    }
+}
+
+fn run(initial: (&str, &str), steps: &[Step]) -> Option<Failure> {
     PANICS
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .clear();
-    match panic::catch_unwind(AssertUnwindSafe(|| divergence(a0, b0, a1, b1))) {
-        Ok(Some(what)) => Some(Failure::Divergence(what)),
+    match panic::catch_unwind(AssertUnwindSafe(|| divergence(initial, steps))) {
+        Ok(Some((number, what))) => Some(Failure::Divergence(number, what)),
         Ok(None) => None,
         Err(_) => {
             let (place, message) = PANICS
@@ -362,10 +413,46 @@ fn run(a0: &str, b0: &str, a1: &str, b1: &str) -> Option<Failure> {
     }
 }
 
+/// A random sequence of one to six changes, each one applied to the text the previous ones left.
+fn generate(rng: &mut Rng, initial: (&str, &str)) -> Vec<Step> {
+    let seeds = [initial.0, initial.1];
+    let mut current = [Some(initial.0.to_string()), Some(initial.1.to_string())];
+    let mut steps = Vec::new();
+    for _ in 0..=rng.below(6) {
+        let present: Vec<usize> = (0..2).filter(|file| current[*file].is_some()).collect();
+        let absent: Vec<usize> = (0..2).filter(|file| current[*file].is_none()).collect();
+        let roll = rng.below(10);
+        let step = if roll < 6 && !present.is_empty() {
+            let file = present[rng.below(present.len())];
+            let text = mutate(rng, current[file].as_deref().unwrap_or(seeds[file]));
+            Step::Edit(file, text)
+        } else if roll < 8 && !present.is_empty() {
+            Step::Remove(present[rng.below(present.len())])
+        } else if !absent.is_empty() {
+            let file = absent[rng.below(absent.len())];
+            let text = if rng.below(2) == 0 {
+                seeds[file].to_string()
+            } else {
+                mutate(rng, seeds[file])
+            };
+            Step::Add(file, text)
+        } else {
+            let file = rng.below(2);
+            Step::Edit(file, mutate(rng, current[file].as_deref().unwrap_or(seeds[file])))
+        };
+        match &step {
+            Step::Edit(file, text) | Step::Add(file, text) => current[*file] = Some(text.clone()),
+            Step::Remove(file) => current[*file] = None,
+        }
+        steps.push(step);
+    }
+    steps
+}
+
 /// Removes characters from `source` for as long as `fails` stays true of the rest.
 fn shrink(source: &str, fails: &dyn Fn(&str) -> bool) -> String {
     let mut chars: Vec<char> = source.chars().collect();
-    let mut budget = 1500usize;
+    let mut budget = 600usize;
     let mut chunk = chars.len().div_ceil(2).max(1);
     loop {
         let mut index = 0;
@@ -387,12 +474,38 @@ fn shrink(source: &str, fails: &dyn Fn(&str) -> bool) -> String {
     chars.into_iter().collect()
 }
 
+/// The shortest sequence, and the shortest texts in it, that still fail like the original.
+fn shrink_steps(steps: Vec<Step>, still_fails: &dyn Fn(&[Step]) -> bool) -> Vec<Step> {
+    let mut steps = steps;
+    let mut index = 0;
+    while index < steps.len() {
+        let mut candidate = steps.clone();
+        candidate.remove(index);
+        if still_fails(&candidate) {
+            steps = candidate;
+        } else {
+            index += 1;
+        }
+    }
+    for position in 0..steps.len() {
+        let Some(text) = steps[position].text().map(str::to_string) else {
+            continue;
+        };
+        let shrunk = shrink(&text, &|candidate| {
+            let mut trial = steps.clone();
+            trial[position] = steps[position].with_text(candidate);
+            still_fails(&trial)
+        });
+        steps[position] = steps[position].with_text(&shrunk);
+    }
+    steps
+}
+
 struct Found {
     count: usize,
     message: String,
     pair: usize,
-    a: String,
-    b: String,
+    steps: Vec<Step>,
 }
 
 fn env_number(name: &str, default: usize) -> usize {
@@ -405,57 +518,46 @@ fn env_number(name: &str, default: usize) -> usize {
 #[test]
 fn an_updated_index_equals_a_fresh_one_and_never_panics_on_broken_code() {
     // The defaults keep the test fast; a hunt for rare failures turns both knobs up.
-    let rounds = env_number("DARTSCOPE_MUTATION_ROUNDS", 40);
+    let rounds = env_number("DARTSCOPE_MUTATION_ROUNDS", 25);
     let salt = env_number("DARTSCOPE_MUTATION_SEED", 0) as u64;
     panic::set_hook(Box::new(record_panic));
     let mut runs = 0usize;
     let mut found: BTreeMap<String, Found> = BTreeMap::new();
-    for (pair, (a0, b0)) in PAIRS.iter().enumerate() {
-        let mut rng = Rng(0x9E37_79B9_7F4A_7C15
-            ^ ((pair as u64 + 1) * 0x1000_0000_01B3)
-            ^ salt.wrapping_mul(0xD6E8_FEB8_6659_FD93));
+    for (pair, initial) in PAIRS.iter().enumerate() {
+        let mut rng = Rng(
+            0x9E37_79B9_7F4A_7C15
+                ^ ((pair as u64 + 1) * 0x1000_0000_01B3)
+                ^ salt.wrapping_mul(0xD6E8_FEB8_6659_FD93),
+        );
         for _ in 0..rounds {
-            let a1 = mutate(&mut rng, a0);
-            let b1 = if rng.below(3) == 0 {
-                mutate(&mut rng, b0)
-            } else {
-                (*b0).to_string()
-            };
+            let steps = generate(&mut rng, *initial);
             runs += 1;
-            let Some(failure) = run(a0, b0, &a1, &b1) else {
+            let Some(failure) = run(*initial, &steps) else {
                 continue;
             };
-            let (key, message) = match failure {
-                Failure::Panic(place, message) => (format!("panic at {place}"), message),
-                Failure::Divergence(what) => (format!("divergence in {what}"), String::new()),
+            let message = match &failure {
+                Failure::Panic(_, message) => message.clone(),
+                Failure::Divergence(number, _) => format!("at step {number}"),
             };
-            let entry = found.entry(key).or_insert_with(|| Found {
+            let entry = found.entry(failure.key()).or_insert_with(|| Found {
                 count: 0,
                 message,
                 pair,
-                a: a1.clone(),
-                b: b1.clone(),
+                steps: steps.clone(),
             });
             entry.count += 1;
-            if a1.len() + b1.len() < entry.a.len() + entry.b.len() {
+            if steps.len() < entry.steps.len() {
                 entry.pair = pair;
-                entry.a = a1;
-                entry.b = b1;
+                entry.steps = steps;
             }
         }
     }
-    // The same failure on the smallest texts: the edited file first, then the library.
     for (key, entry) in &mut found {
-        let (a0, b0) = PAIRS[entry.pair];
-        let same = |failure: Option<Failure>| match failure {
-            Some(Failure::Panic(place, _)) => format!("panic at {place}") == *key,
-            Some(Failure::Divergence(what)) => format!("divergence in {what}") == *key,
-            None => false,
-        };
-        let b = entry.b.clone();
-        entry.a = shrink(&entry.a, &|candidate| same(run(a0, b0, candidate, &b)));
-        let a = entry.a.clone();
-        entry.b = shrink(&entry.b, &|candidate| same(run(a0, b0, &a, candidate)));
+        let initial = PAIRS[entry.pair];
+        let steps = std::mem::take(&mut entry.steps);
+        entry.steps = shrink_steps(steps, &|candidate| {
+            run(initial, candidate).is_some_and(|failure| failure.key() == *key)
+        });
     }
     drop(panic::take_hook());
 
@@ -463,15 +565,19 @@ fn an_updated_index_equals_a_fresh_one_and_never_panics_on_broken_code() {
         .iter()
         .map(|(key, entry)| {
             format!(
-                "{key} x{}: {:.80} -- pair {} a1 {:?} b1 {:?}",
+                "{key} x{}: {:.60} -- pair {}: {}",
                 entry.count,
                 entry.message.replace('\n', " "),
                 entry.pair,
-                entry.a,
-                entry.b
+                entry
+                    .steps
+                    .iter()
+                    .map(Step::describe)
+                    .collect::<Vec<_>>()
+                    .join("; ")
             )
         })
         .collect();
     assert!(report.is_empty(), "\n{}", report.join("\n"));
-    assert!(runs >= 150, "only {runs} edits were run");
+    assert!(runs >= 80, "only {runs} sequences were run");
 }
