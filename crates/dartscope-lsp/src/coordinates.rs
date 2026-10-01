@@ -4,24 +4,123 @@
 //! `character` is a 0-indexed offset in UTF-16 code units from the start
 //! of the line. DartScope's `SourceSpan` is 1-indexed line/column in Unicode
 //! scalar values (chars) with byte offsets. This module converts losslessly
-//! for LF, CRLF, and non-BMP characters (surrogate pairs).
+//! for `\n`, `\r\n` and `\r` line endings (the three the protocol defines) and
+//! non-BMP characters (surrogate pairs).
+//!
+//! [`LineIndex`] is built once per text and answers every conversion with a binary search over
+//! its lines; the free functions are one-shot wrappers around it.
 
 use dartscope_core::SourceSpan;
 
 use crate::types::{Position, Range};
 
+/// Start and content end of every line of one text.
+///
+/// A text always has at least one line, and a terminator at the very end opens a final empty
+/// line, which is how editors count lines.
+#[derive(Debug, Clone)]
+pub struct LineIndex<'a> {
+    text: &'a str,
+    /// `(start, content_end)` per line; the content excludes the line terminator.
+    lines: Vec<(usize, usize)>,
+}
+
+impl<'a> LineIndex<'a> {
+    pub fn new(text: &'a str) -> Self {
+        let bytes = text.as_bytes();
+        let mut lines = Vec::new();
+        let mut start = 0;
+        let mut index = 0;
+        while index < bytes.len() {
+            match bytes[index] {
+                b'\n' => {
+                    lines.push((start, index));
+                    index += 1;
+                    start = index;
+                }
+                b'\r' => {
+                    lines.push((start, index));
+                    index += if bytes.get(index + 1) == Some(&b'\n') {
+                        2
+                    } else {
+                        1
+                    };
+                    start = index;
+                }
+                _ => index += 1,
+            }
+        }
+        lines.push((start, bytes.len()));
+        Self { text, lines }
+    }
+
+    /// Number of lines, counting the empty line after a trailing terminator.
+    pub fn line_count(&self) -> usize {
+        self.lines.len()
+    }
+
+    /// The position of a byte offset.
+    ///
+    /// An offset past the end is clamped to the end, one inside a multi-byte character moves back
+    /// to the start of that character, and one inside a line terminator is the end of its line.
+    pub fn position(&self, offset: usize) -> Position {
+        let offset = floor_char_boundary(self.text, offset.min(self.text.len()));
+        let line = self.line_of(offset);
+        let (start, end) = self.lines[line];
+        let character = utf16_len(&self.text[start..offset.min(end)]);
+        Position {
+            line: u32::try_from(line).unwrap_or(u32::MAX),
+            character: u32::try_from(character).unwrap_or(u32::MAX),
+        }
+    }
+
+    /// The byte offset of a position, or `None` when the line or the character does not exist.
+    ///
+    /// A character inside a surrogate pair is the start of that character.
+    pub fn offset(&self, position: Position) -> Option<usize> {
+        let &(start, end) = self.lines.get(position.line as usize)?;
+        let within = utf16_to_byte_offset(&self.text[start..end], position.character as usize)?;
+        Some(start + within)
+    }
+
+    /// The byte offset of a position, with a position beyond the end of its line placed at the end
+    /// of the line and a line beyond the text placed at the end of the text, as the protocol asks.
+    pub fn offset_clamped(&self, position: Position) -> usize {
+        let Some(&(start, end)) = self.lines.get(position.line as usize) else {
+            return self.text.len();
+        };
+        utf16_to_byte_offset(&self.text[start..end], position.character as usize)
+            .map_or(end, |within| start + within)
+    }
+
+    /// One-based line number and one-based character column of a byte offset.
+    fn line_and_column(&self, offset: usize) -> (usize, usize) {
+        let offset = floor_char_boundary(self.text, offset.min(self.text.len()));
+        let line = self.line_of(offset);
+        let (start, end) = self.lines[line];
+        (
+            line + 1,
+            self.text[start..offset.min(end)].chars().count() + 1,
+        )
+    }
+
+    /// Index of the line that contains `offset`; an offset inside a terminator belongs to the line
+    /// that the terminator ends.
+    fn line_of(&self, offset: usize) -> usize {
+        self.lines
+            .partition_point(|&(start, _)| start <= offset)
+            .saturating_sub(1)
+    }
+}
+
 /// Converts a byte offset in `source` to an LSP `Position`.
 ///
 /// `offset` is a byte index into `source` (0 ≤ offset ≤ source.len()).
 /// If `offset` is in the middle of a UTF-8 code point, it is clamped to the
-/// start of that code point. Lines are split on `\n`; a preceding `\r` is
-/// treated as part of the CRLF line break and not counted as a character.
+/// start of that code point. A line terminator (`\n`, `\r\n` or `\r`) belongs to the
+/// line it ends and is not counted as a character.
 pub fn byte_offset_to_lsp_position(source: &str, offset: usize) -> Position {
-    let offset = offset.min(source.len());
-    // Clamp to char boundary
-    let offset = floor_char_boundary(source, offset);
-    let (line, character) = offset_to_line_and_utf16(source, offset);
-    Position { line, character }
+    LineIndex::new(source).position(offset)
 }
 
 /// Converts an LSP `Position` to a byte offset in `source`.
@@ -31,39 +130,33 @@ pub fn byte_offset_to_lsp_position(source: &str, offset: usize) -> Position {
 /// at the line break (e.g. CRLF), the offset points to the start of the
 /// line break.
 pub fn lsp_position_to_byte_offset(source: &str, position: Position) -> Option<usize> {
-    let line = position.line as usize;
-    let character = position.character as usize;
-    let (line_start, line_content) = line_content_by_index(source, line)?;
-    let byte_offset_in_line = utf16_to_byte_offset(line_content, character)?;
-    Some(line_start + byte_offset_in_line)
+    LineIndex::new(source).offset(position)
 }
 
 /// Converts a `SourceSpan` (1-indexed, char columns) to an LSP `Range` (0-indexed, UTF-16).
 pub fn source_span_to_lsp_range(source: &str, span: &SourceSpan) -> Range {
-    let start = byte_offset_to_lsp_position(source, span.byte_start);
-    let end = byte_offset_to_lsp_position(source, span.byte_end);
-    Range { start, end }
+    let index = LineIndex::new(source);
+    Range {
+        start: index.position(span.byte_start),
+        end: index.position(span.byte_end),
+    }
 }
 
 /// Converts an LSP `Range` to a `SourceSpan`.
 ///
 /// Returns `None` if either endpoint is outside the document.
 pub fn lsp_range_to_source_span(source: &str, range: Range) -> Option<SourceSpan> {
-    let start_offset = lsp_position_to_byte_offset(source, range.start)?;
-    let end_offset = lsp_position_to_byte_offset(source, range.end)?;
-    // Convert LSP 0-indexed line/utf16 to 1-indexed line/char column for SourceSpan
-    let start_line = range.start.line + 1;
-    let end_line = range.end.line + 1;
-    // Columns are 1-indexed char counts; we approximate via byte offset char count.
-    // For exact column we count chars from line start to offset.
-    let start_column = byte_offset_to_char_column(source, start_offset);
-    let end_column = byte_offset_to_char_column(source, end_offset);
+    let index = LineIndex::new(source);
+    let start_offset = index.offset(range.start)?;
+    let end_offset = index.offset(range.end)?;
+    let (start_line, start_column) = index.line_and_column(start_offset);
+    let (end_line, end_column) = index.line_and_column(end_offset);
     Some(SourceSpan {
         byte_start: start_offset,
         byte_end: end_offset,
-        start_line: start_line as usize,
+        start_line,
         start_column,
-        end_line: end_line as usize,
+        end_line,
         end_column,
     })
 }
@@ -73,65 +166,6 @@ fn floor_char_boundary(source: &str, mut offset: usize) -> usize {
         offset -= 1;
     }
     offset
-}
-
-fn offset_to_line_and_utf16(source: &str, offset: usize) -> (u32, u32) {
-    let mut line: u32 = 0;
-    let mut line_start: usize = 0;
-    let bytes = source.as_bytes();
-    let mut i = 0;
-    while i < source.len() {
-        if bytes[i] == b'\n' {
-            let line_end = if i > 0 && bytes[i - 1] == b'\r' {
-                i - 1
-            } else {
-                i
-            };
-            if offset <= line_end {
-                let character = utf16_len(&source[line_start..offset.min(line_end)]) as u32;
-                return (line, character);
-            }
-            if offset <= i {
-                // offset is inside CRLF (\r) or at \n
-                let character = utf16_len(&source[line_start..line_end]) as u32;
-                return (line, character);
-            }
-            line += 1;
-            line_start = i + 1;
-        }
-        i += 1;
-    }
-    // Last line (no trailing \n)
-    let character = utf16_len(&source[line_start..offset]) as u32;
-    (line, character)
-}
-
-fn line_content_by_index(source: &str, target_line: usize) -> Option<(usize, &str)> {
-    let bytes = source.as_bytes();
-    let mut line: usize = 0;
-    let mut line_start: usize = 0;
-    let mut i = 0;
-    while i <= source.len() {
-        let is_end = i == source.len();
-        let is_nl = !is_end && bytes[i] == b'\n';
-        if is_end || is_nl {
-            let line_end = if is_nl && i > 0 && bytes[i - 1] == b'\r' {
-                i - 1
-            } else {
-                i
-            };
-            if line == target_line {
-                return Some((line_start, &source[line_start..line_end]));
-            }
-            if is_end {
-                break;
-            }
-            line += 1;
-            line_start = i + 1;
-        }
-        i += 1;
-    }
-    None
 }
 
 fn utf16_len(s: &str) -> usize {
@@ -156,22 +190,9 @@ fn utf16_to_byte_offset(line_content: &str, utf16_offset: usize) -> Option<usize
             return Some(byte_offset);
         }
     }
-    if utf16_count == utf16_offset {
-        Some(byte_offset)
-    } else {
-        // Character exceeds line length — per LSP spec, positions beyond line length are clamped to line end,
-        // but for strict conversion we return None to signal out-of-bounds. Caller may clamp.
-        None
-    }
-}
-
-fn byte_offset_to_char_column(source: &str, offset: usize) -> usize {
-    let offset = offset.min(source.len());
-    let offset = floor_char_boundary(source, offset);
-    // Find line start
-    let line_start = source[..offset].rfind('\n').map(|pos| pos + 1).unwrap_or(0);
-    let column_chars = source[line_start..offset].chars().count();
-    column_chars + 1 // 1-indexed
+    // A character beyond the end of the line is `None` for the strict conversion; callers that
+    // need the protocol's clamping use `LineIndex::offset_clamped`.
+    None
 }
 
 #[cfg(test)]
@@ -403,5 +424,83 @@ mod tests {
         let back = lsp_range_to_source_span(source, range).unwrap();
         assert_eq!(back.byte_start, span.byte_start);
         assert_eq!(back.byte_end, span.byte_end);
+    }
+
+    fn at(line: u32, character: u32) -> Position {
+        Position { line, character }
+    }
+
+    #[test]
+    fn a_lone_carriage_return_ends_a_line() {
+        // bytes: 0 'a', 1 CR, 2 'b', 3 CR, 4 LF, 5 'c', 6 LF, 7 'd'
+        let source = "a\rb\r\nc\nd";
+        let index = LineIndex::new(source);
+        assert_eq!(index.line_count(), 4);
+        assert_eq!(index.position(2), at(1, 0));
+        assert_eq!(index.position(5), at(2, 0));
+        assert_eq!(index.position(7), at(3, 0));
+        assert_eq!(index.position(8), at(3, 1));
+        assert_eq!(index.offset(at(1, 1)), Some(3));
+    }
+
+    #[test]
+    fn a_trailing_terminator_opens_an_empty_last_line() {
+        let index = LineIndex::new("a\n");
+        assert_eq!(index.line_count(), 2);
+        assert_eq!(index.position(2), at(1, 0));
+        assert_eq!(index.offset(at(1, 0)), Some(2));
+        assert_eq!(index.offset(at(2, 0)), None);
+        assert_eq!(LineIndex::new("").line_count(), 1);
+    }
+
+    #[test]
+    fn clamped_offsets_follow_the_protocol() {
+        let source = "ab\ncd";
+        let index = LineIndex::new(source);
+        // A character beyond the end of its line is the end of that line.
+        assert_eq!(index.offset_clamped(at(0, 99)), 2);
+        // A line beyond the text is the end of the text.
+        assert_eq!(index.offset_clamped(at(9, 0)), source.len());
+        assert_eq!(index.offset_clamped(at(1, 1)), 4);
+        // Inside a surrogate pair is the start of the character.
+        assert_eq!(LineIndex::new("a😀").offset_clamped(at(0, 2)), 1);
+    }
+
+    #[test]
+    fn every_character_boundary_converts_consistently() {
+        for source in [
+            "",
+            "x",
+            "a\n",
+            "a😀b\r\nc\rd\n",
+            "日本語\n€ x\r\n\r\n",
+            "\n\n",
+        ] {
+            let index = LineIndex::new(source);
+            for offset in (0..=source.len()).filter(|offset| source.is_char_boundary(*offset)) {
+                let position = index.position(offset);
+                let back = index.offset(position).expect("a position of the text exists");
+                // Only the LF of a CRLF pair has no position of its own: it is the end of its line.
+                assert!(
+                    back == offset || back + 1 == offset,
+                    "{offset} -> {position:?} -> {back} in {source:?}"
+                );
+                assert_eq!(index.position(back), position, "{source:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_range_converts_to_a_span_with_character_columns() {
+        let source = "x😀y\r\nüber z\n";
+        let range = Range {
+            start: at(1, 0),
+            end: at(1, 4),
+        };
+        let span = lsp_range_to_source_span(source, range).unwrap();
+        assert_eq!(&source[span.byte_start..span.byte_end], "über");
+        assert_eq!((span.start_line, span.start_column), (2, 1));
+        assert_eq!((span.end_line, span.end_column), (2, 5));
+        assert_eq!(source_span_to_lsp_range(source, &span), range);
     }
 }

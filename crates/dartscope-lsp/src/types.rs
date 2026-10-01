@@ -112,39 +112,31 @@ impl Url {
     }
 }
 
+/// Decodes `%XX` escapes. The escapes encode UTF-8 bytes, so they are collected as bytes and
+/// decoded together (`%C3%A9` is one character); an escape that is not valid hexadecimal is kept
+/// literally, and bytes that are not UTF-8 become U+FFFD.
 fn percent_decode(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let mut bytes = input.bytes().peekable();
-    while let Some(b) = bytes.next() {
-        if b == b'%' {
-            let hi = bytes.next();
-            let lo = bytes.next();
-            if let (Some(hi), Some(lo)) = (hi, lo) {
-                let hex = [hi, lo];
-                if let Ok(hex_str) = std::str::from_utf8(&hex)
-                    && let Ok(byte) = u8::from_str_radix(hex_str, 16)
-                {
-                    out.push(byte as char);
-                    continue;
-                }
-                // Invalid encoding, keep literally
-                out.push('%');
-                out.push(hi as char);
-                out.push(lo as char);
-            } else {
-                out.push('%');
-                if let Some(hi) = hi {
-                    out.push(hi as char);
-                }
-                if let Some(lo) = lo {
-                    out.push(lo as char);
-                }
-            }
+    let bytes = input.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%'
+            && let Some(byte) = bytes.get(index + 1..index + 3).and_then(hex_pair)
+        {
+            decoded.push(byte);
+            index += 3;
         } else {
-            out.push(b as char);
+            decoded.push(bytes[index]);
+            index += 1;
         }
     }
-    out
+    String::from_utf8_lossy(&decoded).into_owned()
+}
+
+fn hex_pair(pair: &[u8]) -> Option<u8> {
+    let high = char::from(*pair.first()?).to_digit(16)?;
+    let low = char::from(*pair.get(1)?).to_digit(16)?;
+    u8::try_from(high * 16 + low).ok()
 }
 
 // ---------------------------------------------------------------------------
@@ -376,10 +368,33 @@ pub struct DocumentSymbol {
     pub children: Option<Vec<DocumentSymbol>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum SymbolTag {
     Deprecated = 1,
+}
+
+impl Serialize for SymbolTag {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u8(*self as u8)
+    }
+}
+
+impl<'de> Deserialize<'de> for SymbolTag {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match u8::deserialize(deserializer)? {
+            1 => Ok(SymbolTag::Deprecated),
+            other => Err(serde::de::Error::custom(format!(
+                "invalid SymbolTag {other}"
+            ))),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -428,6 +443,7 @@ pub enum TextDocumentSyncCapability {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct TextDocumentSyncOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub open_close: Option<bool>,
@@ -444,25 +460,26 @@ pub enum OneOf<L, R> {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DefinitionOptions {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(flatten)]
     pub work_done_progress_options: Option<WorkDoneProgressOptions>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ReferenceOptions {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(flatten)]
     pub work_done_progress_options: Option<WorkDoneProgressOptions>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DocumentSymbolOptions {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(flatten)]
     pub work_done_progress_options: Option<WorkDoneProgressOptions>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkDoneProgressOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work_done_progress: Option<bool>,
@@ -477,11 +494,12 @@ pub enum HoverProviderCapability {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HoverOptions {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(flatten)]
     pub work_done_progress_options: Option<WorkDoneProgressOptions>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct ServerCapabilities {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_document_sync: Option<TextDocumentSyncCapability>,
@@ -503,6 +521,7 @@ pub struct ServerInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InitializeResult {
     pub capabilities: ServerCapabilities,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -514,6 +533,7 @@ pub struct InitializeResult {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InitializeParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub root_uri: Option<Url>,
@@ -598,9 +618,9 @@ pub struct PartialResultParams {
     pub partial_result_token: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ReferenceContext {
-    #[serde(rename = "includeDeclaration")]
+    #[serde(rename = "includeDeclaration", default)]
     pub include_declaration: bool,
 }
 
@@ -612,6 +632,7 @@ pub struct ReferenceParams {
     pub work_done_progress_params: WorkDoneProgressParams,
     #[serde(flatten)]
     pub partial_result_params: PartialResultParams,
+    #[serde(default)]
     pub context: ReferenceContext,
 }
 
@@ -631,4 +652,12 @@ pub struct DocumentSymbolParams {
     pub work_done_progress_params: WorkDoneProgressParams,
     #[serde(flatten)]
     pub partial_result_params: PartialResultParams,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublishDiagnosticsParams {
+    pub uri: Url,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<i32>,
+    pub diagnostics: Vec<Diagnostic>,
 }
