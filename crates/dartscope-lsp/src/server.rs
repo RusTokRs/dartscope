@@ -1118,10 +1118,12 @@ mod tests {
         fault::set_analysis(false);
 
         assert!(server.diagnostics(&uri).iter().any(is_failure));
-        assert!(server
-            .document_symbols(&uri, symbols_params(&uri))
-            .unwrap()
-            .is_none());
+        assert!(
+            server
+                .document_symbols(&uri, symbols_params(&uri))
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(text_of(&server, &uri), "class A {}\n");
 
         server.did_change(change(&uri, 2, vec![edit((0, 0), (0, 0), "// edited\n")]));
