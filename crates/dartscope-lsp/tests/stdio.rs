@@ -256,7 +256,10 @@ fn the_project_on_disk_is_part_of_the_session() {
     let symbols = answer(2)["result"].as_array().unwrap();
     assert_eq!(symbols.len(), 1, "{symbols:?}");
     assert_eq!(symbols[0]["name"], "Widget");
-    assert_eq!(symbols[0]["location"]["uri"], project.uri("lib/widget.dart"));
+    assert_eq!(
+        symbols[0]["location"]["uri"],
+        project.uri("lib/widget.dart")
+    );
     // A directory of build output is not part of the project.
     assert_eq!(answer(3)["result"], json!([]));
     // The `package:` import resolves through the `pubspec.yaml` that the scan found, to a file the
@@ -273,6 +276,9 @@ fn the_project_on_disk_is_part_of_the_session() {
         .iter()
         .map(|location| &location["uri"])
         .collect();
-    assert!(references.contains(&&json!(project.uri("lib/other.dart"))), "{references:?}");
+    assert!(
+        references.contains(&&json!(project.uri("lib/other.dart"))),
+        "{references:?}"
+    );
     assert!(references.contains(&&json!(main)), "{references:?}");
 }

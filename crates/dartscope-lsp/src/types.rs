@@ -791,7 +791,10 @@ mod tests {
         ] {
             let url = Url::from_file_path(path);
             assert!(url.as_str().starts_with("file:///"), "{url}");
-            assert!(!url.as_str().contains(' ') && !url.as_str().contains('#'), "{url}");
+            assert!(
+                !url.as_str().contains(' ') && !url.as_str().contains('#'),
+                "{url}"
+            );
             let back = url.to_file_path().unwrap().to_string_lossy().into_owned();
             assert_eq!(back.trim_start_matches('/'), path.trim_start_matches('/'));
         }

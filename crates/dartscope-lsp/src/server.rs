@@ -18,8 +18,8 @@ use dartscope_index::{
 };
 use thiserror::Error;
 
-pub use self::workspace::{NoWorkspace, WorkspaceFile, WorkspaceScan, WorkspaceSource};
 use self::workspace::{ConfigFile, WorkspaceDocument};
+pub use self::workspace::{NoWorkspace, WorkspaceFile, WorkspaceScan, WorkspaceSource};
 use crate::coordinates::LineIndex;
 use crate::types::{
     Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
@@ -733,8 +733,7 @@ impl<'a> Locator<'a> {
     /// The declared name within a declaration span, or the whole span when the name is not found.
     fn name_location(&mut self, path: &str, span: &SourceSpan, name: &str) -> Option<Location> {
         let (_, _, text) = self.source(path)?;
-        let (start, end) =
-            find_name(text, span, name).unwrap_or((span.byte_start, span.byte_end));
+        let (start, end) = find_name(text, span, name).unwrap_or((span.byte_start, span.byte_end));
         self.location(path, start, end)
     }
 }

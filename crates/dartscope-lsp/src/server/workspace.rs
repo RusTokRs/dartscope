@@ -196,17 +196,15 @@ impl DartLspServer {
 
     /// Rebuilds the whole index from the project on disk and the open documents.
     fn rebuild_index(&mut self) {
-        let mut files: Vec<DartFileInput> = self
-            .workspace
-            .iter()
-            .filter(|(path, _)| !self.documents.contains_key(*path))
-            .map(|(path, document)| DartFileInput::new(path.as_str(), document.text.as_str()))
-            .chain(
-                self.documents
-                    .iter()
-                    .map(|(path, document)| DartFileInput::new(path.as_str(), document.text.as_str())),
-            )
-            .collect();
+        let mut files: Vec<DartFileInput> =
+            self.workspace
+                .iter()
+                .filter(|(path, _)| !self.documents.contains_key(*path))
+                .map(|(path, document)| DartFileInput::new(path.as_str(), document.text.as_str()))
+                .chain(self.documents.iter().map(|(path, document)| {
+                    DartFileInput::new(path.as_str(), document.text.as_str())
+                }))
+                .collect();
         files.sort_by(|left, right| left.path.cmp(&right.path));
         let mut pubspecs = Vec::new();
         let mut package_configs = Vec::new();
@@ -216,10 +214,8 @@ impl DartLspServer {
                     pubspecs.push(PubspecInput::new(path.as_str(), config.text.as_str()));
                 }
                 ConfigKind::PackageConfig => {
-                    package_configs.push(PackageConfigInput::new(
-                        path.as_str(),
-                        config.text.as_str(),
-                    ));
+                    package_configs
+                        .push(PackageConfigInput::new(path.as_str(), config.text.as_str()));
                 }
             }
         }
@@ -448,7 +444,10 @@ mod tests {
             .unwrap()
             .expect("the class is declared in the project");
 
-        assert_eq!(locations[0].uri.as_str(), "file:///work/app/lib/widget.dart");
+        assert_eq!(
+            locations[0].uri.as_str(),
+            "file:///work/app/lib/widget.dart"
+        );
         assert_eq!(
             locations[0].range.start,
             Position {
@@ -480,8 +479,14 @@ mod tests {
             .iter()
             .map(|location| location.uri.as_str())
             .collect();
-        assert!(files.contains(&"file:///work/app/lib/other.dart"), "{files:?}");
-        assert!(files.contains(&"file:///work/app/lib/main.dart"), "{files:?}");
+        assert!(
+            files.contains(&"file:///work/app/lib/other.dart"),
+            "{files:?}"
+        );
+        assert!(
+            files.contains(&"file:///work/app/lib/main.dart"),
+            "{files:?}"
+        );
     }
 
     #[test]
@@ -497,7 +502,11 @@ mod tests {
         assert_eq!(names(&server, ""), ["A"]);
 
         // A buffer that was never a file leaves nothing behind when it closes.
-        open(&mut server, "/work/app/lib/scratch.dart", "class Scratch {}\n");
+        open(
+            &mut server,
+            "/work/app/lib/scratch.dart",
+            "class Scratch {}\n",
+        );
         assert_eq!(names(&server, "scratch"), ["Scratch"]);
         close(&mut server, "/work/app/lib/scratch.dart");
         assert!(names(&server, "scratch").is_empty());
@@ -561,7 +570,10 @@ mod tests {
         open(&mut server, "/work/app/lib/main.dart", main);
 
         let locations = server
-            .definition(&uri("/work/app/lib/main.dart"), position_of(main, "FromA()"))
+            .definition(
+                &uri("/work/app/lib/main.dart"),
+                position_of(main, "FromA()"),
+            )
             .unwrap()
             .expect("the package configuration resolves the import");
 

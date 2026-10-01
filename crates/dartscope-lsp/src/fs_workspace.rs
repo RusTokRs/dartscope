@@ -110,7 +110,9 @@ fn scan_directory(root: &Path) -> WorkspaceScan {
             let Some(limit) = size_limit(&path) else {
                 continue;
             };
-            let is_dart = path.extension().is_some_and(|extension| extension == "dart");
+            let is_dart = path
+                .extension()
+                .is_some_and(|extension| extension == "dart");
             if is_dart {
                 if dart_files >= MAX_WORKSPACE_FILES || bytes >= MAX_WORKSPACE_BYTES {
                     scan.notes.push(format!(
@@ -307,7 +309,10 @@ mod tests {
         assert_eq!(relative_paths(&scan, &root.0), ["lib/small.dart"]);
         assert_eq!(scan.notes.len(), 1, "{:?}", scan.notes);
         assert!(scan.notes[0].contains("1 Dart files larger than"));
-        assert_eq!(FsWorkspace.read(&slashes(&root.0.join("lib/big.dart"))), None);
+        assert_eq!(
+            FsWorkspace.read(&slashes(&root.0.join("lib/big.dart"))),
+            None
+        );
         assert_eq!(
             FsWorkspace
                 .read(&slashes(&root.0.join("lib/small.dart")))
@@ -318,8 +323,14 @@ mod tests {
 
     #[test]
     fn a_windows_file_uri_path_is_a_drive_path() {
-        assert_eq!(file_system_path("/C:/proj/a.dart"), PathBuf::from("C:/proj/a.dart"));
-        assert_eq!(file_system_path("/work/a.dart"), PathBuf::from("/work/a.dart"));
+        assert_eq!(
+            file_system_path("/C:/proj/a.dart"),
+            PathBuf::from("C:/proj/a.dart")
+        );
+        assert_eq!(
+            file_system_path("/work/a.dart"),
+            PathBuf::from("/work/a.dart")
+        );
     }
 
     #[cfg(unix)]

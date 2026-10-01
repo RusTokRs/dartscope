@@ -467,11 +467,7 @@ fn handle_notification(
 }
 
 /// Reads the project from `source` into the server, once the client says it is ready.
-fn load_workspace(
-    server: &mut DartLspServer,
-    source: &dyn WorkspaceSource,
-    outcome: &mut Outcome,
-) {
+fn load_workspace(server: &mut DartLspServer, source: &dyn WorkspaceSource, outcome: &mut Outcome) {
     let mut files = Vec::new();
     for root in server.workspace_roots().to_vec() {
         let scan = source.scan(&root);
@@ -1023,7 +1019,10 @@ mod tests {
     #[test]
     fn the_project_is_loaded_when_the_client_is_ready_and_workspace_symbol_searches_it() {
         let source = MemoryWorkspace::new(&[
-            ("/work/app/lib/a.dart", "class Alpha {\n  int beta = 0;\n}\n"),
+            (
+                "/work/app/lib/a.dart",
+                "class Alpha {\n  int beta = 0;\n}\n",
+            ),
             ("/work/other/lib/b.dart", "class Beta {}\n"),
         ]);
         let mut server = DartLspServer::new(".");
