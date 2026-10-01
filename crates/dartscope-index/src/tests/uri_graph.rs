@@ -526,12 +526,7 @@ fn resolutions_in(
         .references
         .into_iter()
         .filter(|reference| reference.source_path == source)
-        .map(|reference| {
-            (
-                reference.uri,
-                (reference.resolution, reference.target_path),
-            )
-        })
+        .map(|reference| (reference.uri, (reference.resolution, reference.target_path)))
         .collect()
 }
 
@@ -556,7 +551,10 @@ fn percent_escapes_in_a_relative_reference_name_the_decoded_file() {
     assert_eq!(target("b c.dart"), resolved("lib/b c.dart"));
     assert_eq!(target("%C3%BCber.dart"), resolved("lib/\u{fc}ber.dart"));
     // An escaped separator would change which directory the file is in; it names no file.
-    assert_eq!(target("sub%2Fb.dart"), (DartUriResolution::InvalidUri, None));
+    assert_eq!(
+        target("sub%2Fb.dart"),
+        (DartUriResolution::InvalidUri, None)
+    );
     // A `%` that is not an escape is part of the name, as before.
     assert_eq!(
         target("100%.dart"),
@@ -582,7 +580,7 @@ fn an_empty_reference_is_an_invalid_uri_and_not_a_missing_directory() {
         "lib/a.dart",
     );
 
-    assert_eq!(found["" ], (DartUriResolution::InvalidUri, None));
+    assert_eq!(found[""], (DartUriResolution::InvalidUri, None));
     assert_eq!(found["   "], (DartUriResolution::InvalidUri, None));
 }
 
