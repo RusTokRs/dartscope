@@ -1090,7 +1090,7 @@ dartscope analyze-file w.dart | python3 -c "import json,sys; print(json.load(sys
 Ubuntu 24.04, Windows Server 2025): `cargo fmt`, `cargo clippy --workspace --all-targets --locked -- -D warnings`,
 `cargo test --workspace --locked`; на macOS дополнительно `cargo doc -D warnings` и проверки feature-комбинаций.
 Состояние на конец работы: clippy — 0 замечаний; тесты — **537 passed / 0 failed / 2 ignored** на Linux и macOS и
-**529 / 0 / 2** на Windows (прогон GATES_RUN; игнорируемые — прежний тест и информационный `reference_pass_scaling`). На финальном дереве, без
+**529 / 0 / 2** на Windows (прогон 36905629710; игнорируемые — прежний тест и информационный `reference_pass_scaling`). На финальном дереве, без
 временного CI-контура, отдельно прошли гейты постоянного `ci.yml`, которые выполняются на одном раннере: `cargo fmt
 --check`, `check-repository-consistency.py`, `check-workflow-policy.py`, юнит-тесты `tools/tests` (22), `check-dependency-policy.py`,
 `actionlint 1.7.12`, `cargo check --workspace --all-targets --locked`, `clippy -D warnings`, `cargo doc -D warnings`, проверки
