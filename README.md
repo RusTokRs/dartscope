@@ -42,8 +42,9 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
   low-level generic Serde helpers remain available but are not stable command schemas.
 - `dartscope-lsp` is an optional Language Server Protocol bridge over the incremental index: a
   transport-independent JSON-RPC layer, a stdio binary, and definition, references, hover, document
-  symbols and diagnostics for the documents an editor has open. It scans no files; see the DS-LSP-001
-  limits in [`docs/development/dartscope-library-plan.md`](docs/development/dartscope-library-plan.md).
+  symbols, workspace symbols and diagnostics. The binary loads the project from disk when the editor is
+  ready (Dart sources, `pubspec.yaml`, `package_config.json`) and follows file changes the editor reports;
+  see [`docs/development/lsp.md`](docs/development/lsp.md) for the workspace model and its limits.
 - `dartscope-cli` exposes the stable process boundary with help, version output, documented exit
   codes, deterministic discovery, versioned JSON for every analysis command, and a configured lint
   command with SARIF 2.1.0 output.

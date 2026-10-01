@@ -60,6 +60,50 @@ impl Url {
         &self.0
     }
 
+    /// The `file://` URL of an absolute path: `/work/my app/a.dart` is `file:///work/my%20app/a.dart`
+    /// and `C:\proj\a.dart` is `file:///C:/proj/a.dart`. Everything but letters, digits and the
+    /// characters that URLs keep in a path is written as the percent escapes of its UTF-8 bytes, so
+    /// [`Url::to_file_path`] returns the same path.
+    pub fn from_file_path(path: &str) -> Self {
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+        let path = path.replace('\\', "/");
+        let mut url = String::from("file://");
+        if !path.starts_with('/') {
+            url.push('/');
+        }
+        for byte in path.bytes() {
+            if byte.is_ascii_alphanumeric()
+                || matches!(
+                    byte,
+                    b'-' | b'.'
+                        | b'_'
+                        | b'~'
+                        | b'/'
+                        | b':'
+                        | b'@'
+                        | b'!'
+                        | b'$'
+                        | b'&'
+                        | b'\''
+                        | b'('
+                        | b')'
+                        | b'*'
+                        | b'+'
+                        | b','
+                        | b';'
+                        | b'='
+                )
+            {
+                url.push(char::from(byte));
+            } else {
+                url.push('%');
+                url.push(char::from(HEX[usize::from(byte >> 4)]));
+                url.push(char::from(HEX[usize::from(byte & 15)]));
+            }
+        }
+        Url(url)
+    }
+
     pub fn path(&self) -> &str {
         // For file:// URIs, return the path part after "file://"
         // Otherwise return as-is.
@@ -511,6 +555,8 @@ pub struct ServerCapabilities {
     pub hover_provider: Option<HoverProviderCapability>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub document_symbol_provider: Option<OneOf<bool, DocumentSymbolOptions>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_symbol_provider: Option<OneOf<bool, WorkDoneProgressOptions>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -660,4 +706,102 @@ pub struct PublishDiagnosticsParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<i32>,
     pub diagnostics: Vec<Diagnostic>,
+}
+
+// ---------------------------------------------------------------------------
+// Workspace
+// ---------------------------------------------------------------------------
+
+/// One result of `workspace/symbol`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SymbolInformation {
+    pub name: String,
+    pub kind: SymbolKind,
+    pub location: Location,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub container_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceSymbolParams {
+    pub query: String,
+}
+
+/// What happened to a file the client watches for the server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileChangeType {
+    Created,
+    Changed,
+    Deleted,
+}
+
+impl Serialize for FileChangeType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u8(match self {
+            FileChangeType::Created => 1,
+            FileChangeType::Changed => 2,
+            FileChangeType::Deleted => 3,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for FileChangeType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match u8::deserialize(deserializer)? {
+            1 => Ok(FileChangeType::Created),
+            2 => Ok(FileChangeType::Changed),
+            3 => Ok(FileChangeType::Deleted),
+            other => Err(serde::de::Error::custom(format!(
+                "invalid FileChangeType {other}"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileEvent {
+    pub uri: Url,
+    #[serde(rename = "type")]
+    pub kind: FileChangeType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DidChangeWatchedFilesParams {
+    pub changes: Vec<FileEvent>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Url;
+
+    #[test]
+    fn a_file_url_round_trips_to_the_path_it_was_made_from() {
+        for path in [
+            "/work/app/lib/main.dart",
+            "/work/my app/lib/ünï.dart",
+            "/work/a%b#c?d/x.dart",
+            "C:/proj/lib/a.dart",
+        ] {
+            let url = Url::from_file_path(path);
+            assert!(url.as_str().starts_with("file:///"), "{url}");
+            assert!(!url.as_str().contains(' ') && !url.as_str().contains('#'), "{url}");
+            let back = url.to_file_path().unwrap().to_string_lossy().into_owned();
+            assert_eq!(back.trim_start_matches('/'), path.trim_start_matches('/'));
+        }
+        assert_eq!(
+            Url::from_file_path("/work/my app/a.dart").as_str(),
+            "file:///work/my%20app/a.dart"
+        );
+        assert_eq!(
+            Url::from_file_path("C:\\proj\\a.dart").as_str(),
+            "file:///C:/proj/a.dart"
+        );
+    }
 }

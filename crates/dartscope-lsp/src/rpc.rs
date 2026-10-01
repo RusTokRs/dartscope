@@ -14,6 +14,11 @@
 //! - A message that is not valid JSON is answered with `ParseError` (-32700) and a `null` id; a
 //!   frame that cannot be read ends the session with code 1, because the stream can no longer be
 //!   trusted to be aligned on message boundaries.
+//!
+//! The project, as opposed to the documents the client opens, comes from a [`WorkspaceSource`]:
+//! `initialized` loads it, `workspace/didChangeWatchedFiles` updates it, and `workspace/symbol`
+//! searches it. [`serve`] and [`handle_message`] have no source; [`serve_with`] and
+//! [`handle_message_with`] take one.
 
 use std::fmt;
 use std::io::{self, BufRead, Read, Write};
@@ -23,11 +28,12 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
-use crate::server::DartLspServer;
+use crate::server::{DartLspServer, NoWorkspace, WorkspaceSource};
 use crate::types::{
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentSymbolParams, HoverParams, InitializeParams, PublishDiagnosticsParams, ReferenceParams,
-    TextDocumentPositionParams, Url,
+    DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentSymbolParams, FileChangeType, HoverParams, InitializeParams,
+    PublishDiagnosticsParams, ReferenceParams, TextDocumentPositionParams, Url,
+    WorkspaceSymbolParams,
 };
 
 /// The largest message body the server reads. A longer `Content-Length` ends the session instead
@@ -102,6 +108,21 @@ pub fn serve<R: BufRead, W: Write>(
     reader: &mut R,
     writer: &mut W,
 ) -> io::Result<i32> {
+    serve_with(server, &NoWorkspace, reader, writer)
+}
+
+/// Like [`serve`], with `source` supplying the files of the project: they are loaded when the client
+/// sends `initialized` and read again when `workspace/didChangeWatchedFiles` reports a change.
+///
+/// # Errors
+///
+/// Returns the I/O error when the reader or the writer fails.
+pub fn serve_with<R: BufRead, W: Write>(
+    server: &mut DartLspServer,
+    source: &dyn WorkspaceSource,
+    reader: &mut R,
+    writer: &mut W,
+) -> io::Result<i32> {
     loop {
         let body = match read_frame(reader) {
             Ok(Some(body)) => body,
@@ -114,7 +135,7 @@ pub fn serve<R: BufRead, W: Write>(
             }
         };
         let outcome = match serde_json::from_slice::<Value>(&body) {
-            Ok(message) => handle_guarded(server, message),
+            Ok(message) => handle_guarded(server, source, message),
             Err(error) => Outcome {
                 messages: vec![error_response(
                     Value::Null,
@@ -209,9 +230,15 @@ pub fn write_message<W: Write>(writer: &mut W, message: &Value) -> io::Result<()
 
 /// Handles a message like [`handle_message`], but a panic inside a handler answers the request with an
 /// internal error instead of ending the session of the editor.
-fn handle_guarded(server: &mut DartLspServer, message: Value) -> Outcome {
+fn handle_guarded(
+    server: &mut DartLspServer,
+    source: &dyn WorkspaceSource,
+    message: Value,
+) -> Outcome {
     let id = message.get("id").filter(|id| !id.is_null()).cloned();
-    match panic::catch_unwind(AssertUnwindSafe(|| handle_message(server, message))) {
+    match panic::catch_unwind(AssertUnwindSafe(|| {
+        handle_message_with(server, source, message)
+    })) {
         Ok(outcome) => outcome,
         Err(_) => Outcome {
             messages: id
@@ -229,8 +256,19 @@ fn handle_guarded(server: &mut DartLspServer, message: Value) -> Outcome {
     }
 }
 
-/// Handles one decoded message and returns what the server sends in answer.
+/// Handles one decoded message and returns what the server sends in answer. The project is only what
+/// the client opens; see [`handle_message_with`].
 pub fn handle_message(server: &mut DartLspServer, message: Value) -> Outcome {
+    handle_message_with(server, &NoWorkspace, message)
+}
+
+/// Handles one decoded message like [`handle_message`], reading the files of the project from
+/// `source`.
+pub fn handle_message_with(
+    server: &mut DartLspServer,
+    source: &dyn WorkspaceSource,
+    message: Value,
+) -> Outcome {
     let mut outcome = Outcome::default();
     let Value::Object(object) = message else {
         outcome.messages.push(error_response(
@@ -242,8 +280,9 @@ pub fn handle_message(server: &mut DartLspServer, message: Value) -> Outcome {
     };
     let id = object.get("id").filter(|id| !id.is_null()).cloned();
     let Some(method) = object.get("method").and_then(Value::as_str) else {
-        // The server sends no requests, so a message without a method is either a stray response,
-        // which is ignored, or a request that names no method.
+        // The only request the server sends is the registration of file watchers, and its answer needs
+        // no handling, so a message without a method is a response, which is ignored, or a request
+        // that names no method.
         let is_response = object.contains_key("result") || object.contains_key("error");
         if let (Some(id), false) = (id, is_response) {
             outcome.messages.push(error_response(
@@ -257,7 +296,7 @@ pub fn handle_message(server: &mut DartLspServer, message: Value) -> Outcome {
     let params = object.get("params").cloned().unwrap_or(Value::Null);
     match id {
         Some(id) => handle_request(server, method, params, id, &mut outcome),
-        None => handle_notification(server, method, params, &mut outcome),
+        None => handle_notification(server, source, method, params, &mut outcome),
     }
     outcome
 }
@@ -352,6 +391,10 @@ fn dispatch_request(
             let symbols = server.document_symbols(&uri, params).ok().flatten();
             to_result(&symbols)
         }
+        "workspace/symbol" => {
+            let params = parse_params::<WorkspaceSymbolParams>(params)?;
+            to_result(&server.workspace_symbols(&params.query))
+        }
         _ => Err(RpcError::new(
             METHOD_NOT_FOUND,
             format!("unsupported request `{method}`"),
@@ -361,6 +404,7 @@ fn dispatch_request(
 
 fn handle_notification(
     server: &mut DartLspServer,
+    source: &dyn WorkspaceSource,
     method: &str,
     params: Value,
     outcome: &mut Outcome,
@@ -371,6 +415,8 @@ fn handle_notification(
     }
     if method == "initialized" {
         server.initialized();
+        load_workspace(server, source, outcome);
+        register_file_watchers(server, outcome);
         return;
     }
     // Notifications before `initialize` and after `shutdown` are dropped, as the protocol says;
@@ -401,8 +447,79 @@ fn handle_notification(
                 push_diagnostics(outcome, uri, None, Vec::new());
             }
         }
+        "workspace/didChangeWatchedFiles" => {
+            if let Ok(params) = parse_params::<DidChangeWatchedFilesParams>(params) {
+                for change in params.changes {
+                    let Ok(path) = change.uri.to_file_path() else {
+                        continue;
+                    };
+                    let path = path.to_string_lossy().into_owned();
+                    // A file that was created or changed but cannot be read any more is gone.
+                    let text = (change.kind != FileChangeType::Deleted)
+                        .then(|| source.read(&path))
+                        .flatten();
+                    server.update_workspace_file(&path, text);
+                }
+            }
+        }
         _ => {}
     }
+}
+
+/// Reads the project from `source` into the server, once the client says it is ready.
+fn load_workspace(
+    server: &mut DartLspServer,
+    source: &dyn WorkspaceSource,
+    outcome: &mut Outcome,
+) {
+    let mut files = Vec::new();
+    for root in server.workspace_roots().to_vec() {
+        let scan = source.scan(&root);
+        files.extend(scan.files);
+        for note in scan.notes {
+            log_message(outcome, LOG_WARNING, &note);
+        }
+    }
+    if !files.is_empty() {
+        server.load_workspace(files);
+    }
+}
+
+/// Asks a client that can watch files to report changes of Dart files and package metadata, so the
+/// project the server loaded keeps up with the disk.
+fn register_file_watchers(server: &DartLspServer, outcome: &mut Outcome) {
+    if !server.watches_files() {
+        return;
+    }
+    outcome.messages.push(json!({
+        "jsonrpc": "2.0",
+        "id": "dartscope-watch-files",
+        "method": "client/registerCapability",
+        "params": {
+            "registrations": [{
+                "id": "dartscope-watch-files",
+                "method": "workspace/didChangeWatchedFiles",
+                "registerOptions": {
+                    "watchers": [
+                        { "globPattern": "**/*.dart" },
+                        { "globPattern": "**/pubspec.yaml" },
+                        { "globPattern": "**/package_config.json" }
+                    ]
+                }
+            }]
+        }
+    }));
+}
+
+/// `window/logMessage` type of a warning.
+const LOG_WARNING: u8 = 2;
+
+fn log_message(outcome: &mut Outcome, kind: u8, message: &str) {
+    outcome.messages.push(json!({
+        "jsonrpc": "2.0",
+        "method": "window/logMessage",
+        "params": { "type": kind, "message": message },
+    }));
 }
 
 /// Publishes the diagnostics of an open document after it changed.
@@ -821,5 +938,307 @@ mod tests {
         assert_eq!(symbols[0]["selectionRange"]["start"]["character"], 6);
         // A document the client never opened has no result; it is not an error.
         assert_eq!(answer(4)["result"], Value::Null);
+    }
+
+    /// A project in memory that can change between messages.
+    struct MemoryWorkspace {
+        files: std::cell::RefCell<Vec<(String, String)>>,
+        notes: Vec<String>,
+    }
+
+    impl MemoryWorkspace {
+        fn new(files: &[(&str, &str)]) -> Self {
+            Self {
+                files: std::cell::RefCell::new(
+                    files
+                        .iter()
+                        .map(|(path, text)| (path.to_string(), text.to_string()))
+                        .collect(),
+                ),
+                notes: Vec::new(),
+            }
+        }
+
+        fn set(&self, path: &str, text: Option<&str>) {
+            let mut files = self.files.borrow_mut();
+            files.retain(|(known, _)| known != path);
+            if let Some(text) = text {
+                files.push((path.to_string(), text.to_string()));
+            }
+        }
+    }
+
+    impl WorkspaceSource for MemoryWorkspace {
+        fn scan(&self, root: &str) -> crate::server::WorkspaceScan {
+            let prefix = format!("{}/", root.trim_end_matches('/'));
+            crate::server::WorkspaceScan {
+                files: self
+                    .files
+                    .borrow()
+                    .iter()
+                    .filter(|(path, _)| path.starts_with(&prefix))
+                    .map(|(path, text)| crate::server::WorkspaceFile {
+                        path: path.clone(),
+                        text: text.clone(),
+                    })
+                    .collect(),
+                notes: self.notes.clone(),
+            }
+        }
+
+        fn read(&self, path: &str) -> Option<String> {
+            self.files
+                .borrow()
+                .iter()
+                .find(|(known, _)| known == path)
+                .map(|(_, text)| text.clone())
+        }
+    }
+
+    /// Feeds the messages to the server one by one and returns everything it sent.
+    fn exchange(
+        server: &mut DartLspServer,
+        source: &dyn WorkspaceSource,
+        messages: Vec<Value>,
+    ) -> Vec<Value> {
+        messages
+            .into_iter()
+            .flat_map(|message| handle_message_with(server, source, message).messages)
+            .collect()
+    }
+
+    fn symbol_names(sent: &[Value], id: i64) -> Vec<String> {
+        let answer = sent
+            .iter()
+            .find(|message| message["id"] == id)
+            .unwrap_or_else(|| panic!("no answer for {id}: {sent:?}"));
+        answer["result"]
+            .as_array()
+            .unwrap_or_else(|| panic!("no list in {answer}"))
+            .iter()
+            .map(|symbol| symbol["name"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn the_project_is_loaded_when_the_client_is_ready_and_workspace_symbol_searches_it() {
+        let source = MemoryWorkspace::new(&[
+            ("/work/app/lib/a.dart", "class Alpha {\n  int beta = 0;\n}\n"),
+            ("/work/other/lib/b.dart", "class Beta {}\n"),
+        ]);
+        let mut server = DartLspServer::new(".");
+        let sent = exchange(
+            &mut server,
+            &source,
+            vec![
+                request(
+                    1,
+                    "initialize",
+                    json!({ "rootUri": "file:///work/app", "capabilities": {} }),
+                ),
+                request(2, "workspace/symbol", json!({ "query": "a" })),
+                notification("initialized", json!({})),
+                request(3, "workspace/symbol", json!({ "query": "alp" })),
+                request(4, "workspace/symbol", json!({ "query": "beta" })),
+            ],
+        );
+
+        assert_eq!(
+            sent[0]["result"]["capabilities"]["workspaceSymbolProvider"],
+            json!(true)
+        );
+        // Nothing is loaded before `initialized`.
+        assert_eq!(symbol_names(&sent, 2), Vec::<String>::new());
+        assert_eq!(symbol_names(&sent, 3), ["Alpha"]);
+        // Only the root of the session is read: `Beta` lives in another project.
+        assert_eq!(symbol_names(&sent, 4), ["beta"]);
+        let alpha = &sent.iter().find(|message| message["id"] == 3).unwrap()["result"][0];
+        assert_eq!(alpha["kind"], 5);
+        assert_eq!(alpha["location"]["uri"], "file:///work/app/lib/a.dart");
+        assert_eq!(
+            alpha["location"]["range"]["start"],
+            json!({ "line": 0, "character": 6 })
+        );
+        assert!(alpha.get("containerName").is_none());
+        let field = &sent.iter().find(|message| message["id"] == 4).unwrap()["result"][0];
+        assert_eq!(field["containerName"], "Alpha");
+    }
+
+    #[test]
+    fn every_workspace_folder_is_scanned() {
+        let source = MemoryWorkspace::new(&[
+            ("/work/one/lib/a.dart", "class One {}\n"),
+            ("/work/two/lib/b.dart", "class Two {}\n"),
+            ("/work/three/lib/c.dart", "class Three {}\n"),
+        ]);
+        let mut server = DartLspServer::new(".");
+        let sent = exchange(
+            &mut server,
+            &source,
+            vec![
+                request(
+                    1,
+                    "initialize",
+                    json!({
+                        "capabilities": {},
+                        "workspaceFolders": [
+                            { "uri": "file:///work/one", "name": "one" },
+                            { "uri": "file:///work/two", "name": "two" }
+                        ]
+                    }),
+                ),
+                notification("initialized", json!({})),
+                request(2, "workspace/symbol", json!({ "query": "" })),
+            ],
+        );
+
+        assert_eq!(symbol_names(&sent, 2), ["One", "Two"]);
+    }
+
+    #[test]
+    fn watched_file_events_keep_the_project_current() {
+        let source = MemoryWorkspace::new(&[("/work/app/lib/a.dart", "class Alpha {}\n")]);
+        let mut server = DartLspServer::new(".");
+        exchange(
+            &mut server,
+            &source,
+            vec![
+                request(
+                    1,
+                    "initialize",
+                    json!({ "rootUri": "file:///work/app", "capabilities": {} }),
+                ),
+                notification("initialized", json!({})),
+            ],
+        );
+
+        source.set("/work/app/lib/a.dart", Some("class Alpha2 {}\n"));
+        source.set("/work/app/lib/b.dart", Some("class Beta {}\n"));
+        let sent = exchange(
+            &mut server,
+            &source,
+            vec![
+                notification(
+                    "workspace/didChangeWatchedFiles",
+                    json!({ "changes": [
+                        { "uri": "file:///work/app/lib/a.dart", "type": 2 },
+                        { "uri": "file:///work/app/lib/b.dart", "type": 1 }
+                    ] }),
+                ),
+                request(2, "workspace/symbol", json!({ "query": "" })),
+            ],
+        );
+        assert_eq!(symbol_names(&sent, 2), ["Beta", "Alpha2"]);
+
+        // One file is deleted; one is reported as changed but is gone by the time it is read.
+        source.set("/work/app/lib/a.dart", None);
+        source.set("/work/app/lib/b.dart", None);
+        let sent = exchange(
+            &mut server,
+            &source,
+            vec![
+                notification(
+                    "workspace/didChangeWatchedFiles",
+                    json!({ "changes": [
+                        { "uri": "file:///work/app/lib/a.dart", "type": 3 },
+                        { "uri": "file:///work/app/lib/b.dart", "type": 2 },
+                        { "uri": "untitled:Untitled-1", "type": 1 }
+                    ] }),
+                ),
+                request(3, "workspace/symbol", json!({ "query": "" })),
+            ],
+        );
+        assert_eq!(symbol_names(&sent, 3), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_client_that_can_watch_files_is_asked_to_watch_dart_files_and_package_metadata() {
+        let source = MemoryWorkspace::new(&[]);
+        let initialize = |capabilities: Value| {
+            request(
+                1,
+                "initialize",
+                json!({ "rootUri": "file:///work/app", "capabilities": capabilities }),
+            )
+        };
+
+        let mut watching = DartLspServer::new(".");
+        let sent = exchange(
+            &mut watching,
+            &source,
+            vec![
+                initialize(json!({
+                    "workspace": { "didChangeWatchedFiles": { "dynamicRegistration": true } }
+                })),
+                notification("initialized", json!({})),
+            ],
+        );
+        let registration = sent
+            .iter()
+            .find(|message| message["method"] == "client/registerCapability")
+            .expect("a registration request");
+        assert!(registration["id"].is_string());
+        let registrations = &registration["params"]["registrations"][0];
+        assert_eq!(registrations["method"], "workspace/didChangeWatchedFiles");
+        let globs: Vec<&str> = registrations["registerOptions"]["watchers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|watcher| watcher["globPattern"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            globs,
+            ["**/*.dart", "**/pubspec.yaml", "**/package_config.json"]
+        );
+
+        // The answer of the client to that request is not a request; it is ignored.
+        let sent = exchange(
+            &mut watching,
+            &source,
+            vec![json!({ "jsonrpc": "2.0", "id": registration["id"], "result": null })],
+        );
+        assert!(sent.is_empty(), "{sent:?}");
+
+        let mut plain = DartLspServer::new(".");
+        let sent = exchange(
+            &mut plain,
+            &source,
+            vec![
+                initialize(json!({})),
+                notification("initialized", json!({})),
+            ],
+        );
+        assert_eq!(sent.len(), 1, "{sent:?}");
+    }
+
+    #[test]
+    fn what_the_scan_left_out_is_logged_to_the_client() {
+        let mut source = MemoryWorkspace::new(&[("/work/app/lib/a.dart", "class A {}\n")]);
+        source.notes = vec!["3 Dart files larger than 1024 KiB are left out".to_string()];
+        let mut server = DartLspServer::new(".");
+        let sent = exchange(
+            &mut server,
+            &source,
+            vec![
+                request(
+                    1,
+                    "initialize",
+                    json!({ "rootUri": "file:///work/app", "capabilities": {} }),
+                ),
+                notification("initialized", json!({})),
+            ],
+        );
+
+        let log = sent
+            .iter()
+            .find(|message| message["method"] == "window/logMessage")
+            .expect("a log message");
+        assert_eq!(log["params"]["type"], 2);
+        assert!(
+            log["params"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("larger than 1024 KiB")
+        );
     }
 }

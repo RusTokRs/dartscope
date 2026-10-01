@@ -1,10 +1,14 @@
 //! The `dartscope-lsp` binary driven the way an editor drives it: framed JSON-RPC over pipes.
 
+use std::fs;
 use std::io::{Cursor, Write};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use dartscope_lsp::rpc::read_frame;
+use dartscope_lsp::types::Url;
 use serde_json::{Value, json};
 
 fn frame(message: &Value) -> Vec<u8> {
@@ -159,4 +163,116 @@ fn malformed_input_gets_a_parse_error_and_the_session_goes_on() {
     assert_eq!(code, Some(0));
     assert_eq!(sent[0]["error"]["code"], -32700);
     assert_eq!(sent[1]["id"], 1);
+}
+
+/// A scratch directory that removes itself.
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new() -> Self {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos());
+        let path = std::env::temp_dir().join(format!(
+            "dartscope-lsp-stdio-{}-{nanos}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+
+    fn write(&self, relative: &str, text: &str) {
+        let path = self.0.join(relative);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+
+    /// The `file://` URL of the directory.
+    fn root_uri(&self) -> String {
+        Url::from_file_path(&self.0.to_string_lossy()).to_string()
+    }
+
+    /// The `file://` URL of a path inside the directory.
+    fn uri(&self, relative: &str) -> String {
+        Url::from_file_path(&self.0.join(relative).to_string_lossy()).to_string()
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn the_project_on_disk_is_part_of_the_session() {
+    let project = Scratch::new();
+    project.write("pubspec.yaml", "name: app\n");
+    project.write("lib/widget.dart", "class Widget {\n  void paint() {}\n}\n");
+    project.write(
+        "lib/other.dart",
+        "import 'widget.dart';\nvoid other() { Widget(); }\n",
+    );
+    project.write("build/ignored.dart", "class Ignored {}\n");
+    let main = project.uri("lib/main.dart");
+    let main_text = "import 'package:app/widget.dart';\nvoid main() {\n  Widget().paint();\n}\n";
+
+    let input = vec![
+        request(
+            1,
+            "initialize",
+            json!({ "processId": null, "rootUri": project.root_uri(), "capabilities": {} }),
+        ),
+        notification("initialized", json!({})),
+        notification(
+            "textDocument/didOpen",
+            json!({ "textDocument": { "uri": main, "languageId": "dart", "version": 1, "text": main_text } }),
+        ),
+        request(2, "workspace/symbol", json!({ "query": "widget" })),
+        request(3, "workspace/symbol", json!({ "query": "ignored" })),
+        request(
+            4,
+            "textDocument/definition",
+            json!({ "textDocument": { "uri": main }, "position": { "line": 2, "character": 2 } }),
+        ),
+        request(
+            5,
+            "textDocument/references",
+            json!({ "textDocument": { "uri": main }, "position": { "line": 2, "character": 2 },
+                    "context": { "includeDeclaration": false } }),
+        ),
+        request(6, "shutdown", Value::Null),
+        notification("exit", Value::Null),
+    ];
+
+    let (code, sent, stderr) = run(frames(&input));
+
+    assert_eq!(code, Some(0), "stderr: {stderr}");
+    let answer = |id: i64| {
+        sent.iter()
+            .find(|message| message["id"] == id)
+            .unwrap_or_else(|| panic!("no answer for {id}: {sent:?}"))
+    };
+    let symbols = answer(2)["result"].as_array().unwrap();
+    assert_eq!(symbols.len(), 1, "{symbols:?}");
+    assert_eq!(symbols[0]["name"], "Widget");
+    assert_eq!(symbols[0]["location"]["uri"], project.uri("lib/widget.dart"));
+    // A directory of build output is not part of the project.
+    assert_eq!(answer(3)["result"], json!([]));
+    // The `package:` import resolves through the `pubspec.yaml` that the scan found, to a file the
+    // client never opened.
+    assert_eq!(
+        answer(4)["result"][0]["uri"],
+        project.uri("lib/widget.dart"),
+        "{:?}",
+        answer(4)
+    );
+    let references: Vec<&Value> = answer(5)["result"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|location| &location["uri"])
+        .collect();
+    assert!(references.contains(&&json!(project.uri("lib/other.dart"))), "{references:?}");
+    assert!(references.contains(&&json!(main)), "{references:?}");
 }

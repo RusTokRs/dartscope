@@ -1,8 +1,10 @@
 //! LSP server state over `DartWorkspaceIndex`.
 
+mod workspace;
+
 use std::cell::OnceCell;
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::panic::{self, AssertUnwindSafe};
 
 use dartscope_core::{
@@ -16,6 +18,8 @@ use dartscope_index::{
 };
 use thiserror::Error;
 
+pub use self::workspace::{NoWorkspace, WorkspaceFile, WorkspaceScan, WorkspaceSource};
+use self::workspace::{ConfigFile, WorkspaceDocument};
 use crate::coordinates::LineIndex;
 use crate::types::{
     Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
@@ -30,9 +34,11 @@ use crate::types::{
 ///
 /// Reference analysis is linear in the size of one file (about a quarter of a second per MiB in a
 /// release build), but it runs again after every edit, on the thread that serves the editor. A larger
-/// document keeps its outline and diagnostics but is not part of navigation, and says so with a
-/// diagnostic instead of making every keystroke wait for a multi-megabyte analysis.
-pub const MAX_NAVIGATION_BYTES: usize = 256 * 1024;
+/// open document keeps its outline and diagnostics but is not part of navigation, and says so with a
+/// diagnostic instead of making every keystroke wait for a multi-megabyte analysis. A larger file
+/// that the client has not opened is not loaded into the workspace at all: files that size are
+/// generated bindings and data tables, not code that anyone navigates.
+pub const MAX_NAVIGATION_BYTES: usize = 1024 * 1024;
 
 /// Code of the diagnostic that reports a document left out of navigation by its size.
 pub const NAVIGATION_DISABLED_CODE: &str = "navigation_disabled_large_file";
@@ -68,17 +74,28 @@ struct OpenDocument {
 /// In-memory LSP server with incremental document sync and index-backed navigation.
 ///
 /// The server does not touch the filesystem: `root` is the LSP workspace root
-/// (e.g. `file:///workspace`), and every `textDocument/*` notification carries the content.
-/// Only open documents are part of the workspace, so navigation sees exactly the buffers the
-/// client has opened. A change re-analyzes the one document it touches and updates the
+/// (e.g. `file:///workspace`), every `textDocument/*` notification carries the content, and the
+/// files of the project that the client has not opened are handed to it as text through
+/// [`DartLspServer::load_workspace`] and [`DartLspServer::update_workspace_file`] (the stdio binary
+/// reads them with `crate::fs_workspace::FsWorkspace`). The index holds the open documents and those
+/// files, an open document taking the place of its file, so navigation sees the whole project and the
+/// unsaved text of the buffers. A change re-analyzes the one document it touches and updates the
 /// incremental index in place; the resolution context that answers queries is built lazily, once
 /// per index generation. All positions are converted via `crate::coordinates`, so `\n`, `\r\n`,
 /// `\r` and UTF-16 surrogate pairs round-trip.
 pub struct DartLspServer {
     root: String,
     root_url: Option<Url>,
+    /// The directories the client works in, as filesystem paths with `/` separators.
+    roots: Vec<String>,
+    /// The client can watch files for the server (`workspace/didChangeWatchedFiles`).
+    watches_files: bool,
     /// Open documents by normalized path (see [`uri_to_path`]), which is also their index path.
     documents: HashMap<String, OpenDocument>,
+    /// The Dart files of the project that were loaded from disk, by index path.
+    workspace: HashMap<String, WorkspaceDocument>,
+    /// The `pubspec.yaml` and `package_config.json` files of the project, by index path.
+    configs: BTreeMap<String, ConfigFile>,
     index: DartWorkspaceIndex,
     /// Resolution context of the current index generation; reset by every index update.
     context: OnceCell<DartWorkspaceResolutionContext>,
@@ -93,7 +110,11 @@ impl DartLspServer {
             index: empty_index(&root),
             root,
             root_url: None,
+            roots: Vec::new(),
+            watches_files: false,
             documents: HashMap::new(),
+            workspace: HashMap::new(),
+            configs: BTreeMap::new(),
             context: OnceCell::new(),
             initialized: false,
             shutdown_requested: false,
@@ -101,12 +122,26 @@ impl DartLspServer {
     }
 
     pub fn initialize(&mut self, params: InitializeParams) -> Result<InitializeResult, LspError> {
+        let folders = workspace_folders(&params);
         if let Some(root_uri) = params.root_uri {
             self.root = uri_to_path(&root_uri);
+            self.roots = vec![file_system_path(&root_uri)];
             self.root_url = Some(root_uri);
         } else if let Some(root_path) = params.root_path {
-            self.root = normalize_path(root_path);
+            self.root = index_path(&root_path);
+            self.roots = vec![normalize_path(root_path)];
         }
+        if !folders.is_empty() {
+            if self.root_url.is_none() {
+                self.root = uri_to_path(&folders[0]);
+            }
+            self.roots = folders.iter().map(file_system_path).collect();
+        }
+        self.watches_files = params
+            .capabilities
+            .pointer("/workspace/didChangeWatchedFiles/dynamicRegistration")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
         let _ = self.index.update_root(self.root.clone());
         self.context = OnceCell::new();
         self.initialized = true;
@@ -122,6 +157,7 @@ impl DartLspServer {
                 references_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                workspace_symbol_provider: Some(OneOf::Left(true)),
             },
             server_info: Some(ServerInfo {
                 name: "dartscope-lsp".to_string(),
@@ -189,8 +225,8 @@ impl DartLspServer {
     pub fn did_close(&mut self, params: DidCloseTextDocumentParams) {
         let path = uri_to_path(&params.text_document.uri);
         if self.documents.remove(&path).is_some() {
-            let _ = self.index.remove_file(&path);
-            self.context = OnceCell::new();
+            // The file on disk, if the project has one, takes the place of the buffer.
+            self.reindex_from_disk(&path);
         }
     }
 
@@ -209,7 +245,7 @@ impl DartLspServer {
         let (_, Some(resolution)) = self.resolve_at(uri, position)? else {
             return Ok(None);
         };
-        let mut locator = Locator::new(&self.documents);
+        let mut locator = Locator::new(&self.documents, &self.workspace);
         let locations: Vec<Location> = resolution
             .targets
             .iter()
@@ -240,7 +276,7 @@ impl DartLspServer {
         let (_, Some(resolution)) = self.resolve_at(uri, position)? else {
             return Ok(None);
         };
-        let mut locator = Locator::new(&self.documents);
+        let mut locator = Locator::new(&self.documents, &self.workspace);
         let mut locations = Vec::new();
         let found = self
             .resolution_context()
@@ -507,11 +543,47 @@ fn empty_index(root: &str) -> DartWorkspaceIndex {
 /// the leading `/`, so `file:///C%3A/proj/a.dart` becomes `C:/proj/a.dart`. The mapping only has to
 /// be stable; results are reported with the URI the client sent, not with this path.
 fn uri_to_path(uri: &Url) -> String {
+    index_path(&file_system_path(uri))
+}
+
+/// The decoded path of a URI with `/` separators, as it is written for the filesystem.
+fn file_system_path(uri: &Url) -> String {
     let path = match uri.to_file_path() {
         Ok(path) => path.to_string_lossy().into_owned(),
         Err(_) => uri.path().to_string(),
     };
-    normalize_path(path).trim_start_matches('/').to_string()
+    normalize_path(path)
+}
+
+/// The index path of a filesystem path: normalized, without the leading `/`, and with the drive
+/// letter of a Windows path in lower case, because editors spell it both ways (`C:` and `c:`) for
+/// one file.
+fn index_path(path: &str) -> String {
+    let normalized = normalize_path(path.to_string());
+    let trimmed = normalized.trim_start_matches('/');
+    let bytes = trimmed.as_bytes();
+    if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+        let mut lowered = trimmed.to_string();
+        lowered[..1].make_ascii_lowercase();
+        return lowered;
+    }
+    trimmed.to_string()
+}
+
+/// The folders of `workspaceFolders` in the parameters of `initialize`.
+fn workspace_folders(params: &InitializeParams) -> Vec<Url> {
+    params
+        .extra
+        .get("workspaceFolders")
+        .and_then(serde_json::Value::as_array)
+        .map(|folders| {
+            folders
+                .iter()
+                .filter_map(|folder| folder.get("uri")?.as_str())
+                .filter_map(|uri| Url::parse(uri).ok())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Applies one `didChange` content change to the text of a document.
@@ -606,31 +678,47 @@ fn find_file<'a>(snapshot: &'a DartWorkspaceSnapshot, path: &str) -> Option<&'a 
         .map(|index| &files[index])
 }
 
-/// Converts byte spans of open documents to locations, building the line index of each document
-/// at most once per request.
+/// Converts byte spans of open documents and of files loaded from disk to locations, building the
+/// line index of each at most once per request.
 struct Locator<'a> {
     documents: &'a HashMap<String, OpenDocument>,
+    workspace: &'a HashMap<String, WorkspaceDocument>,
     lines: HashMap<&'a str, LineIndex<'a>>,
 }
 
 impl<'a> Locator<'a> {
-    fn new(documents: &'a HashMap<String, OpenDocument>) -> Self {
+    fn new(
+        documents: &'a HashMap<String, OpenDocument>,
+        workspace: &'a HashMap<String, WorkspaceDocument>,
+    ) -> Self {
         Self {
             documents,
+            workspace,
             lines: HashMap::new(),
         }
     }
 
-    /// The bytes `start..end` of an open document, with the URI the client used for it. `None`
-    /// when the document is not open, which leaves nothing to convert the offsets against.
+    /// The key, URI and text of a file the server has the text of: the open buffer if there is one,
+    /// else the file as loaded from disk.
+    fn source(&self, path: &str) -> Option<(&'a str, &'a Url, &'a str)> {
+        if let Some((key, document)) = self.documents.get_key_value(path) {
+            return Some((key.as_str(), &document.uri, document.text.as_str()));
+        }
+        let (key, document) = self.workspace.get_key_value(path)?;
+        Some((key.as_str(), &document.uri, document.text.as_str()))
+    }
+
+    /// The bytes `start..end` of a document, with the URI the client used for it (or the one built
+    /// from its path, for a file the client has not opened). `None` when the server has no text of
+    /// the file, which leaves nothing to convert the offsets against.
     fn location(&mut self, path: &str, start: usize, end: usize) -> Option<Location> {
-        let (key, document) = self.documents.get_key_value(path)?;
+        let (key, uri, text) = self.source(path)?;
         let lines = self
             .lines
-            .entry(key.as_str())
-            .or_insert_with(|| LineIndex::new(&document.text));
+            .entry(key)
+            .or_insert_with(|| LineIndex::new(text));
         Some(Location {
-            uri: document.uri.clone(),
+            uri: uri.clone(),
             range: Range {
                 start: lines.position(start),
                 end: lines.position(end),
@@ -644,9 +732,9 @@ impl<'a> Locator<'a> {
 
     /// The declared name within a declaration span, or the whole span when the name is not found.
     fn name_location(&mut self, path: &str, span: &SourceSpan, name: &str) -> Option<Location> {
-        let (_, document) = self.documents.get_key_value(path)?;
+        let (_, _, text) = self.source(path)?;
         let (start, end) =
-            find_name(&document.text, span, name).unwrap_or((span.byte_start, span.byte_end));
+            find_name(text, span, name).unwrap_or((span.byte_start, span.byte_end));
         self.location(path, start, end)
     }
 }

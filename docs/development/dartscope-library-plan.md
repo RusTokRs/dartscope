@@ -1128,18 +1128,28 @@ compiled only after the audit's minimal fixes and did not work against a real ed
    returned when asked for); `documentSymbol` nests members under their type, leaves locals out,
    uses `EnumMember` and `Property` where they apply and selects the declared name inside the range.
 6. Cost: one document is re-analyzed per change and the incremental index updated in place; the
-   resolution context is built once per index generation. A document over 256 KiB keeps outline and
-   diagnostics but is left out of navigation (information diagnostic `navigation_disabled_large_file`).
+   resolution context is built once per index generation. A document over 1 MiB (256 KiB until the workspace
+   model) keeps outline and diagnostics but is left out of navigation (information diagnostic
+   `navigation_disabled_large_file`).
    The limit bounds the work done after every edit; the reference analysis itself is linear in the size of
    one file (about a quarter of a second per MiB in a release build) since the `FileFacts` rewrite.
 7. Tests: unit tests for coordinates, server and `rpc`, and process tests that drive the real binary
    over pipes (`crates/dartscope-lsp/tests/stdio.rs`).
 
-Limits that remain: the workspace is the open documents only (no filesystem scan and no
-`pubspec.yaml`, so `package:` imports do not resolve and a symbol declared in a file that is not open is
-not found); requests are handled one at a time, so `$/cancelRequest` has no effect; a request for a
-document that was never opened answers `null`; a query on the name in a type or top-level function
-declaration may answer `null`, because the index reports declarations as references only for members.
+Workspace model (2026-10-01, `docs/development/lsp.md`): the server loads the project, not only the
+open documents. When the client sends `initialized`, the stdio binary reads every Dart source,
+`pubspec.yaml` and `.dart_tool/package_config.json` under the workspace folders (`FsWorkspace`, the same
+skip rules as `analyze-project`, bounded in files, bytes and entries) and the server analyzes them in one
+pass; an open document takes the place of its file and the file comes back when the buffer closes.
+Definition, references and hover therefore reach files that are not open, `package:` imports resolve,
+`workspace/symbol` searches the project, and `workspace/didChangeWatchedFiles` (registered dynamically
+with clients that support it) keeps it current. The navigation limit is 1 MiB; a larger file on disk is
+not loaded.
+
+Limits that remain: requests are handled one at a time, so `$/cancelRequest` has no effect and the scan
+runs before the first answer; a request for a document that was never opened answers `null`; a query on
+the name in a type or top-level function declaration may answer `null`, because the index reports
+declarations as references only for members.
 
 Acceptance:
 
