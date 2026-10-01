@@ -324,7 +324,10 @@ fn project_of(files: &[Option<String>; 2]) -> DartProjectReferenceAnalysis {
         FILES
             .iter()
             .zip(files)
-            .filter_map(|(path, text)| text.as_ref().map(|text| DartFileInput::new(*path, text.as_str())))
+            .filter_map(|(path, text)| {
+                text.as_ref()
+                    .map(|text| DartFileInput::new(*path, text.as_str()))
+            })
             .collect(),
         vec![],
     ))
@@ -438,7 +441,10 @@ fn generate(rng: &mut Rng, initial: (&str, &str)) -> Vec<Step> {
             Step::Add(file, text)
         } else {
             let file = rng.below(2);
-            Step::Edit(file, mutate(rng, current[file].as_deref().unwrap_or(seeds[file])))
+            Step::Edit(
+                file,
+                mutate(rng, current[file].as_deref().unwrap_or(seeds[file])),
+            )
         };
         match &step {
             Step::Edit(file, text) | Step::Add(file, text) => current[*file] = Some(text.clone()),
@@ -524,11 +530,9 @@ fn an_updated_index_equals_a_fresh_one_and_never_panics_on_broken_code() {
     let mut runs = 0usize;
     let mut found: BTreeMap<String, Found> = BTreeMap::new();
     for (pair, initial) in PAIRS.iter().enumerate() {
-        let mut rng = Rng(
-            0x9E37_79B9_7F4A_7C15
-                ^ ((pair as u64 + 1) * 0x1000_0000_01B3)
-                ^ salt.wrapping_mul(0xD6E8_FEB8_6659_FD93),
-        );
+        let mut rng = Rng(0x9E37_79B9_7F4A_7C15
+            ^ ((pair as u64 + 1) * 0x1000_0000_01B3)
+            ^ salt.wrapping_mul(0xD6E8_FEB8_6659_FD93));
         for _ in 0..rounds {
             let steps = generate(&mut rng, *initial);
             runs += 1;
