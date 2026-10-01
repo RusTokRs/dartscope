@@ -25,8 +25,8 @@ use serde_json::{Value, json};
 use crate::server::DartLspServer;
 use crate::types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentSymbolParams, HoverParams, InitializeParams, PublishDiagnosticsParams,
-    ReferenceParams, TextDocumentPositionParams, Url,
+    DocumentSymbolParams, HoverParams, InitializeParams, PublishDiagnosticsParams, ReferenceParams,
+    TextDocumentPositionParams, Url,
 };
 
 /// The largest message body the server reads. A longer `Content-Length` ends the session instead
@@ -428,8 +428,9 @@ fn parse_params<T: DeserializeOwned>(params: Value) -> Result<T, RpcError> {
 }
 
 fn to_result<T: Serialize>(value: &T) -> Result<Value, RpcError> {
-    serde_json::to_value(value)
-        .map_err(|error| RpcError::new(INTERNAL_ERROR, format!("cannot encode the result: {error}")))
+    serde_json::to_value(value).map_err(|error| {
+        RpcError::new(INTERNAL_ERROR, format!("cannot encode the result: {error}"))
+    })
 }
 
 fn error_response(id: Value, code: i64, message: &str) -> Value {
@@ -514,7 +515,10 @@ mod tests {
         }
         assert_eq!(sent[0]["result"]["serverInfo"]["name"], "dartscope-lsp");
         assert!(capabilities.get("text_document_sync").is_none());
-        assert_eq!(sent[1], json!({ "jsonrpc": "2.0", "id": 2, "result": null }));
+        assert_eq!(
+            sent[1],
+            json!({ "jsonrpc": "2.0", "id": 2, "result": null })
+        );
     }
 
     #[test]

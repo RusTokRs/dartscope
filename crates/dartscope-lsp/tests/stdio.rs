@@ -106,7 +106,10 @@ fn an_editor_session_works_end_to_end() {
 
     let outline = &sent[2]["result"];
     assert_eq!(outline[0]["name"], "Snow");
-    assert_eq!(outline[0]["selectionRange"]["start"], json!({ "line": 0, "character": 6 }));
+    assert_eq!(
+        outline[0]["selectionRange"]["start"],
+        json!({ "line": 0, "character": 6 })
+    );
     let members: Vec<_> = outline[0]["children"]
         .as_array()
         .unwrap()

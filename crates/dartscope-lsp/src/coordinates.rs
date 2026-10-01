@@ -479,7 +479,9 @@ mod tests {
             let index = LineIndex::new(source);
             for offset in (0..=source.len()).filter(|offset| source.is_char_boundary(*offset)) {
                 let position = index.position(offset);
-                let back = index.offset(position).expect("a position of the text exists");
+                let back = index
+                    .offset(position)
+                    .expect("a position of the text exists");
                 // Only the LF of a CRLF pair has no position of its own: it is the end of its line.
                 assert!(
                     back == offset || back + 1 == offset,

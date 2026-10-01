@@ -243,10 +243,9 @@ impl DartLspServer {
                     continue;
                 };
                 // A member declaration is already there as a reference.
-                if !locations
-                    .iter()
-                    .any(|known| known.uri == declaration.uri && overlaps(&known.range, &declaration.range))
-                {
+                if !locations.iter().any(|known| {
+                    known.uri == declaration.uri && overlaps(&known.range, &declaration.range)
+                }) {
                     locations.push(declaration);
                 }
             }
@@ -365,9 +364,8 @@ impl DartLspServer {
 
     /// The resolution context of the current index generation.
     fn resolution_context(&self) -> &DartWorkspaceResolutionContext {
-        self.context.get_or_init(|| {
-            DartWorkspaceResolutionContext::from_snapshot(&self.index.snapshot())
-        })
+        self.context
+            .get_or_init(|| DartWorkspaceResolutionContext::from_snapshot(&self.index.snapshot()))
     }
 
     /// Resolves the definition at a position of an open document; the position may lie beyond the
@@ -544,7 +542,8 @@ fn find_name(text: &str, span: &SourceSpan, name: &str) -> Option<(usize, usize)
         let end = start + name.len();
         let before = region[..start].chars().next_back();
         let after = region[end..].chars().next();
-        if !before.is_some_and(is_identifier_character) && !after.is_some_and(is_identifier_character)
+        if !before.is_some_and(is_identifier_character)
+            && !after.is_some_and(is_identifier_character)
         {
             return Some((span.byte_start + start, span.byte_start + end));
         }
@@ -666,9 +665,7 @@ fn symbol_kind(kind: DartDeclarationKind, parent: Option<DartDeclarationKind>) -
 mod tests {
     use super::*;
     use crate::coordinates::byte_offset_to_lsp_position;
-    use crate::types::{
-        TextDocumentIdentifier, TextDocumentItem, VersionedTextDocumentIdentifier,
-    };
+    use crate::types::{TextDocumentIdentifier, TextDocumentItem, VersionedTextDocumentIdentifier};
 
     fn url(text: &str) -> Url {
         Url::parse(text).unwrap()
@@ -691,7 +688,11 @@ mod tests {
         });
     }
 
-    fn change(uri: &Url, version: i32, changes: Vec<TextDocumentContentChangeEvent>) -> DidChangeTextDocumentParams {
+    fn change(
+        uri: &Url,
+        version: i32,
+        changes: Vec<TextDocumentContentChangeEvent>,
+    ) -> DidChangeTextDocumentParams {
         DidChangeTextDocumentParams {
             text_document: VersionedTextDocumentIdentifier {
                 uri: uri.clone(),
@@ -811,7 +812,10 @@ mod tests {
         server.did_change(change(
             &uri,
             2,
-            vec![edit((0, 6), (0, 7), "Renamed"), edit((0, 6), (0, 13), "Box")],
+            vec![
+                edit((0, 6), (0, 7), "Renamed"),
+                edit((0, 6), (0, 13), "Box"),
+            ],
         ));
         assert_eq!(text_of(&server, &uri), "class Box {}\n");
 
@@ -892,14 +896,23 @@ mod tests {
         let position = byte_offset_to_lsp_position(main_text, offset);
         let locations = server.definition(&main, position).unwrap().unwrap();
 
-        assert!(locations.iter().all(|location| location.uri == lib), "{locations:?}");
+        assert!(
+            locations.iter().all(|location| location.uri == lib),
+            "{locations:?}"
+        );
         assert_eq!(locations[0].uri, lib);
         // The range is the name inside the declaration, converted against the declaring file.
         assert_eq!(
             locations[0].range,
             Range {
-                start: Position { line: 0, character: 6 },
-                end: Position { line: 0, character: 12 },
+                start: Position {
+                    line: 0,
+                    character: 6
+                },
+                end: Position {
+                    line: 0,
+                    character: 12
+                },
             }
         );
     }
@@ -922,8 +935,14 @@ mod tests {
             .unwrap();
 
         let declaration = Range {
-            start: Position { line: 0, character: 6 },
-            end: Position { line: 0, character: 12 },
+            start: Position {
+                line: 0,
+                character: 6,
+            },
+            end: Position {
+                line: 0,
+                character: 12,
+            },
         };
         assert!(without.iter().all(|location| location.range != declaration));
         assert!(with.iter().any(|location| location.range == declaration));
@@ -1047,7 +1066,12 @@ int get answer => 42;
             // The selection is the name itself, not the line or the declaration.
             let start = lines.offset(symbol.selection_range.start).unwrap();
             let end = lines.offset(symbol.selection_range.end).unwrap();
-            assert_eq!(&text[start..end], symbol.name, "selection of {}", symbol.name);
+            assert_eq!(
+                &text[start..end],
+                symbol.name,
+                "selection of {}",
+                symbol.name
+            );
             pending.extend(symbol.children.iter().flatten());
         }
         // Locals are not outline entries.
