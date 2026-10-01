@@ -1,5 +1,10 @@
 # TEMPORARY final-tree gates (removed after they pass): Linux only, for commits tagged [gates].
 msg="$("$PY" -c "import json,os;print(json.load(open(os.environ['GITHUB_EVENT_PATH'])).get('head_commit',{}).get('message',''))" 2>/dev/null)"
+if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[scale\]'; then
+  run scale cargo test --release -p dartscope-parse --test adversarial_shapes --locked -- --ignored --nocapture --test-threads=1
+  grep -E '^\[|^suspects|^cell|^error|panicked' "$OUT/scale.log" | cut -c1-1500 >"$OUT/scale.sum"
+  emit scale "$OUT/scale.sum" --chunk 3900 --max 8
+fi
 if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[gates\]'; then
   # Emulate the final tree: the loop and its workflow are not part of it.
   cp -r loop "$RUNNER_TEMP/loop-copy"

@@ -44,7 +44,7 @@ The supported commands are:
 | `3` | A requested file, project directory, or lint configuration cannot be read. |
 | `4` | Lint structured output was emitted and a finding reached the configured failure threshold. |
 | `5` | Lint TOML configuration is malformed, unsupported, or semantically invalid. |
-| `6` | Lint project analysis produced an error diagnostic and rule execution was not trusted. |
+| `6` | Lint project analysis produced an error diagnostic in a file the lint configuration does not exclude, so rule execution was not trusted. |
 
 When the reader of standard output goes away (`dartscope analyze-project . | head`), the command stops
 writing and exits with the exit code of its own result instead of failing.
@@ -52,7 +52,9 @@ writing and exits with the exit code of its own result instead of failing.
 Malformed Dart, YAML, and package-configuration contents remain diagnostic-bearing success inputs
 for the original analysis commands. The `lint` command uses exit code `6` instead because running
 policy rules over an error-bearing project would claim more confidence than the normalized input
-supports. Lint findings at exit code `4` remain structured stdout, not stderr errors.
+supports. Error diagnostics of files the lint `[exclude]` list covers do not count: a broken vendored
+or generated file that the policy skips cannot make the rest of the project untrustworthy. Lint
+findings at exit code `4` remain structured stdout, not stderr errors.
 
 ## Project discovery
 
