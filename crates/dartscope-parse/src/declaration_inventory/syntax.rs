@@ -315,30 +315,44 @@ fn declared_names(header: &str, require_type: bool) -> Vec<String> {
     let segments = split_top_level_commas(header);
     let mut names = Vec::new();
     for (index, segment) in segments.into_iter().enumerate() {
-        let left = assignment_left(segment).trim();
-        let candidate = if left.contains('(') {
-            // Parentheses are only a declarator when they belong to the variable's type: a function
-            // type (`void Function(int) onTap`) or a record type (`(int, int) point`).
-            let Some(name) = function_typed_declarator(left) else {
-                continue;
-            };
-            name
-        } else {
-            let Some(candidate) = left.split_whitespace().last() else {
-                continue;
-            };
-            candidate
-        };
-        let candidate = candidate.trim_start_matches(['?', '!']);
-        if !is_identifier(candidate) {
-            continue;
+        let declarator = declarator_name(assignment_left(segment).trim(), index == 0 && require_type);
+        match declarator {
+            Some(name) => names.push(name.to_string()),
+            // The first declarator carries the keyword or the type. When it is neither, the text is
+            // a call, a labelled argument or a similar statement, and the segments after its commas
+            // are arguments rather than further declarators.
+            None if index == 0 => return Vec::new(),
+            None => {}
         }
-        if index == 0 && require_type && left.split_whitespace().count() < 2 {
-            continue;
-        }
-        names.push(candidate.to_string());
     }
     names
+}
+
+/// The variable declared by one comma-separated declarator, or `None` when the text is not one.
+///
+/// `typed` demands a type before the name, which is how a statement such as `a = b` or `call()`
+/// is told apart from `int a`.
+fn declarator_name(left: &str, typed: bool) -> Option<&str> {
+    // A colon belongs to a labelled statement, a named argument, a map entry or a conditional
+    // expression; no declarator has one before its initializer.
+    if left.contains(':') {
+        return None;
+    }
+    let candidate = if left.contains('(') {
+        // Parentheses are only a declarator when they belong to the variable's type: a function
+        // type (`void Function(int) onTap`) or a record type (`(int, int) point`).
+        function_typed_declarator(left)?
+    } else {
+        left.split_whitespace().last()?
+    };
+    let candidate = candidate.trim_start_matches(['?', '!']);
+    if !is_identifier(candidate) {
+        return None;
+    }
+    if typed && left.split_whitespace().count() < 2 {
+        return None;
+    }
+    Some(candidate)
 }
 
 /// The declared name of a variable whose type is a function type or a record type, such as

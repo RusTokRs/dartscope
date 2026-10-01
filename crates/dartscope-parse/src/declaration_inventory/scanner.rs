@@ -1,25 +1,77 @@
 use crate::source_lines::SourceLine;
 
+/// How many bytes of a statement are examined to decide whether it declares a local variable.
+///
+/// A declaration announces itself at its start, so a statement that spans thousands of lines
+/// without looking like one (a call with a huge argument list, say) is rejected from this prefix
+/// instead of being rescanned to its end from every one of its lines.
+pub(super) const STATEMENT_PROBE_BYTES: usize = 2048;
+
 pub(super) fn declaration_header(source: &str, start: usize) -> Option<&str> {
+    declaration_header_within(source, start, usize::MAX).map(|(header, _)| header)
+}
+
+/// Scans the header that starts at `start`, looking at no more than `limit` bytes.
+///
+/// The flag is `false` when the limit ended the scan before the header's terminator, in which case
+/// the text is only a prefix of the header.
+pub(super) fn declaration_header_within(
+    source: &str,
+    start: usize,
+    limit: usize,
+) -> Option<(&str, bool)> {
     let bytes = source.as_bytes();
+    let stop = start.saturating_add(limit).min(bytes.len());
     let mut parens = 0usize;
     let mut brackets = 0usize;
     let mut index = start;
-    while index < bytes.len() {
+    let mut terminator_end = None;
+    while index < stop {
         match bytes[index] {
             b'(' => parens += 1,
             b')' => parens = parens.saturating_sub(1),
             b'[' => brackets += 1,
             b']' => brackets = brackets.saturating_sub(1),
-            b'{' | b';' if parens == 0 && brackets == 0 => return Some(&source[start..index + 1]),
+            b'{' | b';' if parens == 0 && brackets == 0 => {
+                terminator_end = Some(index + 1);
+                break;
+            }
             b'=' if parens == 0 && brackets == 0 && bytes.get(index + 1) == Some(&b'>') => {
-                return Some(&source[start..index + 2]);
+                terminator_end = Some(index + 2);
+                break;
             }
             _ => {}
         }
         index += 1;
     }
-    (start < source.len()).then(|| &source[start..])
+    #[cfg(test)]
+    SCANNED_HEADER_BYTES.with(|scanned| scanned.set(scanned.get() + index.saturating_sub(start)));
+
+    if let Some(end) = terminator_end {
+        return Some((&source[start..end], true));
+    }
+    if start >= bytes.len() {
+        return None;
+    }
+    if stop == bytes.len() {
+        return Some((&source[start..], true));
+    }
+    let mut cut = stop;
+    while !source.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    Some((&source[start..cut], false))
+}
+
+#[cfg(test)]
+thread_local! {
+    static SCANNED_HEADER_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Total number of bytes the header scans of this thread have examined so far.
+#[cfg(test)]
+pub(super) fn scanned_header_bytes() -> usize {
+    SCANNED_HEADER_BYTES.with(std::cell::Cell::get)
 }
 
 #[derive(Clone, Copy)]

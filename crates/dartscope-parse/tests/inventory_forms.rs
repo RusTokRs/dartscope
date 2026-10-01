@@ -125,6 +125,22 @@ fn statements_with_parentheses_are_not_mistaken_for_typed_declarations() {
 }
 
 #[test]
+fn named_and_positional_arguments_are_not_local_variables() {
+    let analysis = analyze(
+        "Widget build(BuildContext context) {\n  return Padding(\n    alpha,\n    beta,\n    padding: padding,\n    child: Text('x'),\n    key: Key('k'),\n  );\n}\n\
+         Widget wrap(int padding) {\n  final inner = Padding(\n    alpha,\n    padding: padding,\n  );\n  Widget second = Container(\n    width: 1,\n    height: 2,\n  ), third = null;\n  return inner;\n}\n",
+    );
+
+    let locals: Vec<_> = analysis
+        .declarations
+        .iter()
+        .filter(|declaration| declaration.kind == DartDeclarationKind::LocalVariable)
+        .map(|declaration| declaration.name.as_str())
+        .collect();
+    assert_eq!(locals, ["inner", "second", "third"]);
+}
+
+#[test]
 fn enum_constants_are_inventoried_as_fields_of_the_enum() {
     let analysis = analyze(
         "enum Color { red, green, blue }\n\

@@ -31,27 +31,39 @@ fn project(files: usize, classes: usize) -> DartProjectInput {
     DartProjectInput::new(".", inputs, vec![])
 }
 
+fn measure(files: usize, classes: usize) {
+    let input = project(files, classes);
+    let started = Instant::now();
+    let analysis = analyze_project_with_references(input);
+    let parse = started.elapsed();
+    let started = Instant::now();
+    let context = DartWorkspaceResolutionContext::new(&analysis);
+    let index = started.elapsed();
+    let declarations: usize = analysis
+        .project
+        .files
+        .iter()
+        .map(|file| file.declarations.len())
+        .sum();
+    println!(
+        "files={files} classes_per_file={classes} declarations={declarations} references={} parse={parse:?} index={index:?}",
+        analysis.references.len()
+    );
+    std::hint::black_box(&context);
+}
+
 #[test]
 #[ignore = "development-loop measurement"]
 fn index_scaling() {
     for (files, classes) in [(25, 40), (50, 40), (100, 40), (200, 40)] {
-        let input = project(files, classes);
-        let started = Instant::now();
-        let analysis = analyze_project_with_references(input);
-        let parse = started.elapsed();
-        let started = Instant::now();
-        let context = DartWorkspaceResolutionContext::new(&analysis);
-        let index = started.elapsed();
-        let declarations: usize = analysis
-            .project
-            .files
-            .iter()
-            .map(|file| file.declarations.len())
-            .sum();
-        println!(
-            "files={files} classes_per_file={classes} declarations={declarations} references={} parse={parse:?} index={index:?}",
-            analysis.references.len()
-        );
-        std::hint::black_box(&context);
+        measure(files, classes);
+    }
+}
+
+#[test]
+#[ignore = "development-loop measurement"]
+fn single_file_reference_scaling() {
+    for classes in [500, 2000, 8000] {
+        measure(1, classes);
     }
 }

@@ -3,6 +3,8 @@
 mod arguments;
 mod scanner;
 
+use std::collections::HashMap;
+
 use dartscope_core::{
     DartDeclaration, DartDeclarationKind, DartInvocation, DartInvocationArgument, SourceSpan,
 };
@@ -16,10 +18,11 @@ pub(crate) fn collect_invocations(
     masked_source: &str,
     declarations: &[DartDeclaration],
 ) -> Vec<DartInvocation> {
+    let lookup = DeclarationLookup::new(masked_source, declarations);
     let mut invocations: Vec<_> = scan_call_candidates(masked_source)
         .into_iter()
-        .filter(|candidate| !is_declaration_header_call(candidate, masked_source, declarations))
-        .map(|candidate| invocation_from_candidate(source, masked_source, declarations, candidate))
+        .filter(|candidate| !lookup.is_header_call(candidate))
+        .map(|candidate| invocation_from_candidate(source, masked_source, &lookup, candidate))
         .collect();
     invocations.sort_by(|left, right| {
         (left.span.byte_start, left.span.byte_end, &left.target).cmp(&(
@@ -36,10 +39,107 @@ pub(crate) fn collect_invocations(
     invocations
 }
 
+/// Lookup structures over the declarations of one file.
+///
+/// Every call candidate has to be classified against the declarations: is it the name inside a
+/// declaration's own header, and which callable contains it? Scanning all declarations for each
+/// candidate is quadratic in the size of the file, so the answers come from structures built once.
+struct DeclarationLookup<'a> {
+    /// Callable declarations ordered by span start, outer spans before the spans nested in them.
+    callables: Vec<CallableSpan<'a>>,
+    /// `(start, header_end)` of every declaration, by declared name, ordered by start.
+    ///
+    /// The headers of declarations that share a name do not overlap in well-formed source (a class
+    /// header ends at its `{`, before the constructors that carry the same name), so only the
+    /// header that starts last before a position can contain it.
+    headers: HashMap<&'a str, Vec<(usize, usize)>>,
+}
+
+struct CallableSpan<'a> {
+    start: usize,
+    end: usize,
+    symbol_id: Option<&'a str>,
+    /// Index of the nearest callable whose span encloses this one.
+    parent: Option<usize>,
+}
+
+impl<'a> DeclarationLookup<'a> {
+    fn new(masked_source: &str, declarations: &'a [DartDeclaration]) -> Self {
+        let mut callables = Vec::new();
+        let mut headers: HashMap<&'a str, Vec<(usize, usize)>> = HashMap::new();
+        for declaration in declarations {
+            let Some(span) = declaration.declaration_span.as_ref() else {
+                continue;
+            };
+            headers
+                .entry(declaration.name.as_str())
+                .or_default()
+                .push((span.byte_start, declaration_header_end(masked_source, span)));
+            if is_callable_kind(declaration.kind) {
+                callables.push(CallableSpan {
+                    start: span.byte_start,
+                    end: span.byte_end,
+                    symbol_id: declaration.symbol_id.as_deref(),
+                    parent: None,
+                });
+            }
+        }
+        for ranges in headers.values_mut() {
+            ranges.sort_unstable();
+        }
+        callables.sort_by_key(|callable| (callable.start, std::cmp::Reverse(callable.end)));
+
+        let mut parents = Vec::with_capacity(callables.len());
+        let mut open: Vec<usize> = Vec::new();
+        for (index, callable) in callables.iter().enumerate() {
+            while open
+                .last()
+                .is_some_and(|&outer| callables[outer].end <= callable.start)
+            {
+                open.pop();
+            }
+            parents.push(open.last().copied());
+            open.push(index);
+        }
+        for (callable, parent) in callables.iter_mut().zip(parents) {
+            callable.parent = parent;
+        }
+        Self { callables, headers }
+    }
+
+    /// The symbol id of the innermost callable whose span contains `at`.
+    fn enclosing_symbol_id(&self, at: usize) -> Option<String> {
+        // The last callable that starts at or before `at` is either the innermost container or
+        // nested in it, so the container is found by walking outwards from there.
+        let mut index = self
+            .callables
+            .partition_point(|callable| callable.start <= at)
+            .checked_sub(1)?;
+        loop {
+            let callable = &self.callables[index];
+            if at < callable.end {
+                return callable.symbol_id.map(str::to_owned);
+            }
+            index = callable.parent?;
+        }
+    }
+
+    /// Whether the candidate is the declared name inside the header of a declaration with that name.
+    fn is_header_call(&self, candidate: &CallCandidate) -> bool {
+        let Some(ranges) = self.headers.get(candidate.target.as_str()) else {
+            return false;
+        };
+        ranges
+            .partition_point(|&(start, _)| start <= candidate.start)
+            .checked_sub(1)
+            .is_some_and(|index| candidate.start < ranges[index].1)
+    }
+}
+
 fn invocation_from_candidate(
     source: &str,
     masked_source: &str,
-    declarations: &[DartDeclaration],
+    lookup: &DeclarationLookup<'_>,
     candidate: CallCandidate,
 ) -> DartInvocation {
     let arguments: Vec<DartInvocationArgument> =
@@ -48,45 +148,10 @@ fn invocation_from_candidate(
         target: candidate.target,
         arguments,
         result_members: candidate.result_members,
-        enclosing_symbol_id: enclosing_symbol_id(candidate.start, declarations),
+        enclosing_symbol_id: lookup.enclosing_symbol_id(candidate.start),
         span: span_for_byte_range(source, candidate.start, candidate.end),
         source_line_span: line_span_for_byte(source, candidate.start),
     }
-}
-
-fn enclosing_symbol_id(at: usize, declarations: &[DartDeclaration]) -> Option<String> {
-    declarations
-        .iter()
-        .filter(|declaration| is_callable_kind(declaration.kind))
-        .filter_map(|declaration| {
-            let span = declaration.declaration_span.as_ref()?;
-            (span.byte_start <= at && at < span.byte_end).then_some((
-                span.byte_end.saturating_sub(span.byte_start),
-                declaration.symbol_id.as_ref(),
-            ))
-        })
-        .min_by_key(|(length, _)| *length)
-        .and_then(|(_, symbol_id)| symbol_id.cloned())
-}
-
-fn is_declaration_header_call(
-    candidate: &CallCandidate,
-    masked_source: &str,
-    declarations: &[DartDeclaration],
-) -> bool {
-    declarations.iter().any(|declaration| {
-        let Some(span) = declaration.declaration_span.as_ref() else {
-            return false;
-        };
-        if candidate.start < span.byte_start || candidate.start >= span.byte_end {
-            return false;
-        }
-        let header_end = declaration_header_end(masked_source, span);
-        if candidate.start >= header_end {
-            return false;
-        }
-        candidate.target == declaration.name
-    })
 }
 
 fn declaration_header_end(source: &str, span: &SourceSpan) -> usize {
@@ -121,4 +186,137 @@ fn is_callable_kind(kind: DartDeclarationKind) -> bool {
             | DartDeclarationKind::Setter
             | DartDeclarationKind::Operator
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::declaration_inventory::collect_declaration_inventory;
+    use crate::lexical::mask_non_code;
+
+    const SOURCE: &str = "\
+import 'package:a/a.dart';
+
+int helper(int a) => a + 1;
+
+class Counter {
+  final int start = seed();
+  int value = compute(1);
+
+  Counter(this.value) : assert(value > 0);
+  Counter.named(int v) : value = clamp(v);
+
+  int next() {
+    final step = helper(value);
+    return wrap(step);
+  }
+
+  int get double => value * 2;
+
+  final late = tail();
+
+  void reset() => value = fallback();
+}
+
+class Plain {
+  Plain();
+  factory Plain.of(int x) => Plain();
+  void run() {
+    helper(3);
+    Plain.of(4);
+  }
+}
+
+void main() {
+  final c = Counter(1);
+  c.next();
+  print(helper(2));
+}
+";
+
+    fn linear_enclosing_symbol_id(at: usize, declarations: &[DartDeclaration]) -> Option<String> {
+        declarations
+            .iter()
+            .filter(|declaration| is_callable_kind(declaration.kind))
+            .filter_map(|declaration| {
+                let span = declaration.declaration_span.as_ref()?;
+                (span.byte_start <= at && at < span.byte_end).then_some((
+                    span.byte_end.saturating_sub(span.byte_start),
+                    declaration.symbol_id.as_ref(),
+                ))
+            })
+            .min_by_key(|(length, _)| *length)
+            .and_then(|(_, symbol_id)| symbol_id.cloned())
+    }
+
+    fn linear_is_header_call(
+        candidate: &CallCandidate,
+        masked_source: &str,
+        declarations: &[DartDeclaration],
+    ) -> bool {
+        declarations.iter().any(|declaration| {
+            let Some(span) = declaration.declaration_span.as_ref() else {
+                return false;
+            };
+            if candidate.start < span.byte_start || candidate.start >= span.byte_end {
+                return false;
+            }
+            let header_end = declaration_header_end(masked_source, span);
+            if candidate.start >= header_end {
+                return false;
+            }
+            candidate.target == declaration.name
+        })
+    }
+
+    #[test]
+    fn indexed_lookups_agree_with_a_scan_over_all_declarations() {
+        let masked = mask_non_code(SOURCE).code;
+        let (declarations, _) = collect_declaration_inventory("lib/a.dart", SOURCE, &masked);
+        let lookup = DeclarationLookup::new(&masked, &declarations);
+
+        for at in 0..=SOURCE.len() {
+            assert_eq!(
+                lookup.enclosing_symbol_id(at),
+                linear_enclosing_symbol_id(at, &declarations),
+                "innermost callable at byte {at}"
+            );
+        }
+
+        let candidates = scan_call_candidates(&masked);
+        let header_calls = candidates
+            .iter()
+            .filter(|candidate| lookup.is_header_call(candidate))
+            .count();
+        assert!(candidates.len() > 12, "{} candidates", candidates.len());
+        assert!(header_calls >= 5, "{header_calls} header calls");
+        for candidate in &candidates {
+            assert_eq!(
+                lookup.is_header_call(candidate),
+                linear_is_header_call(candidate, &masked, &declarations),
+                "header call `{}` at byte {}",
+                candidate.target,
+                candidate.start
+            );
+        }
+    }
+
+    #[test]
+    fn calls_outside_every_callable_have_no_enclosing_symbol() {
+        let masked = mask_non_code(SOURCE).code;
+        let (declarations, _) = collect_declaration_inventory("lib/a.dart", SOURCE, &masked);
+        let lookup = DeclarationLookup::new(&masked, &declarations);
+
+        let field_initializer = SOURCE.find("tail()").expect("field initializer call");
+        assert_eq!(lookup.enclosing_symbol_id(field_initializer), None);
+        let in_next = SOURCE.find("wrap(step)").expect("call in next()");
+        let next = declarations
+            .iter()
+            .find(|declaration| {
+                declaration.kind == DartDeclarationKind::Method && declaration.name == "next"
+            })
+            .expect("method next");
+        assert!(next.symbol_id.is_some());
+        assert_eq!(lookup.enclosing_symbol_id(in_next), next.symbol_id);
+    }
 }

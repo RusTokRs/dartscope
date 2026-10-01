@@ -6,9 +6,9 @@ mod syntax;
 use dartscope_core::{DartDeclaration, DartDeclarationKind, DartDiagnostic, SourceSpan};
 
 use self::scanner::{
-    EndMode, annotations_end, body_range, declaration_end, declaration_header, depth_at,
-    depth_within_line, enum_member_start, first_code_byte, line_brace_depths, next_code_byte,
-    source_line_text,
+    EndMode, STATEMENT_PROBE_BYTES, annotations_end, body_range, declaration_end,
+    declaration_header, declaration_header_within, depth_at, depth_within_line,
+    enum_member_start, first_code_byte, line_brace_depths, next_code_byte, source_line_text,
 };
 use self::syntax::{
     SymbolIdAllocator, callable_end_mode, enum_constants, has_primary_constructor,
@@ -455,8 +455,23 @@ fn collect_locals(
             if declared_at >= line.byte_end() {
                 break;
             }
-            let Some(header) = declaration_header(masked, declared_at) else {
+            let Some((probe, complete)) =
+                declaration_header_within(masked, declared_at, STATEMENT_PROBE_BYTES)
+            else {
                 break;
+            };
+            let header = if complete {
+                probe
+            } else {
+                // A long statement is only worth scanning to its end when its beginning declares
+                // something; every other line of a long call or literal would repeat that scan.
+                if local_variable_names(probe.trim()).is_empty() {
+                    break;
+                }
+                let Some(header) = declaration_header(masked, declared_at) else {
+                    break;
+                };
+                header
             };
             let declaration_at = declared_at;
             if declaration_at + header.len() > body_end {
@@ -496,5 +511,40 @@ fn collect_locals(
                 None => break,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexical::mask_non_code;
+
+    #[test]
+    fn a_statement_with_thousands_of_argument_lines_is_not_rescanned_from_every_line() {
+        let lines = 6000;
+        let mut source = String::from("void f() {\n  g(\n");
+        for index in 0..lines {
+            source.push_str(&format!("    {index},\n"));
+        }
+        source.push_str("  );\n}\n");
+        let masked = mask_non_code(&source).code;
+
+        let before = scanner::scanned_header_bytes();
+        let (declarations, _) = collect_declaration_inventory("lib/a.dart", &source, &masked);
+        let scanned = scanner::scanned_header_bytes() - before;
+
+        assert_eq!(
+            declarations
+                .iter()
+                .map(|declaration| declaration.name.as_str())
+                .collect::<Vec<_>>(),
+            ["f"]
+        );
+        // Every line examines at most the probe, so the work is linear in the number of lines. A
+        // scan from each line to the end of the statement would examine about lines^2 * 5 bytes.
+        assert!(
+            scanned <= (lines + 8) * (STATEMENT_PROBE_BYTES + 16),
+            "{scanned} header bytes were scanned for {lines} argument lines"
+        );
     }
 }
