@@ -164,6 +164,23 @@ const KNOWN: &[(&str, &str)] = &[
         "print: uriparse normalizes the host case and the form of escapes",
         "RFC 3986 section 6.2.2 makes them equivalent; this module keeps the text as written",
     ),
+    (
+        "uriparse rejects: IPvFuture host",
+        "`[v1.x]` is an IP-literal of RFC 3986; uriparse answers `host address mechanism not supported`",
+    ),
+    (
+        "resolve: uriparse reads an escaped dot as a dot only in some places",
+        "`%2e`, `.%2e`, `%2e.` and `%2e%2e` are dot segments everywhere here, as in the URL standard; uriparse \
+         removes only the whole-segment forms and only when it merges a relative reference",
+    ),
+    (
+        "resolve: uriparse collapses empty path segments",
+        "RFC 5.2.4 keeps `a//b` as it is; a `project_path` with an empty segment is refused anyway",
+    ),
+    (
+        "resolve: uriparse prints a URI that reads as an authority",
+        "`mailto:a@b` + `..///` is the path `//` of a URI without an authority; printed as `mailto://` it names a host; here `UriError::Path`",
+    ),
 ];
 
 #[derive(Default)]
@@ -256,7 +273,7 @@ struct Form {
     fragment: Option<String>,
 }
 
-fn form(reference: &UriReference) -> Form {
+fn form(reference: &UriReference, collapse_empty_segments: bool) -> Form {
     let authority = reference.authority().map(|authority| {
         authority
             .strip_suffix(':')
@@ -264,6 +281,11 @@ fn form(reference: &UriReference) -> Form {
             .to_ascii_lowercase()
     });
     let mut path = normalize_escapes(reference.path());
+    if collapse_empty_segments {
+        while path.contains("//") {
+            path = path.replace("//", "/");
+        }
+    }
     // An empty path next to an authority is the same as `/`.
     if authority.is_some() && path.is_empty() {
         path = "/".to_string();
@@ -278,33 +300,66 @@ fn form(reference: &UriReference) -> Form {
 }
 
 /// Whether two printed URIs are the same up to the case of the host and the form of escapes.
-fn equivalent(left: &str, right: &str) -> bool {
+fn equivalent(left: &str, right: &str, collapse_empty_segments: bool) -> bool {
     match (UriReference::parse(left), UriReference::parse(right)) {
-        (Ok(left), Ok(right)) => form(&left) == form(&right),
+        (Ok(left), Ok(right)) => {
+            form(&left, collapse_empty_segments) == form(&right, collapse_empty_segments)
+        }
         _ => false,
     }
 }
 
+enum Verdict {
+    Same,
+    Known(&'static str),
+    Different,
+}
+
 /// Judges what this module printed against what `uriparse` printed for the same input.
-fn judge_print(
-    report: &mut Report,
-    kind: &str,
-    mine: &UriReference,
-    theirs: &str,
-    example: String,
-) {
-    let expected = as_uriparse_prints(mine);
+fn judge(mine: &UriReference, theirs: &str) -> Verdict {
     let printed = mine.to_string();
     if printed == theirs {
-        return;
-    }
-    if expected == theirs {
-        report.known("print: uriparse drops an empty port and writes an empty path as `/`");
-    } else if equivalent(&printed, theirs) {
-        report.known("print: uriparse normalizes the host case and the form of escapes");
+        Verdict::Same
+    } else if as_uriparse_prints(mine) == theirs {
+        Verdict::Known("print: uriparse drops an empty port and writes an empty path as `/`")
+    } else if equivalent(&printed, theirs, false) {
+        Verdict::Known("print: uriparse normalizes the host case and the form of escapes")
     } else {
-        report.unexplained(kind, format!("{example}: {printed:?} / {theirs:?}"));
+        Verdict::Different
     }
+}
+
+fn judge_print(report: &mut Report, kind: &str, mine: &UriReference, theirs: &str, example: String) {
+    match judge(mine, theirs) {
+        Verdict::Same => {}
+        Verdict::Known(known) => report.known(known),
+        Verdict::Different => report.unexplained(
+            kind,
+            format!("{example}: {:?} / {theirs:?}", mine.to_string()),
+        ),
+    }
+}
+
+/// Whether `text` is a URI whose printed form names a host (it has an authority).
+fn reads_as_authority(text: &str) -> bool {
+    UriReference::parse(text).is_ok_and(|reference| reference.authority().is_some())
+}
+
+fn has_escaped_dot(text: &str) -> bool {
+    text.to_ascii_lowercase().contains("%2e")
+}
+
+/// What `uriparse` resolves when every escaped dot is written as a dot to begin with.
+fn resolve_with_dots_decoded(base: &str, reference: &str) -> Result<String, String> {
+    let decode = |text: &str| text.replace("%2e", ".").replace("%2E", ".");
+    let (base, reference) = (decode(base), decode(reference));
+    let Ok(base) = URI::try_from(base.as_str()) else {
+        return Err("base".to_string());
+    };
+    let Ok(reference) = URIReference::try_from(reference.as_str()) else {
+        return Err("reference".to_string());
+    };
+    guarded(|| base.resolve(&reference).to_string())
 }
 
 fn compare_parse(report: &mut Report, input: &str) {
@@ -325,6 +380,9 @@ fn compare_parse(report: &mut Report, input: &str) {
                 .is_some_and(|path| path.starts_with('/') && !path.starts_with("//"));
             if reason.contains("port overflow") {
                 report.known("uriparse rejects: port overflow");
+            } else if reason.contains("host address mechanism not supported")
+                && input.to_ascii_lowercase().contains("[v") {
+                report.known("uriparse rejects: IPvFuture host");
             } else if reason.contains("colon segment") && absolute_path {
                 report.known("uriparse rejects: colon in the first segment of an absolute path");
             } else {
@@ -418,27 +476,64 @@ fn compare_resolve(report: &mut Report, base: &str, reference: &str) {
     };
     let mine = my_base.resolve(&my_reference);
     let theirs = guarded(|| their_base.resolve(&their_reference).to_string());
+    let example = format!("{base:?} + {reference:?}");
     match (mine, theirs) {
         (Err(UriError::Path), Err(_)) => report.known("uriparse panics"),
         (Err(error), Err(panic)) => report.unexplained(
             "resolve: both fail, differently",
-            format!("{base:?} + {reference:?}: {error:?} / {panic}"),
+            format!("{example}: {error:?} / {panic}"),
         ),
         (Ok(mine), Err(panic)) => report.unexplained(
             "resolve: uriparse panics, this module resolves",
-            format!("{base:?} + {reference:?}: {mine} / {panic}"),
+            format!("{example}: {mine} / {panic}"),
         ),
-        (Err(error), Ok(theirs)) => report.unexplained(
-            "resolve: this module fails, uriparse resolves",
-            format!("{base:?} + {reference:?}: {error:?} / {theirs:?}"),
-        ),
-        (Ok(mine), Ok(theirs)) => judge_print(
-            report,
-            "resolve: differs",
-            &mine,
-            &theirs,
-            format!("{base:?} + {reference:?}"),
-        ),
+        (Err(error), Ok(theirs)) => {
+            // This module refuses a result that would read as an authority. `uriparse` either printed
+            // exactly such a string, or left an escaped dot alone (so its result was another one), or
+            // collapsed the empty segments that made the path start with `//`.
+            let unchecked = my_base.resolve_unchecked(&my_reference).to_string();
+            let retry = resolve_with_dots_decoded(base, reference);
+            let retry_explains = match &retry {
+                Err(_) => true,
+                Ok(text) => reads_as_authority(text) || equivalent(&unchecked, text, true),
+            };
+            if error == UriError::Path
+                && (reads_as_authority(&theirs)
+                    || equivalent(&unchecked, &theirs, true)
+                    || (has_escaped_dot(base) || has_escaped_dot(reference)) && retry_explains)
+            {
+                report.known("resolve: uriparse prints a URI that reads as an authority");
+            } else {
+                report.unexplained(
+                    "resolve: this module fails, uriparse resolves",
+                    format!("{example}: {error:?} / {theirs:?}"),
+                );
+            }
+        }
+        (Ok(mine), Ok(theirs)) => match judge(&mine, &theirs) {
+            Verdict::Same => {}
+            Verdict::Known(known) => report.known(known),
+            Verdict::Different => {
+                let printed = mine.to_string();
+                let by_dots = (has_escaped_dot(base) || has_escaped_dot(reference))
+                    && resolve_with_dots_decoded(base, reference).is_ok_and(|text| {
+                        !matches!(judge(&mine, &text), Verdict::Different)
+                            || equivalent(&printed, &text, true)
+                    });
+                if by_dots {
+                    report.known(
+                        "resolve: uriparse reads an escaped dot as a dot only in some places",
+                    );
+                } else if equivalent(&printed, &theirs, true) {
+                    report.known("resolve: uriparse collapses empty path segments");
+                } else {
+                    report.unexplained(
+                        "resolve: differs",
+                        format!("{example}: {printed:?} / {theirs:?}"),
+                    );
+                }
+            }
+        },
     }
 }
 

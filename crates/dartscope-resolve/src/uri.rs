@@ -124,6 +124,15 @@ impl UriReference {
     /// a reference with a scheme is never read as relative to the base). Fails when the result has
     /// no authority and a path that starts with `//`, which no URI can express.
     pub(crate) fn resolve(&self, reference: &UriReference) -> Result<UriReference, UriError> {
+        let target = self.resolve_unchecked(reference);
+        if target.authority.is_none() && target.path.starts_with("//") {
+            return Err(UriError::Path);
+        }
+        Ok(target)
+    }
+
+    /// The resolution of section 5.2.2 before the check of `resolve` that the result can be printed.
+    pub(crate) fn resolve_unchecked(&self, reference: &UriReference) -> UriReference {
         let mut target = UriReference {
             scheme: None,
             authority: None,
@@ -157,10 +166,7 @@ impl UriReference {
             }
             target.scheme.clone_from(&self.scheme);
         }
-        if target.authority.is_none() && target.path.starts_with("//") {
-            return Err(UriError::Path);
-        }
-        Ok(target)
+        target
     }
 
     /// RFC 3986 section 5.2.3: the base path up to its last `/`, followed by the reference path.
