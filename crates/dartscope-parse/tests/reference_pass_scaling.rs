@@ -129,7 +129,12 @@ fn print_growth_of_the_reference_analysis_per_doubling() {
             let elapsed = time(&source);
             let growth = previous.map_or_else(
                 || "-".to_string(),
-                |before| format!("x{:.1}", elapsed.as_secs_f64() / before.as_secs_f64().max(1e-9)),
+                |before| {
+                    format!(
+                        "x{:.1}",
+                        elapsed.as_secs_f64() / before.as_secs_f64().max(1e-9)
+                    )
+                },
             );
             println!(
                 "{name:>16} n={n:<6} bytes={:<8} time={elapsed:>10.2?} growth_per_doubling={growth}",
