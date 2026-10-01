@@ -185,11 +185,65 @@ class Matrix {
 
 /// Fragments that change how much of the text is code, a string, a comment or a line break.
 const TOKENS: &[&str] = &[
-    "{", "}", "(", ")", "[", "]", "<", ">", ";", ",", "'", "\"", "'''", "\"\"\"", "/*", "*/", "//",
-    "${", "$", "@", "\r", "\r\n", "\n", "\u{feff}", "é", "😀", "日本", "class ", "enum ",
-    "extension ", " on ", " with ", " extends ", "=>", "=", "?", ":", "..", "?.", "!", "late ",
-    "final ", "var ", "import '", "export '", "part '", "r'", "\\", "get ", "set ", "operator ",
-    "factory ", "static ", "const ", "async ", "await ", "this.", "super.", "@override\n",
+    "{",
+    "}",
+    "(",
+    ")",
+    "[",
+    "]",
+    "<",
+    ">",
+    ";",
+    ",",
+    "'",
+    "\"",
+    "'''",
+    "\"\"\"",
+    "/*",
+    "*/",
+    "//",
+    "${",
+    "$",
+    "@",
+    "\r",
+    "\r\n",
+    "\n",
+    "\u{feff}",
+    "é",
+    "😀",
+    "日本",
+    "class ",
+    "enum ",
+    "extension ",
+    " on ",
+    " with ",
+    " extends ",
+    "=>",
+    "=",
+    "?",
+    ":",
+    "..",
+    "?.",
+    "!",
+    "late ",
+    "final ",
+    "var ",
+    "import '",
+    "export '",
+    "part '",
+    "r'",
+    "\\",
+    "get ",
+    "set ",
+    "operator ",
+    "factory ",
+    "static ",
+    "const ",
+    "async ",
+    "await ",
+    "this.",
+    "super.",
+    "@override\n",
 ];
 
 /// xorshift64*: small, deterministic and good enough to pick edit positions.
@@ -328,7 +382,8 @@ fn span_problems(source: &str, analysis: &DartFileReferenceAnalysis) -> Vec<Stri
         }
         // An offset inside a CRLF pair, or at the very end of the text, has no position of its own.
         let has_position = |offset: usize| {
-            offset < source.len() && !(offset > 0 && bytes[offset - 1] == b'\r' && bytes[offset] == b'\n')
+            offset < source.len()
+                && !(offset > 0 && bytes[offset - 1] == b'\r' && bytes[offset] == b'\n')
         };
         for (offset, line, column) in [
             (start, span.start_line, span.start_column),
@@ -360,7 +415,11 @@ fn mutated_sources_never_panic_and_report_spans_that_describe_the_text() {
             analyzed += 1;
             let problems = span_problems(&source, &analysis);
             if !problems.is_empty() && failures.len() < 6 {
-                failures.push(format!("{:?}\n    {}", source, problems[..problems.len().min(3)].join("\n    ")));
+                failures.push(format!(
+                    "{:?}\n    {}",
+                    source,
+                    problems[..problems.len().min(3)].join("\n    ")
+                ));
             }
         }
     }
