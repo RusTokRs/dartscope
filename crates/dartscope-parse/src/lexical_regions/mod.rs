@@ -198,3 +198,6 @@ impl CallableHeaders {
             .is_some_and(|stab| body_start < stab.key.0)
     }
 }
+
+#[cfg(test)]
+mod tests;
