@@ -48,6 +48,39 @@ The suite checks that:
 The deterministic suite is bounded and exhaustive only over its generated cases. It does not replace the
 malformed-input fuzz corpus or claim analyzer-equivalent parser coverage.
 
+## End-To-End Mutation Tests
+
+The libFuzzer targets exercise single parser stages. Two ordinary integration tests cover the whole
+pipeline on stable Rust, so they run in every `cargo test --workspace`:
+
+- `crates/dartscope-parse/tests/robustness_mutations.rs` damages nine realistic Dart sources (deleted,
+  duplicated and inserted fragments, cut-off files, stray delimiters and quotes, byte-order marks, CR and
+  CRLF line ends, non-ASCII text) and analyzes every result with `analyze_file_with_references`. It
+  requires that nothing panics and that every reported span describes the text: offsets inside the source
+  and on character boundaries, ordered lines, and lines and columns that agree with an independent count.
+- `crates/dartscope-index/tests/robustness_mutations.rs` applies short random sequences of edits,
+  removals and re-additions to a two-file workspace through the incremental API. After every step the
+  snapshot must equal a stateless analysis (project, URI graph, part links, reference resolutions), and
+  definition and reference queries over every reference must not panic.
+
+Both tests catch every panic, group the failures by source location, and shrink each to a reproducer of a
+few characters before reporting, so one run lists every distinct failure. The generators are
+deterministic (xorshift with fixed seeds). The defaults are small; a longer hunt turns the knobs up and
+should use a release build:
+
+```bash
+DARTSCOPE_MUTATION_ROUNDS=6000 DARTSCOPE_MUTATION_SEED=3 \
+  cargo test --release -p dartscope-parse --test robustness_mutations
+DARTSCOPE_MUTATION_ROUNDS=1500 DARTSCOPE_MUTATION_SEED=3 \
+  cargo test --release -p dartscope-index --test robustness_mutations
+```
+
+A failure found this way is fixed in the library and its reproducer becomes an ordinary regression test
+next to the code it concerns. The first campaign found two panics on a non-ASCII character in code that
+is not valid Dart (a slice at a byte that is not on a character boundary) and an incremental-index
+staleness (a cached resolution kept the full span of its target declaration, and the invalidation
+compared only line spans and top-level declarations).
+
 ## Toolchain And CI Boundary
 
 CI pins `cargo-fuzz 0.13.2`, `libfuzzer-sys 0.4.13`, and `nightly-2026-07-01`. The normal workspace stays
