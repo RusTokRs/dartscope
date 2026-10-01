@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use dartscope_core::DartFileInput;
 
+use crate::file_facts::FileFacts;
 use crate::identifier_references::{collect_identifier_references, sort_identifier_references};
 use crate::lexical::mask_non_code;
 use crate::lexical_bindings::collect_lexical_bindings;
@@ -108,27 +109,49 @@ fn measure(shape: &str, n: usize, source: &str) {
     let _lines = LineIndexScope::enter(source);
     let lexical = mask_non_code(source);
     let t = Instant::now();
-    let regions = analyze_lexical_regions(&lexical.code, &file);
+    let facts = FileFacts::new(&lexical.code, &file);
+    let t_facts = t.elapsed();
+    let t = Instant::now();
+    let regions = analyze_lexical_regions(&lexical.code, &file, &facts.tables);
     let t_regions = t.elapsed();
     let t = Instant::now();
-    let bindings = collect_lexical_bindings(source, &lexical.code, &file);
+    let bindings = collect_lexical_bindings(source, &lexical.code, &file, &facts);
     let t_bindings = t.elapsed();
     let t = Instant::now();
-    let mut references = collect_identifier_references(source, &lexical.code, &file, &bindings);
+    let mut references =
+        collect_identifier_references(source, &lexical.code, &file, &facts, &bindings);
     let t_identifiers = t.elapsed();
     let t = Instant::now();
-    let reads =
-        collect_lexical_read_references(source, &lexical.code, &file, &bindings, &references);
+    let reads = collect_lexical_read_references(
+        source,
+        &lexical.code,
+        &file,
+        &facts,
+        &bindings,
+        &references,
+    );
     references.extend(reads);
     let t_reads = t.elapsed();
     let t = Instant::now();
-    let writes =
-        collect_lexical_write_references(source, &lexical.code, &file, &bindings, &references);
+    let writes = collect_lexical_write_references(
+        source,
+        &lexical.code,
+        &file,
+        &facts,
+        &bindings,
+        &references,
+    );
     references.extend(writes);
     let t_writes = t.elapsed();
     let t = Instant::now();
-    let updates =
-        collect_lexical_update_references(source, &lexical.code, &file, &bindings, &references);
+    let updates = collect_lexical_update_references(
+        source,
+        &lexical.code,
+        &file,
+        &facts,
+        &bindings,
+        &references,
+    );
     references.extend(updates);
     let t_updates = t.elapsed();
     let t = Instant::now();
@@ -136,6 +159,7 @@ fn measure(shape: &str, n: usize, source: &str) {
         source,
         &lexical.code,
         &file,
+        &facts,
         &bindings,
     ));
     let t_methods = t.elapsed();
@@ -144,17 +168,23 @@ fn measure(shape: &str, n: usize, source: &str) {
         source,
         &lexical.code,
         &file,
+        &facts,
         &bindings,
     ));
     let t_properties = t.elapsed();
     let t = Instant::now();
-    references.extend(collect_operator_references(source, &lexical.code, &file));
+    references.extend(collect_operator_references(
+        source,
+        &lexical.code,
+        &file,
+        &facts,
+    ));
     let t_operators = t.elapsed();
     let t = Instant::now();
     sort_identifier_references(&mut references);
     let t_sort = t.elapsed();
     println!(
-        "phase {shape} n={n} bytes={} decls={} bindings={} regions={} refs={} file={t_file:?} regions_t={t_regions:?} bindings_t={t_bindings:?} identifiers={t_identifiers:?} reads={t_reads:?} writes={t_writes:?} updates={t_updates:?} methods={t_methods:?} properties={t_properties:?} operators={t_operators:?} sort={t_sort:?}",
+        "phase {shape} n={n} bytes={} decls={} bindings={} regions={} refs={} file={t_file:?} facts={t_facts:?} regions_t={t_regions:?} bindings_t={t_bindings:?} identifiers={t_identifiers:?} reads={t_reads:?} writes={t_writes:?} updates={t_updates:?} methods={t_methods:?} properties={t_properties:?} operators={t_operators:?} sort={t_sort:?}",
         source.len(),
         file.declarations.len(),
         bindings.len(),

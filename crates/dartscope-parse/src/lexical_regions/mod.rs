@@ -2,8 +2,12 @@ mod closures;
 mod controls;
 mod scan;
 
-use dartscope_core::{DartDeclarationKind, DartFileAnalysis, DartLexicalBindingKind};
+use std::cmp::Reverse;
 
+use dartscope_core::{DartFileAnalysis, DartLexicalBindingKind};
+
+use crate::declaration_tables::{DeclarationTables, supports_parameters};
+use crate::interval_index::{IntervalSet, StabbingIndex};
 use crate::lexical::mask_non_code;
 
 #[derive(Debug, Clone)]
@@ -44,26 +48,24 @@ pub(super) struct IdentifierToken<'source> {
 pub(crate) fn analyze_lexical_regions(
     source: &str,
     analysis: &DartFileAnalysis,
+    tables: &DeclarationTables<'_>,
 ) -> LexicalRegionAnalysis {
     let masked_source = mask_non_code(source).code;
+    let headers = CallableHeaders::new(analysis, source);
     let mut result = LexicalRegionAnalysis::default();
-    controls::collect_for_regions(&masked_source, analysis, &mut result);
-    controls::collect_catch_regions(&masked_source, analysis, &mut result);
-    closures::collect_arrow_regions(source, analysis, &mut result);
-    closures::collect_block_regions(source, analysis, &mut result);
+    controls::collect_for_regions(&masked_source, tables, &mut result);
+    controls::collect_catch_regions(&masked_source, tables, &mut result);
+    closures::collect_arrow_regions(source, tables, &headers, &mut result);
+    closures::collect_block_regions(source, tables, &headers, &mut result);
     result.deferred_regions.sort_unstable();
     result.deferred_regions.dedup();
-    let deferred_regions = result.deferred_regions.clone();
-    result.bindings.retain(|binding| {
-        !deferred_regions.iter().any(|(start, end)| {
-            *start <= binding.declaration_start && binding.declaration_start < *end
-        })
-    });
-    result.write_targets.retain(|target| {
-        !deferred_regions
-            .iter()
-            .any(|(start, end)| *start <= target.start && target.start < *end)
-    });
+    let deferred_regions = IntervalSet::new(result.deferred_regions.iter().copied());
+    result
+        .bindings
+        .retain(|binding| !deferred_regions.contains(binding.declaration_start));
+    result
+        .write_targets
+        .retain(|target| !deferred_regions.contains(target.start));
     result.bindings.sort_by(|left, right| {
         (
             left.declaration_start,
@@ -139,50 +141,55 @@ pub(super) fn binding_for_token(
     })
 }
 
-pub(super) fn innermost_callable_symbol(
-    analysis: &DartFileAnalysis,
-    offset: usize,
-) -> Option<String> {
-    analysis
-        .declarations
-        .iter()
-        .filter(|declaration| supports_parameters(declaration.kind))
-        .filter_map(|declaration| {
-            let span = declaration.declaration_span.as_ref()?;
-            (span.byte_start <= offset && offset < span.byte_end).then_some((
-                span.byte_end.saturating_sub(span.byte_start),
-                declaration.symbol_id.as_ref()?,
-            ))
-        })
-        .min_by_key(|(length, _)| *length)
-        .map(|(_, symbol_id)| symbol_id.clone())
+/// Tells whether a parenthesis that opens a closure-shaped region is really the parameter list of
+/// a declaration the file analysis already models.
+pub(super) struct CallableHeaders {
+    /// For a position `p`, the callable with the furthest end among those whose header (the text
+    /// from the start of the declaration to the first `{` or `=>`) reaches `p`.
+    index: StabbingIndex<Reverse<usize>>,
 }
 
-pub(super) fn modeled_callable_header(
-    analysis: &DartFileAnalysis,
-    source: &str,
-    parameter_start: usize,
-    body_start: usize,
-) -> bool {
-    analysis.declarations.iter().any(|declaration| {
-        supports_parameters(declaration.kind)
-            && declaration.declaration_span.as_ref().is_some_and(|span| {
-                span.byte_start <= parameter_start
-                    && body_start < span.byte_end
-                    && !source[span.byte_start..parameter_start].contains('{')
-                    && !source[span.byte_start..parameter_start].contains("=>")
+impl CallableHeaders {
+    fn new(analysis: &DartFileAnalysis, source: &str) -> Self {
+        let bytes = source.as_bytes();
+        let items = analysis
+            .declarations
+            .iter()
+            .enumerate()
+            .filter(|(_, declaration)| supports_parameters(declaration.kind))
+            .filter_map(|(id, declaration)| {
+                let span = declaration.declaration_span.as_ref()?;
+                let window = bytes.get(span.byte_start..span.byte_end.min(bytes.len()))?;
+                // A header that holds `{` or `=>` before the parenthesis is not a header of this
+                // callable: the parenthesis belongs to something inside its body.
+                let brace = window.iter().position(|&byte| byte == b'{');
+                let arrow = window.windows(2).position(|pair| pair == b"=>");
+                let last_position = [
+                    brace.map(|offset| span.byte_start + offset),
+                    arrow.map(|offset| span.byte_start + offset + 1),
+                ]
+                .into_iter()
+                .flatten()
+                .min()
+                .unwrap_or(usize::MAX);
+                Some((
+                    span.byte_start,
+                    last_position.saturating_add(1),
+                    Reverse(span.byte_end),
+                    id,
+                ))
             })
-    })
-}
+            .collect();
+        Self {
+            index: StabbingIndex::new(items),
+        }
+    }
 
-fn supports_parameters(kind: DartDeclarationKind) -> bool {
-    matches!(
-        kind,
-        DartDeclarationKind::Function
-            | DartDeclarationKind::Method
-            | DartDeclarationKind::Constructor
-            | DartDeclarationKind::Getter
-            | DartDeclarationKind::Setter
-            | DartDeclarationKind::Operator
-    )
+    /// Whether some callable starts at or before `parameter_start`, ends after `body_start` and
+    /// has neither `{` nor `=>` between its start and `parameter_start`.
+    pub(super) fn models(&self, parameter_start: usize, body_start: usize) -> bool {
+        self.index
+            .best_at(parameter_start)
+            .is_some_and(|stab| body_start < stab.key.0)
+    }
 }

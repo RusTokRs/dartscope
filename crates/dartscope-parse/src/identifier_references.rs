@@ -1,15 +1,20 @@
 mod typed;
 mod typed_positions;
 
+use std::collections::HashMap;
+
 use dartscope_core::{
-    Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
+    Confidence, DartDeclaration, DartFileAnalysis, DartIdentifierReference,
     DartIdentifierReferenceKind, DartLexicalBinding, SourceSpan,
 };
 
 use self::typed::collect_typed_identifier_references;
 use self::typed_positions::collect_declaration_type_references;
+use crate::binding_index::BindingIndex;
+use crate::file_facts::FileFacts;
 use crate::identifiers::{is_identifier_continue, is_identifier_start};
 use crate::source_lines::span_for_byte_range;
+use crate::source_structure::SourceStructure;
 use crate::unqualified_member_references;
 
 #[derive(Debug, Clone, Copy)]
@@ -19,12 +24,16 @@ struct IdentifierToken<'source> {
     end: usize,
 }
 
-pub(crate) fn collect_identifier_references(
+pub(crate) fn collect_identifier_references<'a>(
     source: &str,
     masked_source: &str,
-    analysis: &DartFileAnalysis,
+    analysis: &'a DartFileAnalysis,
+    facts: &FileFacts<'a>,
     bindings: &[DartLexicalBinding],
 ) -> Vec<DartIdentifierReference> {
+    let index = BindingIndex::new(masked_source, &facts.structure, bindings);
+    // The parameter names of each callable, read from its header once.
+    let mut parameter_names: HashMap<&str, Vec<String>> = HashMap::new();
     let mut references = Vec::new();
     for invocation in &analysis.invocations {
         let Some(root) = identifier_at(masked_source, invocation.span.byte_start) else {
@@ -34,18 +43,26 @@ pub(crate) fn collect_identifier_references(
             continue;
         }
         let enclosing_symbol_id = invocation.enclosing_symbol_id.as_deref();
-        if lexical_root_is_shadowed(masked_source, analysis, bindings, enclosing_symbol_id, root) {
+        if lexical_root_is_shadowed(
+            masked_source,
+            facts,
+            &index,
+            &mut parameter_names,
+            enclosing_symbol_id,
+            root,
+        ) {
             continue;
         }
         if invocation.target == root.text
             && let Some(member) = unqualified_member_references::enclosing_member(
-                analysis,
+                &facts.tables,
                 masked_source,
                 root.text,
                 root.start,
             )
             && member.owns_callable()
             && !unqualified_member_references::local_function_shadows(
+                facts,
                 masked_source,
                 &member,
                 root.text,
@@ -66,15 +83,11 @@ pub(crate) fn collect_identifier_references(
             });
             continue;
         }
-        if owner_member_shadows_invocation(analysis, enclosing_symbol_id, root) {
+        if owner_member_shadows_invocation(facts, enclosing_symbol_id, root) {
             continue;
         }
 
-        let import_prefix = analysis
-            .imports
-            .iter()
-            .any(|import| import.prefix.as_deref() == Some(root.text));
-        let (name, prefix, confidence, token) = if import_prefix {
+        let (name, prefix, confidence, token) = if facts.is_import_prefix(root.text) {
             let Some(member) = next_dotted_identifier(masked_source, root.end) else {
                 continue;
             };
@@ -108,6 +121,7 @@ pub(crate) fn collect_identifier_references(
         source,
         masked_source,
         analysis,
+        &facts.tables,
     ));
     sort_identifier_references(&mut references);
     references.dedup_by(|left, right| {
@@ -142,92 +156,84 @@ pub(crate) fn sort_identifier_references(references: &mut [DartIdentifierReferen
     });
 }
 
-fn lexical_root_is_shadowed(
+fn lexical_root_is_shadowed<'a>(
     masked_source: &str,
-    analysis: &DartFileAnalysis,
-    bindings: &[DartLexicalBinding],
-    enclosing_symbol_id: Option<&str>,
+    facts: &FileFacts<'a>,
+    index: &BindingIndex<'_>,
+    parameter_names: &mut HashMap<&'a str, Vec<String>>,
+    enclosing_symbol_id: Option<&'a str>,
     root: IdentifierToken<'_>,
 ) -> bool {
     let Some(owner_id) = enclosing_symbol_id else {
         return false;
     };
-    let Some(owner) = analysis
-        .declarations
-        .iter()
-        .find(|declaration| declaration.symbol_id.as_deref() == Some(owner_id))
-    else {
+    let Some(owner) = facts.tables.by_symbol_id(owner_id) else {
         return false;
     };
 
-    if bindings
-        .iter()
-        .any(|binding| binding_shadows_invocation(masked_source, binding, owner_id, root))
+    if index
+        .owned_by(owner_id, root.text)
+        .any(|binding| binding_shadows_invocation(&facts.structure, binding, root))
     {
         return true;
     }
 
-    if callable_parameter_names(masked_source, owner)
+    if parameter_names
+        .entry(owner_id)
+        .or_insert_with(|| callable_parameter_names(masked_source, owner))
         .iter()
         .any(|name| name == root.text)
     {
         return true;
     }
 
-    analysis.declarations.iter().any(|declaration| {
-        declaration.kind == DartDeclarationKind::LocalVariable
-            && declaration.name == root.text
-            && declaration.parent_symbol_id.as_deref() == Some(owner_id)
-            && declaration.declaration_span.as_ref().is_some_and(|span| {
+    facts
+        .tables
+        .locals_named(owner_id, root.text)
+        .any(|declaration| {
+            declaration.declaration_span.as_ref().is_some_and(|span| {
                 span.byte_start < root.start
-                    && local_scope_contains(masked_source, span.byte_start, root.start, owner)
+                    && local_scope_contains(
+                        masked_source,
+                        &facts.structure,
+                        span.byte_start,
+                        root.start,
+                        owner,
+                    )
             })
-    })
+        })
 }
 
 fn owner_member_shadows_invocation(
-    analysis: &DartFileAnalysis,
+    facts: &FileFacts<'_>,
     enclosing_symbol_id: Option<&str>,
     root: IdentifierToken<'_>,
 ) -> bool {
     let Some(owner_id) = enclosing_symbol_id else {
         return false;
     };
-    let Some(owner) = analysis
-        .declarations
-        .iter()
-        .find(|declaration| declaration.symbol_id.as_deref() == Some(owner_id))
-    else {
+    let Some(owner) = facts.tables.by_symbol_id(owner_id) else {
         return false;
     };
     let Some(type_id) = owner.parent_symbol_id.as_deref() else {
         return false;
     };
-    analysis.declarations.iter().any(|declaration| {
-        declaration.parent_symbol_id.as_deref() == Some(type_id)
-            && declaration.name == root.text
-            && is_instance_member_kind(declaration.kind)
-    })
+    facts.tables.declares_instance_member(type_id, root.text)
 }
 
+/// Whether a binding of the invocation's owner and of the spelling's name hides the invocation:
+/// the binding is in scope there, or is declared later in the same statement.
 fn binding_shadows_invocation(
-    source: &str,
+    structure: &SourceStructure,
     binding: &DartLexicalBinding,
-    owner_id: &str,
     root: IdentifierToken<'_>,
 ) -> bool {
-    if binding.enclosing_symbol_id != owner_id || binding.name != root.text {
-        return false;
-    }
     if binding.scope_span.byte_start <= root.start && root.start < binding.scope_span.byte_end {
         return true;
     }
     root.start < binding.scope_span.byte_start
-        && has_no_statement_boundary_between(
-            source,
-            root.start,
-            binding.declaration_span.byte_start,
-        )
+        && structure
+            .has_no_statement_boundary_between(root.start, binding.declaration_span.byte_start)
 }
 
 fn callable_parameter_names(masked_source: &str, owner: &DartDeclaration) -> Vec<String> {
@@ -346,20 +352,12 @@ fn is_parameter_modifier(value: &str) -> bool {
     )
 }
 
-fn has_no_statement_boundary_between(source: &str, left: usize, right: usize) -> bool {
-    let (start, end) = if left <= right {
-        (left, right)
-    } else {
-        (right, left)
-    };
-    source
-        .as_bytes()
-        .get(start..end)
-        .is_some_and(|bytes| !bytes.iter().any(|byte| matches!(*byte, b';' | b'{' | b'}')))
-}
-
+/// Whether a local variable declared at `declaration_start` is in scope at `reference_start`: the
+/// reference lies before the end of the innermost block of `owner` that was open at the
+/// declaration.
 fn local_scope_contains(
     masked_source: &str,
+    structure: &SourceStructure,
     declaration_start: usize,
     reference_start: usize,
     owner: &DartDeclaration,
@@ -367,56 +365,16 @@ fn local_scope_contains(
     let Some(owner_span) = owner.declaration_span.as_ref() else {
         return false;
     };
-    let bytes = masked_source.as_bytes();
-    let mut blocks = Vec::new();
-    let mut at = owner_span.byte_start;
-    while at < declaration_start.min(owner_span.byte_end).min(bytes.len()) {
-        match bytes[at] {
-            b'{' => blocks.push(at),
-            b'}' => {
-                blocks.pop();
-            }
-            _ => {}
-        }
-        at += 1;
-    }
-
-    let Some(open) = blocks.last().copied() else {
+    let limit = declaration_start
+        .min(owner_span.byte_end)
+        .min(masked_source.len());
+    let Some(open) = structure.innermost_open_brace(owner_span.byte_start, limit) else {
         return false;
     };
-    matching_brace(masked_source, open, owner_span.byte_end)
+    structure
+        .closing_brace(open)
+        .filter(|&close| close < owner_span.byte_end.min(masked_source.len()))
         .is_some_and(|close| reference_start < close)
-}
-
-fn matching_brace(source: &str, open: usize, limit: usize) -> Option<usize> {
-    let bytes = source.as_bytes();
-    let mut depth = 1usize;
-    let mut at = open + 1;
-    while at < limit.min(bytes.len()) {
-        match bytes[at] {
-            b'{' => depth += 1,
-            b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(at);
-                }
-            }
-            _ => {}
-        }
-        at += 1;
-    }
-    None
-}
-
-fn is_instance_member_kind(kind: DartDeclarationKind) -> bool {
-    matches!(
-        kind,
-        DartDeclarationKind::Method
-            | DartDeclarationKind::Field
-            | DartDeclarationKind::Getter
-            | DartDeclarationKind::Setter
-            | DartDeclarationKind::Operator
-    )
 }
 
 fn identifier_at(source: &str, start: usize) -> Option<IdentifierToken<'_>> {

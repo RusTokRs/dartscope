@@ -1,4 +1,6 @@
-use dartscope_core::{DartFileAnalysis, DartLexicalBindingKind};
+use dartscope_core::DartLexicalBindingKind;
+
+use crate::declaration_tables::DeclarationTables;
 
 use super::scan::{
     arrow_expression_end, arrow_parameter_range, contains_receiver_formal,
@@ -6,10 +8,7 @@ use super::scan::{
     last_top_level_identifier, matching_delimiter, next_non_whitespace, top_level_assignment,
     top_level_segments, trim_range,
 };
-use super::{
-    IdentifierToken, LexicalRegionAnalysis, binding_for_token, innermost_callable_symbol,
-    modeled_callable_header,
-};
+use super::{CallableHeaders, IdentifierToken, LexicalRegionAnalysis, binding_for_token};
 
 #[derive(Debug, Clone, Copy)]
 struct ClosureRegion {
@@ -23,7 +22,8 @@ struct ClosureRegion {
 
 pub(super) fn collect_arrow_regions(
     source: &str,
-    analysis: &DartFileAnalysis,
+    tables: &DeclarationTables<'_>,
+    headers: &CallableHeaders,
     result: &mut LexicalRegionAnalysis,
 ) {
     let bytes = source.as_bytes();
@@ -39,14 +39,14 @@ pub(super) fn collect_arrow_regions(
             at += 2;
             continue;
         };
-        if modeled_callable_header(analysis, source, region_start, at) {
+        if headers.models(region_start, at) {
             at += 2;
             continue;
         }
         let region_end = arrow_expression_end(source, at + 2);
         collect_region(
             source,
-            analysis,
+            tables,
             result,
             ClosureRegion {
                 parameter_start,
@@ -63,7 +63,8 @@ pub(super) fn collect_arrow_regions(
 
 pub(super) fn collect_block_regions(
     source: &str,
-    analysis: &DartFileAnalysis,
+    tables: &DeclarationTables<'_>,
+    headers: &CallableHeaders,
     result: &mut LexicalRegionAnalysis,
 ) {
     let bytes = source.as_bytes();
@@ -82,7 +83,7 @@ pub(super) fn collect_block_regions(
         };
         if bytes.get(body_open) != Some(&b'{')
             || is_control_header(source, open)
-            || modeled_callable_header(analysis, source, open, body_open)
+            || headers.models(open, body_open)
         {
             open += 1;
             continue;
@@ -95,7 +96,7 @@ pub(super) fn collect_block_regions(
         };
         collect_region(
             source,
-            analysis,
+            tables,
             result,
             ClosureRegion {
                 parameter_start: open + 1,
@@ -112,11 +113,11 @@ pub(super) fn collect_block_regions(
 
 fn collect_region(
     source: &str,
-    analysis: &DartFileAnalysis,
+    tables: &DeclarationTables<'_>,
     result: &mut LexicalRegionAnalysis,
     region: ClosureRegion,
 ) {
-    let Some(owner_id) = innermost_callable_symbol(analysis, region.region_start) else {
+    let Some(owner_id) = tables.innermost_callable_symbol(region.region_start) else {
         result
             .deferred_regions
             .push((region.region_start, region.region_end));
@@ -139,7 +140,7 @@ fn collect_region(
             "closure_parameter",
             region.scope_start,
             region.scope_end,
-            &owner_id,
+            owner_id,
         ) {
             result.bindings.push(binding);
         }

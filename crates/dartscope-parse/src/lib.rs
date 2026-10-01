@@ -2,14 +2,18 @@
 
 mod analysis;
 mod backend;
+mod binding_index;
 mod declaration_inventory;
+mod declaration_tables;
 mod declarations;
+mod file_facts;
 #[cfg(feature = "fuzzing")]
 #[doc(hidden)]
 pub mod fuzzing;
 mod graphql;
 mod identifier_references;
 mod identifiers;
+mod interval_index;
 mod invocations;
 mod lexical;
 mod lexical_bindings;
@@ -39,6 +43,7 @@ mod pubspec_yaml_marked_configuration;
 mod pubspec_yaml_marked_dependencies;
 mod pubspec_yaml_subset;
 mod source_lines;
+mod source_structure;
 mod unqualified_member_references;
 
 use dartscope_core::{DartProjectAnalysis, DartProjectInput, DartProjectReferenceAnalysis};

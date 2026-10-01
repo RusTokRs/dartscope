@@ -1,15 +1,17 @@
-use dartscope_core::{DartDeclarationKind, DartFileAnalysis, DartLexicalBindingKind};
+use dartscope_core::DartLexicalBindingKind;
+
+use crate::declaration_tables::DeclarationTables;
 
 use super::scan::{
     contains_top_level_pattern_start, find_keyword, find_top_level_keyword, has_top_level_byte,
     identifier_at, is_binding_name, matching_delimiter, top_level_assignment,
     top_level_byte_positions, top_level_identifiers, top_level_segments, trim_range,
 };
-use super::{LexicalRegionAnalysis, binding_for_token, innermost_callable_symbol, write_for_token};
+use super::{LexicalRegionAnalysis, binding_for_token, write_for_token};
 
 pub(super) fn collect_for_regions(
     source: &str,
-    analysis: &DartFileAnalysis,
+    tables: &DeclarationTables<'_>,
     result: &mut LexicalRegionAnalysis,
 ) {
     let bytes = source.as_bytes();
@@ -36,11 +38,11 @@ pub(super) fn collect_for_regions(
             ));
             continue;
         };
-        if contains_local_declaration(analysis, scope_start, scope_end) {
+        if tables.has_local_declaration_starting_in(scope_start, scope_end) {
             result.deferred_regions.push((found, region_end));
             continue;
         }
-        let Some(owner_id) = innermost_callable_symbol(analysis, found) else {
+        let Some(owner_id) = tables.innermost_callable_symbol(found) else {
             result.deferred_regions.push((found, region_end));
             continue;
         };
@@ -50,7 +52,7 @@ pub(super) fn collect_for_regions(
             close,
             scope_start,
             scope_end,
-            &owner_id,
+            owner_id,
             (&mut result.suppressed_regions, &mut result.write_targets),
         ) {
             Some(bindings) => result.bindings.extend(bindings),
@@ -297,20 +299,6 @@ fn is_label(source: &str, token: super::IdentifierToken<'_>) -> bool {
     next_non_trivia(source, token.end).is_some_and(|at| source.as_bytes().get(at) == Some(&b':'))
 }
 
-fn contains_local_declaration(
-    analysis: &DartFileAnalysis,
-    body_start: usize,
-    body_end: usize,
-) -> bool {
-    analysis.declarations.iter().any(|declaration| {
-        declaration.kind == DartDeclarationKind::LocalVariable
-            && declaration
-                .declaration_span
-                .as_ref()
-                .is_some_and(|span| body_start <= span.byte_start && span.byte_start < body_end)
-    })
-}
-
 #[derive(Debug, Clone, Copy)]
 struct ClassicForDeclarator<'source> {
     token: super::IdentifierToken<'source>,
@@ -507,7 +495,7 @@ fn parse_for_in_header(
 
 pub(super) fn collect_catch_regions(
     source: &str,
-    analysis: &DartFileAnalysis,
+    tables: &DeclarationTables<'_>,
     result: &mut LexicalRegionAnalysis,
 ) {
     let bytes = source.as_bytes();
@@ -540,7 +528,7 @@ pub(super) fn collect_catch_regions(
             continue;
         };
         let region_end = body_close + 1;
-        let Some(owner_id) = innermost_callable_symbol(analysis, found) else {
+        let Some(owner_id) = tables.innermost_callable_symbol(found) else {
             result.deferred_regions.push((found, region_end));
             continue;
         };
@@ -556,7 +544,7 @@ pub(super) fn collect_catch_regions(
                 "catch_parameter",
                 body_open + 1,
                 body_close,
-                &owner_id,
+                owner_id,
             ) {
                 result.bindings.push(binding);
             }

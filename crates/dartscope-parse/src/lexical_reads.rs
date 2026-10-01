@@ -1,12 +1,15 @@
 use crate::identifiers::{is_identifier_continue, is_identifier_start};
-use std::cmp::Reverse;
 
 use dartscope_core::{
-    Confidence, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
-    DartIdentifierReferenceKind, DartLexicalBinding, DartLexicalBindingKind,
+    Confidence, DartFileAnalysis, DartIdentifierReference, DartIdentifierReferenceKind,
+    DartLexicalBinding,
 };
 
+use crate::binding_index::{BindingIndex, reference_spans};
+use crate::file_facts::FileFacts;
+use crate::interval_index::IntervalSet;
 use crate::source_lines::span_for_byte_range;
+use crate::source_structure::SourceStructure;
 use crate::unqualified_member_references::{enclosing_member, local_function_shadows};
 
 pub(crate) mod deferred;
@@ -22,10 +25,18 @@ pub(crate) fn collect_lexical_read_references(
     source: &str,
     masked_source: &str,
     analysis: &DartFileAnalysis,
+    facts: &FileFacts<'_>,
     bindings: &[DartLexicalBinding],
     existing_references: &[DartIdentifierReference],
 ) -> Vec<DartIdentifierReference> {
-    let deferred_regions = deferred::read_regions(masked_source, analysis, bindings);
+    let deferred_regions = IntervalSet::new(deferred::read_regions(
+        masked_source,
+        analysis,
+        facts,
+        bindings,
+    ));
+    let existing = reference_spans(existing_references);
+    let index = BindingIndex::new(masked_source, &facts.structure, bindings);
     let bytes = masked_source.as_bytes();
     let mut reads = Vec::new();
     let mut at = 0usize;
@@ -44,20 +55,20 @@ pub(crate) fn collect_lexical_read_references(
         at = end;
 
         if token.text == "_"
-            || deferred_regions
-                .iter()
-                .any(|(start, end)| *start <= token.start && token.start < *end)
-            || overlaps_existing_reference(existing_references, token)
-            || is_binding_declaration(bindings, token)
-            || is_deferred_local_initializer(masked_source, bindings, token)
-            || is_local_declaration_prefix(masked_source, bindings, token)
-            || !is_conservative_read_position(masked_source, token)
+            || deferred_regions.contains(token.start)
+            || existing.overlaps(token.start, token.end)
+            || index.is_declaration(token.start, token.end)
+            || index.is_deferred_local_initializer(token.text, token.start)
+            || index.is_local_declaration_prefix(token.start)
+            || !is_conservative_read_position(masked_source, &facts.structure, token)
         {
             continue;
         }
 
-        let Some(binding) = select_visible_binding(bindings, token) else {
-            if let Some(reference) = member_read_reference(source, masked_source, analysis, token) {
+        let Some(binding) = index.select_visible(token.text, token.start) else {
+            if let Some(reference) =
+                member_read_reference(source, masked_source, analysis, facts, token)
+            {
                 reads.push(reference);
             }
             continue;
@@ -69,8 +80,10 @@ pub(crate) fn collect_lexical_read_references(
             kind: DartIdentifierReferenceKind::VariableRead,
             confidence: Confidence::High,
             enclosing_symbol_id: Some(
-                innermost_callable_symbol(analysis, token.start)
-                    .unwrap_or_else(|| binding.enclosing_symbol_id.clone()),
+                facts
+                    .tables
+                    .innermost_callable_symbol(token.start)
+                    .map_or_else(|| binding.enclosing_symbol_id.clone(), str::to_string),
             ),
             span: span_for_byte_range(source, token.start, token.end),
         });
@@ -83,10 +96,12 @@ fn member_read_reference(
     source: &str,
     masked_source: &str,
     analysis: &DartFileAnalysis,
+    facts: &FileFacts<'_>,
     token: IdentifierToken<'_>,
 ) -> Option<DartIdentifierReference> {
-    let member = enclosing_member(analysis, masked_source, token.text, token.start)?;
-    if !member.owns_readable() || local_function_shadows(masked_source, &member, token.text) {
+    let member = enclosing_member(&facts.tables, masked_source, token.text, token.start)?;
+    if !member.owns_readable() || local_function_shadows(facts, masked_source, &member, token.text)
+    {
         return None;
     }
     Some(DartIdentifierReference {
@@ -99,131 +114,19 @@ fn member_read_reference(
             DartIdentifierReferenceKind::MemberPropertyReadInstance
         },
         confidence: Confidence::High,
-        enclosing_symbol_id: innermost_callable_symbol(analysis, token.start),
+        enclosing_symbol_id: facts
+            .tables
+            .innermost_callable_symbol(token.start)
+            .map(str::to_string),
         span: span_for_byte_range(source, token.start, token.end),
     })
 }
 
-fn select_visible_binding<'a>(
-    bindings: &'a [DartLexicalBinding],
-    token: IdentifierToken<'_>,
-) -> Option<&'a DartLexicalBinding> {
-    let mut best = None;
-    let mut best_rank = None;
-    let mut ambiguous = false;
-
-    for binding in bindings.iter().filter(|binding| {
-        binding.name == token.text
-            && binding.scope_span.byte_start <= token.start
-            && token.start < binding.scope_span.byte_end
-    }) {
-        let rank = binding_rank(binding);
-        match best_rank {
-            None => {
-                best = Some(binding);
-                best_rank = Some(rank);
-                ambiguous = false;
-            }
-            Some(current) if rank < current => {
-                best = Some(binding);
-                best_rank = Some(rank);
-                ambiguous = false;
-            }
-            Some(current) if rank == current => ambiguous = true,
-            Some(_) => {}
-        }
-    }
-
-    if ambiguous { None } else { best }
-}
-
-fn binding_rank(binding: &DartLexicalBinding) -> (usize, Reverse<usize>, usize, usize) {
-    (
-        binding
-            .scope_span
-            .byte_end
-            .saturating_sub(binding.scope_span.byte_start),
-        Reverse(binding.declaration_span.byte_start),
-        binding.scope_span.byte_start,
-        binding.scope_span.byte_end,
-    )
-}
-
-fn overlaps_existing_reference(
-    references: &[DartIdentifierReference],
-    token: IdentifierToken<'_>,
-) -> bool {
-    references.iter().any(|reference| {
-        reference.span.byte_start < token.end && token.start < reference.span.byte_end
-    })
-}
-
-fn is_binding_declaration(bindings: &[DartLexicalBinding], token: IdentifierToken<'_>) -> bool {
-    bindings.iter().any(|binding| {
-        binding.declaration_span.byte_start <= token.start
-            && token.end <= binding.declaration_span.byte_end
-    })
-}
-
-fn is_deferred_local_initializer(
+fn is_conservative_read_position(
     source: &str,
-    bindings: &[DartLexicalBinding],
+    structure: &SourceStructure,
     token: IdentifierToken<'_>,
 ) -> bool {
-    bindings.iter().any(|binding| {
-        binding.kind == DartLexicalBindingKind::LocalVariable
-            && binding.name == token.text
-            && statement_start(source, binding.declaration_span.byte_start) <= token.start
-            && token.start < binding.scope_span.byte_start
-    })
-}
-
-fn is_local_declaration_prefix(
-    source: &str,
-    bindings: &[DartLexicalBinding],
-    token: IdentifierToken<'_>,
-) -> bool {
-    bindings.iter().any(|binding| {
-        if binding.kind != DartLexicalBindingKind::LocalVariable
-            || token.start >= binding.declaration_span.byte_start
-        {
-            return false;
-        }
-        let statement_start = statement_start(source, binding.declaration_span.byte_start);
-        let segment_start =
-            declarator_segment_start(source, statement_start, binding.declaration_span.byte_start);
-        segment_start <= token.start
-    })
-}
-
-fn declarator_segment_start(source: &str, start: usize, end: usize) -> usize {
-    let bytes = source.as_bytes();
-    let mut parens = 0usize;
-    let mut brackets = 0usize;
-    let mut braces = 0usize;
-    let mut angles = 0usize;
-    let mut at = end.min(bytes.len());
-    while at > start {
-        at -= 1;
-        match bytes[at] {
-            b',' if parens == 0 && brackets == 0 && braces == 0 && angles == 0 => {
-                return at + 1;
-            }
-            b')' => parens += 1,
-            b'(' => parens = parens.saturating_sub(1),
-            b']' => brackets += 1,
-            b'[' => brackets = brackets.saturating_sub(1),
-            b'}' => braces += 1,
-            b'{' => braces = braces.saturating_sub(1),
-            b'>' => angles += 1,
-            b'<' => angles = angles.saturating_sub(1),
-            _ => {}
-        }
-    }
-    start
-}
-
-fn is_conservative_read_position(source: &str, token: IdentifierToken<'_>) -> bool {
     let bytes = source.as_bytes();
     let previous = previous_non_whitespace(bytes, token.start);
     let next = next_non_whitespace(bytes, token.end);
@@ -234,7 +137,7 @@ fn is_conservative_read_position(source: &str, token: IdentifierToken<'_>) -> bo
         && !ends_increment_operator(bytes, previous)
         && !precedes_assignment_in_statement(source, token.end)
         && !follows_type_keyword(source, token.start)
-        && !is_inside_angle_pair(source, token.start)
+        && !structure.is_inside_angle_pair(token.start)
 }
 
 fn follows_type_keyword(source: &str, before: usize) -> bool {
@@ -268,36 +171,6 @@ fn previous_identifier(source: &str, before: usize) -> Option<&str> {
         start -= 1;
     }
     source.get(start..end)
-}
-
-fn is_inside_angle_pair(source: &str, offset: usize) -> bool {
-    let bytes = source.as_bytes();
-    let start = statement_start(source, offset);
-    let mut depth = 0usize;
-    for byte in &bytes[start..offset.min(bytes.len())] {
-        match byte {
-            b'<' => depth += 1,
-            b'>' => depth = depth.saturating_sub(1),
-            _ => {}
-        }
-    }
-    if depth == 0 {
-        return false;
-    }
-
-    for byte in &bytes[offset.min(bytes.len())..] {
-        match byte {
-            b'>' => {
-                depth -= 1;
-                if depth == 0 {
-                    return true;
-                }
-            }
-            b';' | b'{' | b'}' if depth > 0 => return false,
-            _ => {}
-        }
-    }
-    false
 }
 
 fn starts_write_operator(bytes: &[u8], at: Option<usize>) -> bool {
@@ -373,46 +246,6 @@ fn assignment_operator_at(bytes: &[u8], at: usize) -> bool {
                 .checked_sub(1)
                 .and_then(|index| bytes.get(index))
                 .is_none_or(|byte| !matches!(*byte, b'!' | b'<' | b'>')))
-}
-
-pub(super) fn supports_parameters(kind: DartDeclarationKind) -> bool {
-    matches!(
-        kind,
-        DartDeclarationKind::Function
-            | DartDeclarationKind::Method
-            | DartDeclarationKind::Constructor
-            | DartDeclarationKind::Getter
-            | DartDeclarationKind::Setter
-            | DartDeclarationKind::Operator
-    )
-}
-
-fn innermost_callable_symbol(analysis: &DartFileAnalysis, offset: usize) -> Option<String> {
-    analysis
-        .declarations
-        .iter()
-        .filter(|declaration| supports_parameters(declaration.kind))
-        .filter_map(|declaration| {
-            let span = declaration.declaration_span.as_ref()?;
-            (span.byte_start <= offset && offset < span.byte_end).then_some((
-                span.byte_end.saturating_sub(span.byte_start),
-                declaration.symbol_id.as_ref()?,
-            ))
-        })
-        .min_by_key(|(length, _)| *length)
-        .map(|(_, symbol_id)| symbol_id.clone())
-}
-
-fn statement_start(source: &str, before: usize) -> usize {
-    let bytes = source.as_bytes();
-    let mut at = before.min(bytes.len());
-    while at > 0 {
-        at -= 1;
-        if matches!(bytes[at], b';' | b'{' | b'}') {
-            return at + 1;
-        }
-    }
-    0
 }
 
 fn identifier_end(bytes: &[u8], mut at: usize) -> usize {

@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use dartscope_core::{
     DartDiagnostic, DartFileAnalysis, DartFileInput, DartFileReferenceAnalysis,
-    DartLibraryDirective, DartPart, DartPartOf, DartProjectAnalysis, DartProjectInput,
-    DartProjectReferenceAnalysis, DartProjectSummary, SourceSpan, normalize_path,
+    DartIdentifierReference, DartLexicalBinding, DartLibraryDirective, DartPart, DartPartOf,
+    DartProjectAnalysis, DartProjectInput, DartProjectReferenceAnalysis, DartProjectSummary,
+    SourceSpan, normalize_path,
 };
 use dartscope_resolve::parse_package_config;
 
@@ -12,6 +13,7 @@ use crate::declaration_inventory::collect_declaration_inventory;
 use crate::declarations::{
     directive_like_without_semicolon, library_directive_name, part_of_value, string_constant_at,
 };
+use crate::file_facts::FileFacts;
 use crate::graphql::{extract_graphql_operation_uses, extract_graphql_operations};
 use crate::identifier_references::{collect_identifier_references, sort_identifier_references};
 use crate::invocations::collect_invocations;
@@ -271,30 +273,7 @@ pub fn analyze_file_with_references(input: DartFileInput) -> DartFileReferenceAn
     let file = analyze_file(input);
     let _lines = LineIndexScope::enter(&source);
     let lexical = mask_non_code(&source);
-    let bindings = collect_lexical_bindings(&source, &lexical.code, &file);
-    let mut references = collect_identifier_references(&source, &lexical.code, &file, &bindings);
-    let lexical_reads =
-        collect_lexical_read_references(&source, &lexical.code, &file, &bindings, &references);
-    references.extend(lexical_reads);
-    let lexical_writes =
-        collect_lexical_write_references(&source, &lexical.code, &file, &bindings, &references);
-    references.extend(lexical_writes);
-    let lexical_updates =
-        collect_lexical_update_references(&source, &lexical.code, &file, &bindings, &references);
-    references.extend(lexical_updates);
-    references.extend(collect_method_references(
-        &source,
-        &lexical.code,
-        &file,
-        &bindings,
-    ));
-    references.extend(collect_property_references(
-        &source,
-        &lexical.code,
-        &file,
-        &bindings,
-    ));
-    references.extend(collect_operator_references(&source, &lexical.code, &file));
+    let (mut references, bindings) = collect_file_references(&source, &lexical.code, &file);
     sort_identifier_references(&mut references);
     DartFileReferenceAnalysis {
         file,
@@ -319,46 +298,7 @@ pub fn analyze_project_with_references(input: DartProjectInput) -> DartProjectRe
         };
         let _lines = LineIndexScope::enter(source);
         let lexical = mask_non_code(source);
-        let file_bindings = collect_lexical_bindings(source, &lexical.code, file);
-        let mut file_references =
-            collect_identifier_references(source, &lexical.code, file, &file_bindings);
-        let lexical_reads = collect_lexical_read_references(
-            source,
-            &lexical.code,
-            file,
-            &file_bindings,
-            &file_references,
-        );
-        file_references.extend(lexical_reads);
-        let lexical_writes = collect_lexical_write_references(
-            source,
-            &lexical.code,
-            file,
-            &file_bindings,
-            &file_references,
-        );
-        file_references.extend(lexical_writes);
-        let lexical_updates = collect_lexical_update_references(
-            source,
-            &lexical.code,
-            file,
-            &file_bindings,
-            &file_references,
-        );
-        file_references.extend(lexical_updates);
-        file_references.extend(collect_method_references(
-            source,
-            &lexical.code,
-            file,
-            &file_bindings,
-        ));
-        file_references.extend(collect_property_references(
-            source,
-            &lexical.code,
-            file,
-            &file_bindings,
-        ));
-        file_references.extend(collect_operator_references(source, &lexical.code, file));
+        let (file_references, file_bindings) = collect_file_references(source, &lexical.code, file);
         references.extend(file_references);
         bindings.extend(file_bindings);
     }
@@ -369,4 +309,47 @@ pub fn analyze_project_with_references(input: DartProjectInput) -> DartProjectRe
         references,
         bindings,
     }
+}
+
+/// Runs every reference pass over one analyzed file, in the order in which each pass reads what the
+/// earlier ones found. The references come back unsorted across passes.
+fn collect_file_references(
+    source: &str,
+    masked_source: &str,
+    file: &DartFileAnalysis,
+) -> (Vec<DartIdentifierReference>, Vec<DartLexicalBinding>) {
+    let facts = FileFacts::new(masked_source, file);
+    let bindings = collect_lexical_bindings(source, masked_source, file, &facts);
+    let mut references =
+        collect_identifier_references(source, masked_source, file, &facts, &bindings);
+    let reads =
+        collect_lexical_read_references(source, masked_source, file, &facts, &bindings, &references);
+    references.extend(reads);
+    let writes =
+        collect_lexical_write_references(source, masked_source, file, &facts, &bindings, &references);
+    references.extend(writes);
+    let updates =
+        collect_lexical_update_references(source, masked_source, file, &facts, &bindings, &references);
+    references.extend(updates);
+    references.extend(collect_method_references(
+        source,
+        masked_source,
+        file,
+        &facts,
+        &bindings,
+    ));
+    references.extend(collect_property_references(
+        source,
+        masked_source,
+        file,
+        &facts,
+        &bindings,
+    ));
+    references.extend(collect_operator_references(
+        source,
+        masked_source,
+        file,
+        &facts,
+    ));
+    (references, bindings)
 }

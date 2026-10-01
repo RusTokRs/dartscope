@@ -5,8 +5,12 @@
 //! bindings, parameters, local variables, and local functions keep their existing shadowing
 //! behavior, so a member fact is never fabricated for a spelling they own.
 
+use std::collections::HashSet;
+
+use crate::declaration_tables::DeclarationTables;
+use crate::file_facts::FileFacts;
 use crate::identifiers::{is_identifier_continue, is_identifier_start};
-use dartscope_core::{DartDeclaration, DartDeclarationKind, DartFileAnalysis};
+use dartscope_core::{DartDeclaration, DartDeclarationKind};
 
 use crate::member_reference_syntax::{
     declaration_is_static, declaration_name_range, declaration_span,
@@ -48,14 +52,14 @@ impl EnclosingMember<'_> {
 }
 
 pub(crate) fn enclosing_member<'analysis>(
-    analysis: &'analysis DartFileAnalysis,
+    tables: &DeclarationTables<'analysis>,
     masked_source: &str,
     name: &str,
     at: usize,
 ) -> Option<EnclosingMember<'analysis>> {
-    let callable = enclosing_callable(analysis, at)?;
-    let owner = enclosing_owner(analysis, callable)?;
-    let declaration = direct_member(analysis, owner, name)?;
+    let callable = tables.member_callable_or_function_at(at)?;
+    let owner = tables.owner_by_symbol_id(callable.parent_symbol_id.as_deref()?)?;
+    let declaration = tables.direct_member(owner.symbol_id.as_deref()?, name)?;
     let (name_start, _) = declaration_name_range(masked_source, declaration)?;
     Some(EnclosingMember {
         owner_symbol_id: owner.symbol_id.as_deref()?,
@@ -69,15 +73,25 @@ pub(crate) fn enclosing_member<'analysis>(
 ///
 /// Local functions are deliberately not modeled as declarations yet, so this guard scans the
 /// masked callable body for a declaration-shaped occurrence. It only ever suppresses member
-/// evidence and never fabricates a fact.
+/// evidence and never fabricates a fact. The scan runs once per callable and finds every such
+/// name, so asking about many spellings of one body costs one pass over it.
 pub(crate) fn local_function_shadows(
+    facts: &FileFacts<'_>,
     masked_source: &str,
     member: &EnclosingMember<'_>,
     name: &str,
 ) -> bool {
-    let span = declaration_span(member.callable);
+    facts.declares_local_function(member.callable, name, || {
+        local_function_names(masked_source, member.callable)
+    })
+}
+
+/// The names that are declared as a local function somewhere in the body of `callable`.
+fn local_function_names(masked_source: &str, callable: &DartDeclaration) -> HashSet<String> {
+    let mut names = HashSet::new();
+    let span = declaration_span(callable);
     let Some(body_start) = block_body_start(masked_source, span) else {
-        return false;
+        return names;
     };
     let end = span.byte_end.min(masked_source.len());
     let bytes = masked_source.as_bytes();
@@ -90,57 +104,17 @@ pub(crate) fn local_function_shadows(
         let start = at;
         let token_end = identifier_end(bytes, start);
         at = token_end;
-        if masked_source.get(start..token_end) != Some(name)
-            || is_preceded_by_dot(masked_source, start)
-        {
+        let Some(text) = masked_source.get(start..token_end) else {
+            continue;
+        };
+        if is_preceded_by_dot(masked_source, start) {
             continue;
         }
         if local_function_declaration_after(masked_source, token_end, end) {
-            return true;
+            names.insert(text.to_string());
         }
     }
-    false
-}
-
-fn enclosing_callable(analysis: &DartFileAnalysis, at: usize) -> Option<&DartDeclaration> {
-    analysis
-        .declarations
-        .iter()
-        .filter(|declaration| {
-            is_callable_kind(declaration.kind) && declaration.parent_symbol_id.is_some()
-        })
-        .filter(|declaration| {
-            let span = declaration_span(declaration);
-            span.byte_start <= at && at < span.byte_end
-        })
-        .min_by_key(|declaration| {
-            let span = declaration_span(declaration);
-            span.byte_end.saturating_sub(span.byte_start)
-        })
-}
-
-fn enclosing_owner<'analysis>(
-    analysis: &'analysis DartFileAnalysis,
-    callable: &DartDeclaration,
-) -> Option<&'analysis DartDeclaration> {
-    let owner_symbol_id = callable.parent_symbol_id.as_deref()?;
-    analysis.declarations.iter().find(|declaration| {
-        declaration.symbol_id.as_deref() == Some(owner_symbol_id)
-            && is_member_owner_kind(declaration.kind)
-    })
-}
-
-fn direct_member<'analysis>(
-    analysis: &'analysis DartFileAnalysis,
-    owner: &DartDeclaration,
-    name: &str,
-) -> Option<&'analysis DartDeclaration> {
-    let owner_symbol_id = owner.symbol_id.as_deref()?;
-    analysis.declarations.iter().find(|declaration| {
-        declaration.name == name
-            && declaration.parent_symbol_id.as_deref() == Some(owner_symbol_id)
-            && is_direct_member_kind(declaration.kind)
-    })
+    names
 }
 
 fn block_body_start(source: &str, span: &dartscope_core::SourceSpan) -> Option<usize> {
@@ -253,39 +227,6 @@ fn is_preceded_by_dot(source: &str, start: usize) -> bool {
         .as_bytes()
         .last()
         == Some(&b'.')
-}
-
-fn is_callable_kind(kind: DartDeclarationKind) -> bool {
-    matches!(
-        kind,
-        DartDeclarationKind::Method
-            | DartDeclarationKind::Constructor
-            | DartDeclarationKind::Getter
-            | DartDeclarationKind::Setter
-            | DartDeclarationKind::Operator
-            | DartDeclarationKind::Function
-    )
-}
-
-fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
-    matches!(
-        kind,
-        DartDeclarationKind::Class
-            | DartDeclarationKind::Mixin
-            | DartDeclarationKind::Enum
-            | DartDeclarationKind::Extension
-            | DartDeclarationKind::ExtensionType
-    )
-}
-
-fn is_direct_member_kind(kind: DartDeclarationKind) -> bool {
-    matches!(
-        kind,
-        DartDeclarationKind::Method
-            | DartDeclarationKind::Field
-            | DartDeclarationKind::Getter
-            | DartDeclarationKind::Setter
-    )
 }
 
 fn skip_whitespace(bytes: &[u8], mut at: usize) -> usize {

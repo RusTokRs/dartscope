@@ -6,8 +6,10 @@ use dartscope_core::{
     DartLexicalBindingKind, SourceSpan,
 };
 
+use crate::file_facts::FileFacts;
 use crate::lexical_regions::analyze_lexical_regions;
 use crate::source_lines::span_for_byte_range;
+use crate::source_structure::SourceStructure;
 
 #[derive(Debug, Clone, Copy)]
 struct IdentifierToken<'source> {
@@ -26,6 +28,7 @@ pub(crate) fn collect_lexical_bindings(
     source: &str,
     masked_source: &str,
     analysis: &DartFileAnalysis,
+    facts: &FileFacts<'_>,
 ) -> Vec<DartLexicalBinding> {
     let mut bindings = Vec::new();
     for declaration in analysis
@@ -40,9 +43,16 @@ pub(crate) fn collect_lexical_bindings(
         .iter()
         .filter(|declaration| declaration.kind == DartDeclarationKind::LocalVariable)
     {
-        collect_local_binding(source, masked_source, analysis, declaration, &mut bindings);
+        collect_local_binding(
+            source,
+            masked_source,
+            analysis,
+            facts,
+            declaration,
+            &mut bindings,
+        );
     }
-    collect_region_bindings(source, masked_source, analysis, &mut bindings);
+    collect_region_bindings(source, masked_source, analysis, facts, &mut bindings);
     sort_lexical_bindings(&mut bindings);
     bindings.dedup_by(|left, right| {
         left.source_path == right.source_path
@@ -78,9 +88,10 @@ fn collect_region_bindings(
     source: &str,
     masked_source: &str,
     analysis: &DartFileAnalysis,
+    facts: &FileFacts<'_>,
     bindings: &mut Vec<DartLexicalBinding>,
 ) {
-    for region in analyze_lexical_regions(masked_source, analysis).bindings {
+    for region in analyze_lexical_regions(masked_source, analysis, &facts.tables).bindings {
         let symbol_id = format!(
             "{}/{}:{}@{}",
             region.owner_id, region.symbol_segment, region.name, region.declaration_start
@@ -215,6 +226,7 @@ fn collect_local_binding(
     source: &str,
     masked_source: &str,
     analysis: &DartFileAnalysis,
+    facts: &FileFacts<'_>,
     declaration: &DartDeclaration,
     bindings: &mut Vec<DartLexicalBinding>,
 ) {
@@ -230,11 +242,7 @@ fn collect_local_binding(
     if is_deferred_control_binding(masked_source, span.byte_start, span.byte_end) {
         return;
     }
-    let Some(owner) = analysis
-        .declarations
-        .iter()
-        .find(|candidate| candidate.symbol_id.as_deref() == Some(owner_id))
-    else {
+    let Some(owner) = facts.tables.by_symbol_id(owner_id) else {
         return;
     };
     let Some(declarator) = local_declarators(masked_source, span.byte_start, span.byte_end)
@@ -243,7 +251,9 @@ fn collect_local_binding(
     else {
         return;
     };
-    let Some(scope_end) = local_scope_end(masked_source, span.byte_start, owner) else {
+    let Some(scope_end) =
+        local_scope_end(masked_source, &facts.structure, span.byte_start, owner)
+    else {
         return;
     };
     if span.byte_end > scope_end {
@@ -281,26 +291,21 @@ fn local_declarators(source: &str, start: usize, end: usize) -> Vec<LocalDeclara
         .collect()
 }
 
+/// The end of the innermost block, inside `owner`, that is open where the declaration starts.
 fn local_scope_end(
     source: &str,
+    structure: &SourceStructure,
     declaration_start: usize,
     owner: &DartDeclaration,
 ) -> Option<usize> {
     let owner_span = owner.declaration_span.as_ref()?;
-    let bytes = source.as_bytes();
-    let mut blocks = Vec::new();
-    let mut at = owner_span.byte_start;
-    while at < declaration_start.min(owner_span.byte_end).min(bytes.len()) {
-        match bytes[at] {
-            b'{' => blocks.push(at),
-            b'}' => {
-                blocks.pop();
-            }
-            _ => {}
-        }
-        at += 1;
-    }
-    matching_delimiter(source, *blocks.last()?, owner_span.byte_end, b'{', b'}')
+    let limit = declaration_start
+        .min(owner_span.byte_end)
+        .min(source.len());
+    let open = structure.innermost_open_brace(owner_span.byte_start, limit)?;
+    structure
+        .closing_brace(open)
+        .filter(|&close| close < owner_span.byte_end.min(source.len()))
 }
 
 fn callable_parameter_range(

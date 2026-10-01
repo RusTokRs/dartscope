@@ -3,6 +3,9 @@ use dartscope_core::{
     DartIdentifierReferenceKind, DartInvocation, DartLexicalBinding,
 };
 
+use crate::binding_index::BindingIndex;
+use crate::declaration_tables::DeclarationTables;
+use crate::file_facts::FileFacts;
 use crate::member_reference_syntax::{
     declaration_is_static, declaration_name_range, looks_like_type_name,
 };
@@ -12,12 +15,14 @@ pub(crate) fn collect_method_references(
     source: &str,
     masked_source: &str,
     analysis: &DartFileAnalysis,
+    facts: &FileFacts<'_>,
     bindings: &[DartLexicalBinding],
 ) -> Vec<DartIdentifierReference> {
+    let index = BindingIndex::new(masked_source, &facts.structure, bindings);
     let mut references = method_declaration_references(source, masked_source, analysis);
     for invocation in &analysis.invocations {
         let Some(reference) =
-            method_invocation_reference(source, masked_source, analysis, bindings, invocation)
+            method_invocation_reference(source, masked_source, analysis, facts, &index, invocation)
         else {
             continue;
         };
@@ -77,7 +82,8 @@ fn method_invocation_reference(
     source: &str,
     masked_source: &str,
     analysis: &DartFileAnalysis,
-    bindings: &[DartLexicalBinding],
+    facts: &FileFacts<'_>,
+    index: &BindingIndex<'_>,
     invocation: &DartInvocation,
 ) -> Option<DartIdentifierReference> {
     if has_constructor_keyword(masked_source, invocation.span.byte_start) {
@@ -87,13 +93,13 @@ fn method_invocation_reference(
     let (kind, owner, member, confidence) = match segments.as_slice() {
         ["this", member] => (
             DartIdentifierReferenceKind::MemberInvocationInstance,
-            enclosing_owner_symbol_id(analysis, invocation)?.to_string(),
+            enclosing_owner_symbol_id(&facts.tables, invocation)?.to_string(),
             *member,
             Confidence::High,
         ),
         [owner, member]
             if looks_like_type_name(owner)
-                && !binding_is_visible(bindings, owner, invocation.span.byte_start) =>
+                && !index.is_visible(owner, invocation.span.byte_start) =>
         {
             (
                 DartIdentifierReferenceKind::MemberInvocationStatic,
@@ -103,11 +109,7 @@ fn method_invocation_reference(
             )
         }
         [import_prefix, owner, member]
-            if looks_like_type_name(owner)
-                && analysis
-                    .imports
-                    .iter()
-                    .any(|import| import.prefix.as_deref() == Some(*import_prefix)) =>
+            if looks_like_type_name(owner) && facts.is_import_prefix(import_prefix) =>
         {
             (
                 DartIdentifierReferenceKind::MemberInvocationStatic,
@@ -131,18 +133,13 @@ fn method_invocation_reference(
 }
 
 fn enclosing_owner_symbol_id<'a>(
-    analysis: &'a DartFileAnalysis,
+    tables: &DeclarationTables<'a>,
     invocation: &DartInvocation,
 ) -> Option<&'a str> {
     let callable_id = invocation.enclosing_symbol_id.as_deref()?;
-    let callable = analysis
-        .declarations
-        .iter()
-        .find(|declaration| declaration.symbol_id.as_deref() == Some(callable_id))?;
+    let callable = tables.by_symbol_id(callable_id)?;
     let owner_id = callable.parent_symbol_id.as_deref()?;
-    analysis.declarations.iter().find(|declaration| {
-        declaration.symbol_id.as_deref() == Some(owner_id) && is_member_owner_kind(declaration.kind)
-    })?;
+    tables.owner_by_symbol_id(owner_id)?;
     Some(owner_id)
 }
 
@@ -183,25 +180,6 @@ fn has_constructor_keyword(source: &str, start: usize) -> bool {
         .next()
         .unwrap_or_default();
     matches!(token, "new" | "const")
-}
-
-fn binding_is_visible(bindings: &[DartLexicalBinding], name: &str, at: usize) -> bool {
-    bindings.iter().any(|binding| {
-        binding.name == name
-            && binding.scope_span.byte_start <= at
-            && at < binding.scope_span.byte_end
-    })
-}
-
-fn is_member_owner_kind(kind: DartDeclarationKind) -> bool {
-    matches!(
-        kind,
-        DartDeclarationKind::Class
-            | DartDeclarationKind::Mixin
-            | DartDeclarationKind::Enum
-            | DartDeclarationKind::Extension
-            | DartDeclarationKind::ExtensionType
-    )
 }
 
 fn is_identifier_continue(byte: u8) -> bool {

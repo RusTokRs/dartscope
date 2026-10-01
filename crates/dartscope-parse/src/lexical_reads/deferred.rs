@@ -1,16 +1,21 @@
+use std::collections::HashMap;
+
 use dartscope_core::{
     DartDeclarationKind, DartFileAnalysis, DartLexicalBinding, DartLexicalBindingKind,
 };
 
+use crate::declaration_tables::supports_parameters;
+use crate::file_facts::FileFacts;
 use crate::lexical_regions::analyze_lexical_regions;
 
 pub(crate) fn read_regions(
     source: &str,
     analysis: &DartFileAnalysis,
+    facts: &FileFacts<'_>,
     bindings: &[DartLexicalBinding],
 ) -> Vec<(usize, usize)> {
     let mut regions = callable_header_regions(source, analysis, bindings);
-    let lexical_regions = analyze_lexical_regions(source, analysis);
+    let lexical_regions = analyze_lexical_regions(source, analysis, &facts.tables);
     regions.extend(lexical_regions.deferred_regions);
     regions.extend(lexical_regions.suppressed_regions);
     regions.sort_unstable();
@@ -23,24 +28,27 @@ fn callable_header_regions(
     analysis: &DartFileAnalysis,
     bindings: &[DartLexicalBinding],
 ) -> Vec<(usize, usize)> {
+    // Where the parameters of each callable come into scope: the earliest scope start among the
+    // bindings of its own (not of a closure's) parameters.
+    let mut parameter_scope_starts: HashMap<&str, usize> = HashMap::new();
+    for binding in bindings.iter().filter(|binding| {
+        binding.kind == DartLexicalBindingKind::Parameter
+            && !binding.symbol_id.contains("/closure_parameter:")
+    }) {
+        parameter_scope_starts
+            .entry(binding.enclosing_symbol_id.as_str())
+            .and_modify(|start| *start = (*start).min(binding.scope_span.byte_start))
+            .or_insert(binding.scope_span.byte_start);
+    }
     analysis
         .declarations
         .iter()
-        .filter(|declaration| super::supports_parameters(declaration.kind))
+        .filter(|declaration| supports_parameters(declaration.kind))
         .filter_map(|declaration| {
             let span = declaration.declaration_span.as_ref()?;
             let owner = declaration.symbol_id.as_deref();
-            let parameter_scope_start = owner.and_then(|owner| {
-                bindings
-                    .iter()
-                    .filter(|binding| {
-                        binding.kind == DartLexicalBindingKind::Parameter
-                            && binding.enclosing_symbol_id == owner
-                            && !binding.symbol_id.contains("/closure_parameter:")
-                    })
-                    .map(|binding| binding.scope_span.byte_start)
-                    .min()
-            });
+            let parameter_scope_start =
+                owner.and_then(|owner| parameter_scope_starts.get(owner).copied());
             let end = parameter_scope_start.or_else(|| {
                 callable_header_end(source, span.byte_start, span.byte_end, declaration.kind)
             })?;

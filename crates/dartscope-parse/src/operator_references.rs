@@ -3,20 +3,23 @@ use dartscope_core::{
     DartIdentifierReferenceKind,
 };
 
+use crate::file_facts::FileFacts;
 use crate::identifiers::{is_identifier_continue, is_identifier_start};
-use crate::member_reference_syntax::{declaration_name_range, declaration_span};
+use crate::member_reference_syntax::declaration_name_range;
 use crate::source_lines::span_for_byte_range;
 
 pub(crate) fn collect_operator_references(
     source: &str,
     masked_source: &str,
     analysis: &DartFileAnalysis,
+    facts: &FileFacts<'_>,
 ) -> Vec<DartIdentifierReference> {
     let mut references = operator_declaration_references(source, masked_source, analysis);
     references.extend(operator_invocation_references(
         source,
         masked_source,
         analysis,
+        facts,
     ));
     references.sort_by(|left, right| {
         (
@@ -67,6 +70,7 @@ fn operator_invocation_references(
     source: &str,
     masked_source: &str,
     analysis: &DartFileAnalysis,
+    facts: &FileFacts<'_>,
 ) -> Vec<DartIdentifierReference> {
     let bytes = masked_source.as_bytes();
     let mut references = Vec::new();
@@ -82,7 +86,7 @@ fn operator_invocation_references(
         if masked_source.get(token_start..token_end) != Some("this") {
             continue;
         }
-        let Some(callable) = enclosing_callable_declaration(analysis, token_start) else {
+        let Some(callable) = facts.tables.member_callable_at(token_start) else {
             continue;
         };
         let Some(owner_symbol_id) = callable.parent_symbol_id.clone() else {
@@ -270,37 +274,6 @@ fn binary_operator_at(source: &str, start: usize) -> Option<(&'static str, usize
         return Some((operator, end));
     }
     None
-}
-
-fn enclosing_callable_declaration(
-    analysis: &DartFileAnalysis,
-    byte_offset: usize,
-) -> Option<&DartDeclaration> {
-    analysis
-        .declarations
-        .iter()
-        .filter(|declaration| {
-            is_callable_kind(declaration.kind)
-                && declaration.parent_symbol_id.is_some()
-                && declaration_span(declaration).byte_start <= byte_offset
-                && byte_offset < declaration_span(declaration).byte_end
-        })
-        .min_by_key(|declaration| {
-            declaration_span(declaration)
-                .byte_end
-                .saturating_sub(declaration_span(declaration).byte_start)
-        })
-}
-
-fn is_callable_kind(kind: DartDeclarationKind) -> bool {
-    matches!(
-        kind,
-        DartDeclarationKind::Method
-            | DartDeclarationKind::Constructor
-            | DartDeclarationKind::Getter
-            | DartDeclarationKind::Setter
-            | DartDeclarationKind::Operator
-    )
 }
 
 fn skip_whitespace(bytes: &[u8], mut at: usize) -> usize {

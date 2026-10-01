@@ -1,11 +1,13 @@
 use dartscope_core::{
-    Confidence, DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
+    Confidence, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
     DartIdentifierReferenceKind, DartLexicalBinding,
 };
 
+use crate::binding_index::BindingIndex;
+use crate::file_facts::FileFacts;
 use crate::identifiers::{is_identifier_continue, is_identifier_start};
 use crate::member_reference_syntax::{
-    declaration_is_static, declaration_name_range, declaration_span, looks_like_type_name,
+    declaration_is_static, declaration_name_range, looks_like_type_name,
 };
 use crate::source_lines::span_for_byte_range;
 
@@ -13,6 +15,7 @@ pub(crate) fn collect_property_references(
     source: &str,
     masked_source: &str,
     analysis: &DartFileAnalysis,
+    facts: &FileFacts<'_>,
     bindings: &[DartLexicalBinding],
 ) -> Vec<DartIdentifierReference> {
     let mut references = property_declaration_references(source, masked_source, analysis);
@@ -20,6 +23,7 @@ pub(crate) fn collect_property_references(
         source,
         masked_source,
         analysis,
+        facts,
         bindings,
     ));
     references.sort_by(|left, right| {
@@ -76,8 +80,10 @@ fn property_access_references(
     source: &str,
     masked_source: &str,
     analysis: &DartFileAnalysis,
+    facts: &FileFacts<'_>,
     bindings: &[DartLexicalBinding],
 ) -> Vec<DartIdentifierReference> {
+    let index = BindingIndex::new(masked_source, &facts.structure, bindings);
     let bytes = masked_source.as_bytes();
     let mut references = Vec::new();
     let mut at = 0usize;
@@ -92,8 +98,7 @@ fn property_access_references(
         if is_preceded_by_dot(masked_source, first_start) {
             continue;
         }
-        let Some(access) =
-            property_access_at(masked_source, analysis, bindings, first_start, first_end)
+        let Some(access) = property_access_at(masked_source, facts, &index, first_start, first_end)
         else {
             continue;
         };
@@ -145,8 +150,8 @@ struct PropertyAccess {
 
 fn property_access_at(
     masked_source: &str,
-    analysis: &DartFileAnalysis,
-    bindings: &[DartLexicalBinding],
+    facts: &FileFacts<'_>,
+    index: &BindingIndex<'_>,
     first_start: usize,
     first_end: usize,
 ) -> Option<PropertyAccess> {
@@ -159,7 +164,7 @@ fn property_access_at(
         if third.is_some() {
             return None;
         }
-        let callable = enclosing_callable_declaration(analysis, second_start)?;
+        let callable = facts.tables.member_callable_at(second_start)?;
         let owner = callable.parent_symbol_id.clone()?;
         return Some(PropertyAccess {
             expression_start: first_start,
@@ -177,11 +182,8 @@ fn property_access_at(
         let third_name = masked_source.get(third_start..third_end)?;
         if dotted_identifier(masked_source, third_end).is_some()
             || !looks_like_type_name(second)
-            || binding_is_visible(bindings, first, first_start)
-            || !analysis
-                .imports
-                .iter()
-                .any(|import| import.prefix.as_deref() == Some(first))
+            || index.is_visible(first, first_start)
+            || !facts.is_import_prefix(first)
         {
             return None;
         }
@@ -193,13 +195,15 @@ fn property_access_at(
             owner: format!("{first}.{second}"),
             is_static: true,
             confidence: Confidence::High,
-            enclosing_symbol_id: enclosing_callable_declaration(analysis, third_start)
+            enclosing_symbol_id: facts
+                .tables
+                .member_callable_at(third_start)
                 .and_then(|declaration| declaration.symbol_id.clone()),
         });
     }
 
     if !looks_like_type_name(first)
-        || binding_is_visible(bindings, first, first_start)
+        || index.is_visible(first, first_start)
         || dotted_identifier(masked_source, second_end).is_some()
     {
         return None;
@@ -212,7 +216,9 @@ fn property_access_at(
         owner: first.to_string(),
         is_static: true,
         confidence: Confidence::Medium,
-        enclosing_symbol_id: enclosing_callable_declaration(analysis, second_start)
+        enclosing_symbol_id: facts
+            .tables
+            .member_callable_at(second_start)
             .and_then(|declaration| declaration.symbol_id.clone()),
     })
 }
@@ -292,49 +298,10 @@ fn is_preceded_by_dot(source: &str, start: usize) -> bool {
         == Some(&b'.')
 }
 
-fn enclosing_callable_declaration(
-    analysis: &DartFileAnalysis,
-    byte_offset: usize,
-) -> Option<&DartDeclaration> {
-    analysis
-        .declarations
-        .iter()
-        .filter(|declaration| {
-            is_callable_kind(declaration.kind)
-                && declaration.parent_symbol_id.is_some()
-                && declaration_span(declaration).byte_start <= byte_offset
-                && byte_offset < declaration_span(declaration).byte_end
-        })
-        .min_by_key(|declaration| {
-            declaration_span(declaration)
-                .byte_end
-                .saturating_sub(declaration_span(declaration).byte_start)
-        })
-}
-
-fn binding_is_visible(bindings: &[DartLexicalBinding], name: &str, at: usize) -> bool {
-    bindings.iter().any(|binding| {
-        binding.name == name
-            && binding.scope_span.byte_start <= at
-            && at < binding.scope_span.byte_end
-    })
-}
-
 fn is_property_declaration_kind(kind: DartDeclarationKind) -> bool {
     matches!(
         kind,
         DartDeclarationKind::Field | DartDeclarationKind::Getter | DartDeclarationKind::Setter
-    )
-}
-
-fn is_callable_kind(kind: DartDeclarationKind) -> bool {
-    matches!(
-        kind,
-        DartDeclarationKind::Method
-            | DartDeclarationKind::Constructor
-            | DartDeclarationKind::Getter
-            | DartDeclarationKind::Setter
-            | DartDeclarationKind::Operator
     )
 }
 

@@ -5,6 +5,7 @@ use dartscope_core::{
     DartIdentifierReferenceKind, SourceSpan,
 };
 
+use crate::declaration_tables::DeclarationTables;
 use crate::identifiers::{is_identifier_continue, is_identifier_start};
 use crate::source_lines::span_for_byte_range;
 
@@ -26,6 +27,7 @@ pub(super) fn collect_declaration_type_references(
     source: &str,
     masked_source: &str,
     analysis: &DartFileAnalysis,
+    tables: &DeclarationTables<'_>,
 ) -> Vec<DartIdentifierReference> {
     let import_prefixes: HashSet<String> = analysis
         .imports
@@ -35,7 +37,7 @@ pub(super) fn collect_declaration_type_references(
     let mut references = Vec::new();
 
     for declaration in &analysis.declarations {
-        let type_parameters = visible_type_parameter_names(masked_source, analysis, declaration);
+        let type_parameters = visible_type_parameter_names(masked_source, tables, declaration);
         if supports_return_type(declaration.kind) {
             collect_return_type(
                 source,
@@ -319,7 +321,7 @@ fn type_root<'source>(
 
 fn visible_type_parameter_names(
     source: &str,
-    analysis: &DartFileAnalysis,
+    tables: &DeclarationTables<'_>,
     declaration: &DartDeclaration,
 ) -> HashSet<String> {
     let mut names = HashSet::new();
@@ -332,12 +334,10 @@ fn visible_type_parameter_names(
             break;
         }
         names.extend(declaration_type_parameter_names(source, item));
-        current = item.parent_symbol_id.as_deref().and_then(|parent| {
-            analysis
-                .declarations
-                .iter()
-                .find(|candidate| candidate.symbol_id.as_deref() == Some(parent))
-        });
+        current = item
+            .parent_symbol_id
+            .as_deref()
+            .and_then(|parent| tables.by_symbol_id(parent));
     }
     names
 }
