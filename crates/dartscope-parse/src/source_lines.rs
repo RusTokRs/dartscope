@@ -48,23 +48,46 @@ pub(crate) fn source_lines(source: &str) -> Vec<SourceLine<'_>> {
         .collect()
 }
 
-/// Start and end (without the line terminator) byte offsets of every line of one source text.
+/// Start and end (without the line terminator) byte offsets of every line of one source text, plus
+/// what is needed to turn a byte distance into a character count without scanning the text.
 ///
 /// Line starts and ends increase strictly, so a line can be found with a binary search instead of
 /// a scan over all lines.
 struct LineTable {
     bounds: Vec<(usize, usize)>,
+    /// One entry per multi-byte character, in source order: the offset where the character starts
+    /// and the number of continuation bytes of all characters up to and including it.
+    ///
+    /// A column is a count of characters. Counting them from the start of the line makes every
+    /// span on a very long line cost the length of that line; with this table the count is the byte
+    /// distance minus the continuation bytes in between, found with a binary search.
+    wide: Vec<(usize, usize)>,
 }
 
 impl LineTable {
     fn new(source: &str) -> Self {
         #[cfg(test)]
         BUILDS.with(|builds| builds.set(builds.get() + 1));
+        let mut wide = Vec::new();
+        let mut continuation = 0usize;
+        for (offset, byte) in source.bytes().enumerate() {
+            // Every multi-byte character starts with a byte of at least 0xC0 and is followed by
+            // continuation bytes (0x80..=0xBF), which are not counted as characters.
+            if byte >= 0xC0 {
+                continuation += match byte {
+                    0xF0.. => 3,
+                    0xE0.. => 2,
+                    _ => 1,
+                };
+                wide.push((offset, continuation));
+            }
+        }
         Self {
             bounds: source_lines(source)
                 .into_iter()
                 .map(|line| (line.byte_start, line.byte_end()))
                 .collect(),
+            wide,
         }
     }
 
@@ -76,6 +99,19 @@ impl LineTable {
     /// One-based line number and start offset of the line at `index`.
     fn line_at(&self, index: usize) -> Option<(usize, usize)> {
         self.bounds.get(index).map(|&(start, _)| (index + 1, start))
+    }
+
+    /// Continuation bytes of the characters that start before `byte`.
+    fn continuation_before(&self, byte: usize) -> usize {
+        match self.wide.partition_point(|&(start, _)| start < byte) {
+            0 => 0,
+            count => self.wide[count - 1].1,
+        }
+    }
+
+    /// Number of characters in `source[from..to]`; both offsets must be character boundaries.
+    fn chars_between(&self, from: usize, to: usize) -> usize {
+        to - from - (self.continuation_before(to) - self.continuation_before(from))
     }
 }
 
@@ -172,9 +208,9 @@ pub(crate) fn span_for_byte_range(source: &str, byte_start: usize, byte_end: usi
             byte_start,
             byte_end,
             start_line: start.0,
-            start_column: column_after(source, start.1, byte_start),
+            start_column: column_after(source, table, start.1, byte_start),
             end_line: end.0,
-            end_column: column_after(source, end.1, byte_end),
+            end_column: column_after(source, table, end.1, byte_end),
         }
     })
 }
@@ -183,22 +219,37 @@ pub(crate) fn line_span_for_byte(source: &str, at: usize) -> SourceSpan {
     with_line_table(source, |table| {
         let index = table.first_line_ending_at_or_after(at);
         match table.bounds.get(index) {
-            Some(&(start, end)) if start <= at => {
-                SourceSpan::line(index + 1, start, &source[start..end])
-            }
+            Some(&(start, end)) if start <= at => SourceSpan {
+                byte_start: start,
+                byte_end: end,
+                start_line: index + 1,
+                start_column: 1,
+                end_line: index + 1,
+                end_column: table.chars_between(start, end) + 1,
+            },
             _ => SourceSpan::line(1, 0, ""),
         }
     })
+}
+
+/// The span of the whole of `line`, without its terminator.
+///
+/// Unlike `SourceSpan::line` this does not count the characters of the line, so declarations that
+/// share a very long line do not each pay for its length.
+pub(crate) fn line_span(source: &str, line: SourceLine<'_>) -> SourceSpan {
+    line_span_for_byte(source, line.byte_start)
 }
 
 /// One-based column of `byte`, counted in characters from the start of its line.
 ///
 /// An offset that is not inside the line it was matched to (for example one that points into a
 /// `\r\n` terminator) is reported at column one instead of slicing backwards.
-fn column_after(source: &str, line_start: usize, byte: usize) -> usize {
-    source
-        .get(line_start..byte)
-        .map_or(1, |prefix| prefix.chars().count() + 1)
+fn column_after(source: &str, table: &LineTable, line_start: usize, byte: usize) -> usize {
+    if line_start <= byte && source.is_char_boundary(line_start) && source.is_char_boundary(byte) {
+        table.chars_between(line_start, byte) + 1
+    } else {
+        1
+    }
 }
 
 pub(crate) fn attach_diagnostic_paths(diagnostics: &mut [DartDiagnostic], path: &str) {
@@ -266,6 +317,7 @@ mod tests {
         "one\r\ntwo\r\n\r\nfour\r\n",
         "ключ = 'значение';\nclass Ж {}\n",
         "emoji 😀 line\nnext 😀😀 line\n",
+        "x€y日本語z\nñ€ é\r\n€\n",
         "\u{feff}class First {}\nclass Second {}\n",
         "\u{feff}",
         "\u{feff}\r\nx",

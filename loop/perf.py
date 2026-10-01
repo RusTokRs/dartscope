@@ -105,6 +105,22 @@ def crlf_bom_unicode(n):
     return "\ufeff" + text
 
 
+def long_line_calls(n):
+    return "void f() {" + "g();" * n + "}\n"
+
+
+def long_line_members(n):
+    return "class A {" + "".join(f"int m{i}() => {i};" for i in range(n)) + "}\n"
+
+
+def long_line_classes(n):
+    return "".join(f"class C{i} {{}} " for i in range(n)) + "\n"
+
+
+def long_line_unicode(n):
+    return "// \U0001F600 \u043f\u0440\u0438\u0432\u0435\u0442\nvoid f() { var s = '\u043c\u0438\u0440'; " + "g();" * n + "}\n"
+
+
 SCENARIOS = [
     ("classes", classes, (2000, 8000, 16000)),
     ("functions", functions, (20000, 80000)),
@@ -120,6 +136,10 @@ SCENARIOS = [
     ("many_locals", many_locals, (20000, 80000)),
     ("interpolation", interpolation, (20000, 80000)),
     ("crlf_bom_unicode", crlf_bom_unicode, (8000, 32000)),
+    ("long_line_calls", long_line_calls, (20000, 80000)),
+    ("long_line_members", long_line_members, (5000, 20000)),
+    ("long_line_classes", long_line_classes, (5000, 20000)),
+    ("long_line_unicode", long_line_unicode, (20000, 80000)),
 ]
 
 

@@ -279,8 +279,4 @@ pub(super) fn depth_within_line(
         })
 }
 
-pub(super) fn source_line_text<'a>(source: &'a str, line: SourceLine<'_>) -> &'a str {
-    &source[line.byte_start..line.byte_end()]
-}
-
 pub(super) use crate::metadata::annotations_end;

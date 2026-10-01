@@ -3,12 +3,12 @@
 mod scanner;
 mod syntax;
 
-use dartscope_core::{DartDeclaration, DartDeclarationKind, DartDiagnostic, SourceSpan};
+use dartscope_core::{DartDeclaration, DartDeclarationKind, DartDiagnostic};
 
 use self::scanner::{
     EndMode, STATEMENT_PROBE_BYTES, annotations_end, body_range, declaration_end,
     declaration_header, declaration_header_within, depth_at, depth_within_line, enum_member_start,
-    first_code_byte, line_brace_depths, next_code_byte, source_line_text,
+    first_code_byte, line_brace_depths, next_code_byte,
 };
 use self::syntax::{
     SymbolIdAllocator, callable_end_mode, enum_constants, has_primary_constructor,
@@ -17,7 +17,7 @@ use self::syntax::{
     type_relations,
 };
 use crate::declarations::top_level_function;
-use crate::source_lines::{line_span_for_byte, source_lines, span_for_byte_range};
+use crate::source_lines::{line_span, line_span_for_byte, source_lines, span_for_byte_range};
 
 #[derive(Debug, Clone)]
 struct DeclarationRecord {
@@ -202,7 +202,7 @@ fn top_level_records(
     if header.trim_start().starts_with('@') {
         return None;
     }
-    let anchor = SourceSpan::line(line.number, line.byte_start, source_line_text(source, line));
+    let anchor = line_span(source, line);
 
     if let Some((name, kind)) = type_header(header) {
         let end = declaration_end(masked, at, EndMode::BodyOrSemicolon).unwrap_or(line.byte_end());
@@ -370,11 +370,7 @@ fn collect_members(
                 diagnostics.push(DartDiagnostic::warning(
                     "unsupported_concise_constructor",
                     "concise constructor syntax requires Dart 3.13 language-version handling",
-                    Some(SourceSpan::line(
-                        line.number,
-                        line.byte_start,
-                        source_line_text(source, line),
-                    )),
+                    Some(line_span(source, line)),
                 ));
                 cursor = declaration_end(masked, declaration_at, EndMode::BodyOrSemicolon)
                     .unwrap_or(line.byte_end());
@@ -398,11 +394,7 @@ fn collect_members(
                 let declaration = DartDeclaration {
                     name,
                     kind,
-                    span: SourceSpan::line(
-                        line.number,
-                        line.byte_start,
-                        source_line_text(source, line),
-                    ),
+                    span: line_span(source, line),
                     extends: None,
                     mixes_in: Vec::new(),
                     on_types: Vec::new(),
@@ -490,11 +482,7 @@ fn collect_locals(
                     declaration: DartDeclaration {
                         name,
                         kind: DartDeclarationKind::LocalVariable,
-                        span: SourceSpan::line(
-                            line.number,
-                            line.byte_start,
-                            source_line_text(source, line),
-                        ),
+                        span: line_span(source, line),
                         extends: None,
                         mixes_in: Vec::new(),
                         on_types: Vec::new(),
@@ -555,12 +543,21 @@ mod tests {
         use crate::source_lines::LineIndexScope;
         use std::time::Instant;
 
-        for n in [2000usize, 8000, 16000] {
+        for (layout, n) in [
+            ("lines", 2000usize),
+            ("lines", 8000),
+            ("lines", 16000),
+            ("one_line", 4000),
+            ("one_line", 16000),
+        ] {
             let mut source = String::new();
             for i in 0..n {
                 source.push_str(&format!(
-                    "class C{i} {{\\n  final int f{i};\\n  C{i}(this.f{i});\\n  int m{i}(int a) => a + f{i};\\n}}\\n"
+                    "class C{i} {{\n  final int f{i};\n  C{i}(this.f{i});\n  int m{i}(int a) => a + f{i};\n}}\n"
                 ));
+            }
+            if layout == "one_line" {
+                source = source.replace('\n', " ");
             }
             let _scope = LineIndexScope::enter(&source);
             let t = Instant::now();
@@ -649,7 +646,7 @@ mod tests {
             ));
             let t_total = t.elapsed();
             println!(
-                "phase n={n} mask={t_mask:?} lines={t_lines:?} depths={t_depths:?} top={t_top:?} members={t_members:?} locals={t_locals:?} sort={t_sort:?} invocations={t_invocations:?} graphql={t_graphql:?} namespace={t_namespace:?} analyze_file={t_total:?} (decls={} calls={} {} {} {})",
+                "phase {layout} n={n} mask={t_mask:?} lines={t_lines:?} depths={t_depths:?} top={t_top:?} members={t_members:?} locals={t_locals:?} sort={t_sort:?} invocations={t_invocations:?} graphql={t_graphql:?} namespace={t_namespace:?} analyze_file={t_total:?} (decls={} calls={} {} {} {})",
                 declarations.len(),
                 invocations.len(),
                 graphql.len(),
