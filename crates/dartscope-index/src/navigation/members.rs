@@ -89,7 +89,9 @@ impl MemberIndex {
         let mut declarations: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
         for (file_position, file) in analysis.project.files.iter().enumerate() {
             // The first file with a path wins, as it did when files were searched linearly.
-            file_positions.entry(file.path.as_str()).or_insert(file_position);
+            file_positions
+                .entry(file.path.as_str())
+                .or_insert(file_position);
             for (position, declaration) in file.declarations.iter().enumerate() {
                 if let Some(parent) = declaration.parent_symbol_id.as_deref() {
                     by_parent_and_name
@@ -334,7 +336,8 @@ impl MemberIndex {
                     name,
                     prefix,
                 };
-                let mut candidates = resolve_member_owner_with_resolver(query, namespace).candidates;
+                let mut candidates =
+                    resolve_member_owner_with_resolver(query, namespace).candidates;
                 sort_candidates(&mut candidates);
                 candidates
             })

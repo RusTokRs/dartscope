@@ -270,7 +270,11 @@ fn an_inheritance_cycle_ends_without_a_definition() {
         "class A extends B {\n  void go() { this.missing(); }\n}\nclass B extends A {}\n",
     )];
     let (status, targets) = resolve(&files, "lib/a.dart", "this.missing", "missing");
-    assert_eq!(status, DartDefinitionResolutionStatus::Missing, "{targets:?}");
+    assert_eq!(
+        status,
+        DartDefinitionResolutionStatus::Missing,
+        "{targets:?}"
+    );
 }
 
 #[test]
@@ -377,7 +381,11 @@ fn an_extension_type_member_is_never_an_extension_member_of_other_types() {
         "extension type Id(int value) {\n  int zap() => 1;\n}\nclass Foo {\n  void run() { this.zap(); }\n}\n",
     )];
     let (status, targets) = resolve(&files, "lib/a.dart", "this.zap", "zap");
-    assert_ne!(status, DartDefinitionResolutionStatus::Resolved, "{targets:?}");
+    assert_ne!(
+        status,
+        DartDefinitionResolutionStatus::Resolved,
+        "{targets:?}"
+    );
 }
 
 #[test]
@@ -437,7 +445,11 @@ fn an_extension_hidden_by_the_import_does_not_apply() {
         ),
     ];
     let (status, targets) = resolve(&files, "lib/a.dart", "this.extra", "extra");
-    assert_ne!(status, DartDefinitionResolutionStatus::Resolved, "{targets:?}");
+    assert_ne!(
+        status,
+        DartDefinitionResolutionStatus::Resolved,
+        "{targets:?}"
+    );
 }
 
 #[test]
@@ -453,7 +465,11 @@ fn an_unnamed_extension_is_not_visible_outside_its_library() {
         ),
     ];
     let (status, targets) = resolve(&files, "lib/a.dart", "this.extra", "extra");
-    assert_ne!(status, DartDefinitionResolutionStatus::Resolved, "{targets:?}");
+    assert_ne!(
+        status,
+        DartDefinitionResolutionStatus::Resolved,
+        "{targets:?}"
+    );
 }
 
 #[test]
