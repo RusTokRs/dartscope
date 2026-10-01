@@ -3,6 +3,7 @@
 use std::cell::OnceCell;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::panic::{self, AssertUnwindSafe};
 
 use dartscope_core::{
     DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartFileInput,
@@ -36,6 +37,9 @@ pub const MAX_NAVIGATION_BYTES: usize = 256 * 1024;
 /// Code of the diagnostic that reports a document left out of navigation by its size.
 pub const NAVIGATION_DISABLED_CODE: &str = "navigation_disabled_large_file";
 
+/// Code of the diagnostic that reports a document whose analysis failed unexpectedly.
+pub const ANALYSIS_FAILED_CODE: &str = "analysis_failed";
+
 /// How deep a document outline nests; declarations only nest two levels (type, member), so this
 /// only bounds a malformed parent chain.
 const MAX_OUTLINE_DEPTH: usize = 8;
@@ -57,6 +61,8 @@ struct OpenDocument {
     uri: Url,
     version: i32,
     text: String,
+    /// The analysis of the current text panicked; the document is not in the index.
+    analysis_failed: bool,
 }
 
 /// In-memory LSP server with incremental document sync and index-backed navigation.
@@ -160,6 +166,7 @@ impl DartLspServer {
                 uri: item.uri,
                 version: item.version,
                 text: item.text,
+                analysis_failed: false,
             },
         );
         self.reindex(&path);
@@ -323,7 +330,11 @@ impl DartLspServer {
         };
         let snapshot = self.index.snapshot();
         let Some(file) = find_file(&snapshot, &path) else {
-            return Vec::new();
+            return if document.analysis_failed {
+                vec![analysis_failed_diagnostic()]
+            } else {
+                Vec::new()
+            };
         };
         let lines = LineIndex::new(&document.text);
         let mut diagnostics: Vec<Diagnostic> = file
@@ -385,21 +396,27 @@ impl DartLspServer {
     }
 
     /// Re-analyzes one open document and updates the index in place.
+    ///
+    /// A bug in the analysis of one text must not end the session of an editor: the document is left
+    /// out of the index, and says so in its diagnostics, until its text changes.
     fn reindex(&mut self, path: &str) {
         let Some(document) = self.documents.get(path) else {
             return;
         };
-        let input = DartFileInput::new(path, document.text.clone());
-        let analysis = if document.text.len() > MAX_NAVIGATION_BYTES {
-            DartFileReferenceAnalysis {
-                file: dartscope_parse::analyze_file(input),
-                references: Vec::new(),
-                bindings: Vec::new(),
+        let text = document.text.clone();
+        let analysis = panic::catch_unwind(AssertUnwindSafe(|| analyze_document(path, text)));
+        let failed = analysis.is_err();
+        match analysis {
+            Ok(analysis) => {
+                let _ = self.index.upsert_file_with_references(analysis);
             }
-        } else {
-            dartscope_parse::analyze_file_with_references(input)
-        };
-        let _ = self.index.upsert_file_with_references(analysis);
+            Err(_) => {
+                let _ = self.index.remove_file(path);
+            }
+        }
+        if let Some(document) = self.documents.get_mut(path) {
+            document.analysis_failed = failed;
+        }
         self.context = OnceCell::new();
     }
 
@@ -416,6 +433,8 @@ impl DartLspServer {
         uri: &Url,
         position: Position,
     ) -> Result<(&OpenDocument, Option<DartDefinitionResolution>), LspError> {
+        #[cfg(test)]
+        fault::fail_query_if_requested();
         let path = uri_to_path(uri);
         let Some(document) = self.documents.get(&path) else {
             return Err(LspError::DocumentNotOpen(uri.to_string()));
@@ -430,6 +449,50 @@ impl DartLspServer {
             .next()
             .filter(|resolution| !resolution.targets.is_empty());
         Ok((document, resolution))
+    }
+}
+
+/// The analysis of one document: with references, unless the text is too large for them.
+fn analyze_document(path: &str, text: String) -> DartFileReferenceAnalysis {
+    #[cfg(test)]
+    fault::fail_analysis_if_requested();
+    let too_large = text.len() > MAX_NAVIGATION_BYTES;
+    let input = DartFileInput::new(path, text);
+    if too_large {
+        DartFileReferenceAnalysis {
+            file: dartscope_parse::analyze_file(input),
+            references: Vec::new(),
+            bindings: Vec::new(),
+        }
+    } else {
+        dartscope_parse::analyze_file_with_references(input)
+    }
+}
+
+/// Test-only switches that make the analysis or a query panic, to prove that the server survives.
+#[cfg(test)]
+pub(crate) mod fault {
+    use std::cell::Cell;
+
+    thread_local! {
+        static ANALYSIS: Cell<bool> = const { Cell::new(false) };
+        static QUERY: Cell<bool> = const { Cell::new(false) };
+    }
+
+    pub(crate) fn set_analysis(on: bool) {
+        ANALYSIS.with(|flag| flag.set(on));
+    }
+
+    pub(crate) fn set_query(on: bool) {
+        QUERY.with(|flag| flag.set(on));
+    }
+
+    pub(super) fn fail_analysis_if_requested() {
+        assert!(!ANALYSIS.with(Cell::get), "injected analysis failure");
+    }
+
+    pub(super) fn fail_query_if_requested() {
+        assert!(!QUERY.with(Cell::get), "injected query failure");
     }
 }
 
@@ -502,6 +565,23 @@ fn is_declaration_reference(kind: DartIdentifierReferenceKind) -> bool {
 fn overlaps(left: &Range, right: &Range) -> bool {
     let key = |position: &Position| (position.line, position.character);
     key(&left.start) < key(&right.end) && key(&right.start) < key(&left.end)
+}
+
+fn analysis_failed_diagnostic() -> Diagnostic {
+    let start = Position {
+        line: 0,
+        character: 0,
+    };
+    Diagnostic {
+        range: Range {
+            start,
+            end: start,
+        },
+        severity: Some(DiagnosticSeverity::WARNING),
+        code: Some(NumberOrString::String(ANALYSIS_FAILED_CODE.to_string())),
+        source: Some("dartscope".to_string()),
+        message: "the analysis of this document failed unexpectedly, so its outline and navigation are off until it changes; please report the text that causes this".to_string(),
+    }
 }
 
 fn compare_locations(left: &Location, right: &Location) -> Ordering {
@@ -1023,6 +1103,35 @@ mod tests {
             .count();
         assert_eq!(declarations, 1, "{with:?}");
         assert_eq!(with.len(), 3, "{with:?}");
+    }
+
+    #[test]
+    fn a_failing_analysis_leaves_the_document_out_and_says_so_until_it_changes() {
+        let is_failure = |diagnostic: &Diagnostic| {
+            diagnostic.code == Some(NumberOrString::String(ANALYSIS_FAILED_CODE.into()))
+        };
+        let mut server = started();
+        let uri = url("file:///lib/main.dart");
+
+        fault::set_analysis(true);
+        open(&mut server, &uri, "class A {}\n");
+        fault::set_analysis(false);
+
+        assert!(server.diagnostics(&uri).iter().any(is_failure));
+        assert!(server
+            .document_symbols(&uri, symbols_params(&uri))
+            .unwrap()
+            .is_none());
+        assert_eq!(text_of(&server, &uri), "class A {}\n");
+
+        server.did_change(change(&uri, 2, vec![edit((0, 0), (0, 0), "// edited\n")]));
+
+        assert!(!server.diagnostics(&uri).iter().any(is_failure));
+        let symbols = server
+            .document_symbols(&uri, symbols_params(&uri))
+            .unwrap()
+            .unwrap();
+        assert_eq!(symbols[0].name, "A");
     }
 
     #[test]

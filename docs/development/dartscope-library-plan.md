@@ -1114,7 +1114,9 @@ compiled only after the audit's minimal fixes and did not work against a real ed
    answered, with `-32601` for an unknown method, `-32602` for invalid params, `-32002` before
    `initialize` and `-32600` after `shutdown`; invalid JSON is `-32700` with a `null` id; `exit` ends the
    session with 0 after `shutdown` and 1 without it; `Content-Length` is bounded (64 MiB) and header lines
-   too, and a frame that cannot be read ends the session with an error response.
+   too, and a frame that cannot be read ends the session with an error response. A panic inside a handler
+   is answered with `-32603` and the session goes on; a document whose analysis panics is left out of the
+   index with the warning `analysis_failed` until its text changes.
 3. Documents: the server keeps the URI the client sent for each open document and echoes it in every
    result; paths are percent-decoded as UTF-8 (`file:///C%3A/…`, non-ASCII and spaces); `didChange`
    applies its changes in order against the text they follow, clamps a position past the end of its

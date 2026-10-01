@@ -17,6 +17,7 @@
 
 use std::fmt;
 use std::io::{self, BufRead, Read, Write};
+use std::panic::{self, AssertUnwindSafe};
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -113,7 +114,7 @@ pub fn serve<R: BufRead, W: Write>(
             }
         };
         let outcome = match serde_json::from_slice::<Value>(&body) {
-            Ok(message) => handle_message(server, message),
+            Ok(message) => handle_guarded(server, message),
             Err(error) => Outcome {
                 messages: vec![error_response(
                     Value::Null,
@@ -204,6 +205,28 @@ pub fn write_message<W: Write>(writer: &mut W, message: &Value) -> io::Result<()
     write!(writer, "Content-Length: {}\r\n\r\n", body.len())?;
     writer.write_all(&body)?;
     writer.flush()
+}
+
+/// Handles a message like [`handle_message`], but a panic inside a handler answers the request with an
+/// internal error instead of ending the session of the editor.
+fn handle_guarded(server: &mut DartLspServer, message: Value) -> Outcome {
+    let id = message.get("id").filter(|id| !id.is_null()).cloned();
+    match panic::catch_unwind(AssertUnwindSafe(|| handle_message(server, message))) {
+        Ok(outcome) => outcome,
+        Err(_) => Outcome {
+            messages: id
+                .into_iter()
+                .map(|id| {
+                    error_response(
+                        id,
+                        INTERNAL_ERROR,
+                        "the server failed while handling the request",
+                    )
+                })
+                .collect(),
+            exit: None,
+        },
+    }
 }
 
 /// Handles one decoded message and returns what the server sends in answer.
@@ -594,6 +617,34 @@ mod tests {
                 (json!(8), Value::Null),
             ]
         );
+    }
+
+    #[test]
+    fn a_panic_in_a_handler_answers_the_request_and_the_session_goes_on() {
+        let mut input = handshake();
+        input.push(request(
+            2,
+            "textDocument/hover",
+            json!({ "textDocument": { "uri": "file:///a.dart" },
+                    "position": { "line": 0, "character": 0 } }),
+        ));
+        input.push(request(
+            3,
+            "textDocument/documentSymbol",
+            json!({ "textDocument": { "uri": "file:///a.dart" } }),
+        ));
+        input.push(request(4, "shutdown", Value::Null));
+        input.push(notification("exit", Value::Null));
+
+        crate::server::fault::set_query(true);
+        let (code, sent) = session(frames(&input));
+        crate::server::fault::set_query(false);
+
+        assert_eq!(code, 0);
+        let answer = |id: i64| sent.iter().find(|message| message["id"] == id).unwrap();
+        assert_eq!(answer(2)["error"]["code"], -32603);
+        assert_eq!(answer(3)["result"], Value::Null);
+        assert_eq!(answer(4)["result"], Value::Null);
     }
 
     #[test]
