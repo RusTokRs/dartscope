@@ -26,3 +26,11 @@ if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[hunt\]'; th
   done
   emit hunt "$OUT/hunt.sum" --chunk 3900 --max 2
 fi
+if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[hunti\]'; then
+  : >"$OUT/hunti.sum"
+  for salt in 1 2 3; do
+    DARTSCOPE_MUTATION_SEED=$salt DARTSCOPE_MUTATION_ROUNDS=2500 run "hunti_$salt" cargo test --release -p dartscope-index --test robustness_mutations --locked -- --nocapture
+    { echo "== seed $salt =="; grep -E '^(panic at|divergence in|test result|error)' "$OUT/hunti_$salt.log" | cut -c1-300 | head -14; } >>"$OUT/hunti.sum"
+  done
+  emit hunti "$OUT/hunti.sum" --chunk 3900 --max 2
+fi
