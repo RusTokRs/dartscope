@@ -78,7 +78,10 @@ fn the_chain_crosses_files_and_any_number_of_levels() {
             "lib/c.dart",
             "import 'package:flutter/widgets.dart';\nclass First extends StatefulWidget {}\n",
         ),
-        ("lib/d.dart", "import 'a.dart';\nclass Fourth extends Third {}\n"),
+        (
+            "lib/d.dart",
+            "import 'a.dart';\nclass Fourth extends Third {}\n",
+        ),
     ]);
 
     let inventory = extract_flutter_inventory(&project);
@@ -101,7 +104,10 @@ fn populating_the_project_stores_the_same_hints_and_counts_them() {
             "lib/base.dart",
             "import 'package:flutter/widgets.dart';\nclass Base extends StatelessWidget {}\n",
         ),
-        ("lib/screen.dart", "import 'base.dart';\nclass Screen extends Base {}\n"),
+        (
+            "lib/screen.dart",
+            "import 'base.dart';\nclass Screen extends Base {}\n",
+        ),
     ]);
     assert_eq!(project.summary.flutter_widgets, 0);
 

@@ -376,7 +376,11 @@ fn errors_in_excluded_files_do_not_stop_the_run() {
     let rules = "version = 1\nenabled_rules = [\"dartscope.naming_convention\"]\n";
 
     // The template is part of the project, so its malformed pubspec still ends the run.
-    assert_error(lint(rules), 6, "malformed project input at templates/app/pubspec.yaml");
+    assert_error(
+        lint(rules),
+        6,
+        "malformed project input at templates/app/pubspec.yaml",
+    );
 
     // Excluded, it is not checked, and the rest of the project is linted as usual.
     let output = lint(&format!(
@@ -386,7 +390,9 @@ fn errors_in_excluded_files_do_not_stop_the_run() {
 
     // An exclusion of something else changes nothing.
     assert_error(
-        lint(&format!("{rules}\n[exclude]\npath_prefixes = [\"vendor/\"]\n")),
+        lint(&format!(
+            "{rules}\n[exclude]\npath_prefixes = [\"vendor/\"]\n"
+        )),
         6,
         "malformed project input",
     );

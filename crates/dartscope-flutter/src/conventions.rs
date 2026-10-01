@@ -16,10 +16,7 @@ use crate::widget_classes::{WidgetClasses, flutter_base};
 /// classes of this file only; [`populate_flutter_project_analysis`] also follows `extends` into
 /// other files.
 pub fn derive_flutter_file_hints(file: &DartFileAnalysis) -> FlutterFileHints {
-    derive_hints(
-        file,
-        &WidgetClasses::new(std::slice::from_ref(file)),
-    )
+    derive_hints(file, &WidgetClasses::new(std::slice::from_ref(file)))
 }
 
 fn derive_hints(file: &DartFileAnalysis, widget_classes: &WidgetClasses<'_>) -> FlutterFileHints {

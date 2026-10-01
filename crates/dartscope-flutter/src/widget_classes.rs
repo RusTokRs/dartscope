@@ -119,7 +119,11 @@ impl<'a> WidgetClasses<'a> {
     }
 }
 
-fn link_of(class: &ClassEntry<'_>, classes: &[ClassEntry<'_>], by_name: &HashMap<&str, Vec<usize>>) -> Link {
+fn link_of(
+    class: &ClassEntry<'_>,
+    classes: &[ClassEntry<'_>],
+    by_name: &HashMap<&str, Vec<usize>>,
+) -> Link {
     let Some(extends) = class.declaration.extends.as_deref() else {
         return Link::Open;
     };
@@ -176,7 +180,10 @@ fn follow_links(links: &[Link]) -> Vec<Option<&'static str>> {
             outcomes[index] = Some(outcome);
         }
     }
-    outcomes.into_iter().map(Option::unwrap_or_default).collect()
+    outcomes
+        .into_iter()
+        .map(Option::unwrap_or_default)
+        .collect()
 }
 
 #[cfg(test)]
@@ -226,7 +233,10 @@ mod tests {
 
     #[test]
     fn base_names_ignore_an_import_prefix() {
-        assert_eq!(flutter_base("material.StatelessWidget"), Some("StatelessWidget"));
+        assert_eq!(
+            flutter_base("material.StatelessWidget"),
+            Some("StatelessWidget")
+        );
         assert_eq!(flutter_base("StatefulWidgetX"), None);
         assert_eq!(flutter_base("Object"), None);
     }

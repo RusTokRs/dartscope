@@ -360,12 +360,9 @@ fn malformed_project_message(
                 .find_map(|pubspec| first_error(&pubspec.path, &pubspec.diagnostics))
         })
         .or_else(|| {
-            project
-                .package_configs
-                .iter()
-                .find_map(|package_config| {
-                    first_error(&package_config.path, &package_config.diagnostics)
-                })
+            project.package_configs.iter().find_map(|package_config| {
+                first_error(&package_config.path, &package_config.diagnostics)
+            })
         })
 }
 
