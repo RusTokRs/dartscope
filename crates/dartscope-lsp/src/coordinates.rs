@@ -499,7 +499,7 @@ mod tests {
             start: at(1, 0),
             end: at(1, 4),
         };
-        let span = lsp_range_to_source_span(source, range).unwrap();
+        let span = lsp_range_to_source_span(source, range.clone()).unwrap();
         assert_eq!(&source[span.byte_start..span.byte_end], "über");
         assert_eq!((span.start_line, span.start_column), (2, 1));
         assert_eq!((span.end_line, span.end_column), (2, 5));
