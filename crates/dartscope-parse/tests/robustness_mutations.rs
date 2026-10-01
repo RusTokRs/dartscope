@@ -524,9 +524,10 @@ fn mutated_sources_never_panic_and_report_spans_that_describe_the_text() {
     }
     for (place, found) in &mut panics {
         let place = place.clone();
-        found.source = shrink(&found.source, &|candidate| {
-            matches!(try_analyze(candidate), Err((at, _)) if at == place)
-        });
+        found.source = shrink(
+            &found.source,
+            &|candidate| matches!(try_analyze(candidate), Err((at, _)) if at == place),
+        );
     }
     for (kind, found) in &mut problems {
         let kind = kind.clone();
