@@ -186,6 +186,55 @@ class Matrix {
   void operator []=(int i, double v) => _rows[i][0] = v;
 }
 ",
+    "\
+import 'package:graphql/client.dart';
+
+const String viewerQuery = r'''
+  query Viewer($id: ID!, $first: Int = 10) {
+    viewer(id: $id) { name friends(first: $first) { edges { node { id } } } }
+  }
+''';
+
+final listQuery = gql('''
+  query List { items { id title } }
+''');
+
+Future<void> load(GraphQLClient client) async {
+  final result = await client.query(QueryOptions(document: gql(viewerQuery), variables: {'id': '1'}));
+  await client.mutate(MutationOptions(document: listQuery));
+}
+",
+    "\
+sealed class Event {}
+base class Click extends Event { final (int x, int y) at; Click(this.at); }
+final class Key extends Event { final String key; Key(this.key); }
+interface class Port { void send(Object message); }
+abstract mixin class Logging { void log(String m) => print(m); }
+
+String describe(Event event) => switch (event) {
+      Click(at: (var x, var y)) when x > 0 && y > 0 => 'click $x,$y',
+      Click() => 'click',
+      Key(:final key) => 'key $key',
+    };
+
+Stream<int> count(int to) async* {
+  for (var i = 0; i < to; i++) {
+    yield i;
+  }
+  yield* count(0);
+}
+
+void patterns(Object? value) {
+  if (value case [int a, int b, ...final rest]) print('$a $b $rest');
+  final {'name': name as String, 'age': int age} = {'name': 'x', 'age': 1};
+  var (_, second) = (1, 2);
+  late final int later;
+  assert(second > 0, 'positive');
+  outer:
+  for (final e in [1, 2]) { continue outer; }
+  value?.toString()..hashCode..runtimeType;
+}
+",
 ];
 
 /// Fragments that change how much of the text is code, a string, a comment or a line break.
@@ -495,16 +544,30 @@ fn note(found: &mut BTreeMap<String, Found>, key: String, message: String, sourc
     }
 }
 
+fn env_number(name: &str, default: usize) -> usize {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
+
 #[test]
 fn mutated_sources_never_panic_and_report_spans_that_describe_the_text() {
+    // The defaults keep the test fast; a hunt for rare failures turns both knobs up.
+    let rounds = env_number("DARTSCOPE_MUTATION_ROUNDS", 500);
+    let salt = env_number("DARTSCOPE_MUTATION_SEED", 0) as u64;
     panic::set_hook(Box::new(record_panic));
     let mut analyzed = 0usize;
     let mut panics = BTreeMap::new();
     let mut problems = BTreeMap::new();
     for (index, seed) in SEEDS.iter().enumerate() {
-        let mut rng = Rng(0x9E37_79B9_7F4A_7C15 ^ ((index as u64 + 1) * 0x1000_0000_01B3));
+        let mut rng = Rng(
+            0x9E37_79B9_7F4A_7C15
+                ^ ((index as u64 + 1) * 0x1000_0000_01B3)
+                ^ salt.wrapping_mul(0xD6E8_FEB8_6659_FD93),
+        );
         let mut candidates = vec![(*seed).to_string()];
-        candidates.extend((0..500).map(|_| mutate(&mut rng, seed)));
+        candidates.extend((0..rounds).map(|_| mutate(&mut rng, seed)));
         for source in candidates {
             analyzed += 1;
             let started = Instant::now();

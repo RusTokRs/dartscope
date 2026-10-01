@@ -18,3 +18,11 @@ if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[perf\]'; th
   grep -E '^(phase|test result|error)' "$OUT/perf_phase.log" > "$OUT/perf_phase.sum"
   emit perf_phase "$OUT/perf_phase.sum" --chunk 3900 --max 2
 fi
+if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[hunt\]'; then
+  : >"$OUT/hunt.sum"
+  for salt in 1 2 3 4 5 6; do
+    DARTSCOPE_MUTATION_SEED=$salt DARTSCOPE_MUTATION_ROUNDS=6000 run "hunt_$salt" cargo test --release -p dartscope-parse --test robustness_mutations --locked -- --nocapture
+    { echo "== seed $salt =="; grep -E '^(panic at|span problem|test result|error)' "$OUT/hunt_$salt.log" | cut -c1-300 | head -14; } >>"$OUT/hunt.sum"
+  done
+  emit hunt "$OUT/hunt.sum" --chunk 3900 --max 2
+fi
