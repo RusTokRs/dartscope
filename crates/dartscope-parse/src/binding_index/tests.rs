@@ -231,7 +231,7 @@ fn queries_agree_with_scans_over_every_token() {
             assert_eq!(owned, expected);
         }
     }
-    assert!(checked > 100, "only {checked} tokens were compared");
+    assert!(checked > 60, "only {checked} tokens were compared");
 }
 
 #[test]

@@ -102,6 +102,99 @@ fn tree(n: usize) -> String {
     source
 }
 
+/// `n` top-level functions with arrow bodies that call their predecessor.
+fn functions(n: usize) -> String {
+    let mut source = String::from("int f0(int a) => a;\n");
+    for i in 1..n {
+        source.push_str(&format!("int f{i}(int a) => f{}(a) + a;\n", i - 1));
+    }
+    source
+}
+
+/// One method with `n` blocks that each declare the same local name and use it.
+fn same_name_locals(n: usize) -> String {
+    let mut source = String::from("class L {\n  void run(int seed) {\n");
+    for i in 0..n {
+        source.push_str(&format!(
+            "    {{\n      var tmp = seed + {i};\n      print(tmp);\n    }}\n"
+        ));
+    }
+    source.push_str("  }\n}\n");
+    source
+}
+
+/// One method with `n` closures and `for` loops, which bind closure parameters and loop variables.
+fn closures(n: usize) -> String {
+    let mut source = String::from("class C {\n  void run(List<int> items) {\n");
+    for i in 0..n {
+        source.push_str(&format!(
+            "    items.map((x) => x + {i}).toList();\n    items.forEach((y) {{ print(y); }});\n    for (var i = 0; i < {i}; i++) {{ print(i); }}\n    for (final z in items) {{ print(z); }}\n"
+        ));
+    }
+    source.push_str("  }\n}\n");
+    source
+}
+
+/// One expression with `n` identifier terms.
+fn long_expression(n: usize) -> String {
+    let mut source = String::from("int run(int a) {\n  return a");
+    for _ in 0..n {
+        source.push_str(" + a");
+    }
+    source.push_str(";\n}\n");
+    source
+}
+
+/// `n` imports with prefixes, each used once.
+fn imports(n: usize) -> String {
+    let mut source = String::new();
+    for i in 0..n {
+        source.push_str(&format!("import 'package:a/a{i}.dart' as p{i};\n"));
+    }
+    source.push_str("void run() {\n");
+    for i in 0..n {
+        source.push_str(&format!("  p{i}.Thing.make();\n  p{i}.go();\n"));
+    }
+    source.push_str("}\n");
+    source
+}
+
+/// A very long map literal and list of constructor calls with named arguments.
+fn literals(n: usize) -> String {
+    let mut source = String::from("const Map<String, int> table = {\n");
+    for i in 0..n {
+        source.push_str(&format!("  'k{i}': {i},\n"));
+    }
+    source.push_str("};\nfinal items = [\n");
+    for i in 0..n {
+        source.push_str(&format!("  Item(id: {i}, name: 'n{i}', tags: const <String>['a']),\n"));
+    }
+    source.push_str("];\n");
+    source
+}
+
+/// Nested parentheses, which unbalanced or deeply nested code can make expensive to match.
+fn deep_parens(n: usize) -> String {
+    let mut source = String::from("void run() {\n  f");
+    for _ in 0..n {
+        source.push_str("(g");
+    }
+    for _ in 0..n {
+        source.push(')');
+    }
+    source.push_str(";\n}\n");
+    source
+}
+
+/// `n` opening parentheses that are never closed.
+fn unbalanced(n: usize) -> String {
+    let mut source = String::from("void run() {\n");
+    for i in 0..n {
+        source.push_str(&format!("  f{i}(a, b {{ \n"));
+    }
+    source
+}
+
 fn measure(shape: &str, n: usize, source: &str) {
     let t = Instant::now();
     let file = crate::analyze_file(DartFileInput::new("lib/a.dart", source.to_string()));
@@ -183,8 +276,10 @@ fn measure(shape: &str, n: usize, source: &str) {
     let t = Instant::now();
     sort_identifier_references(&mut references);
     let t_sort = t.elapsed();
+    let total = t_file + t_facts + t_regions + t_bindings + t_identifiers + t_reads + t_writes
+        + t_updates + t_methods + t_properties + t_operators + t_sort;
     println!(
-        "phase {shape} n={n} bytes={} decls={} bindings={} regions={} refs={} file={t_file:?} facts={t_facts:?} regions_t={t_regions:?} bindings_t={t_bindings:?} identifiers={t_identifiers:?} reads={t_reads:?} writes={t_writes:?} updates={t_updates:?} methods={t_methods:?} properties={t_properties:?} operators={t_operators:?} sort={t_sort:?}",
+        "phase {shape} n={n} total={total:?} bytes={} decls={} bindings={} regions={} refs={} file={t_file:?} facts={t_facts:?} regions_t={t_regions:?} bindings_t={t_bindings:?} identifiers={t_identifiers:?} reads={t_reads:?} writes={t_writes:?} updates={t_updates:?} methods={t_methods:?} properties={t_properties:?} operators={t_operators:?} sort={t_sort:?}",
         source.len(),
         file.declarations.len(),
         bindings.len(),
@@ -217,5 +312,22 @@ fn zz_reference_timing() {
         for n in [1000usize, 2000, 4000, 8000] {
             measure("tree", n, &tree(n));
         }
+    }
+}
+
+#[test]
+#[ignore = "development-loop measurement"]
+fn zz_reference_timing_more() {
+    for n in [4000usize, 8000, 16000] {
+        measure("functions", n, &functions(n));
+        measure("same_name_locals", n, &same_name_locals(n));
+        measure("closures", n / 2, &closures(n / 2));
+        measure("long_expression", n, &long_expression(n));
+        measure("imports", n / 2, &imports(n / 2));
+        measure("literals", n, &literals(n));
+    }
+    for n in [1000usize, 2000, 4000] {
+        measure("deep_parens", n, &deep_parens(n));
+        measure("unbalanced", n, &unbalanced(n));
     }
 }
