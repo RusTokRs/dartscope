@@ -1,6 +1,6 @@
 use dartscope_core::{DartInvocationArgument, DartMapEntry};
 
-use super::scanner::matching_delimiter;
+use super::scanner::Closers;
 use crate::identifiers::is_identifier;
 use crate::source_lines::{line_span_for_byte, span_for_byte_range};
 
@@ -9,11 +9,12 @@ pub(super) fn invocation_arguments(
     masked_source: &str,
     start: usize,
     end: usize,
+    closers: &impl Closers,
 ) -> Vec<DartInvocationArgument> {
     split_top_level(masked_source, start, end, b',')
         .into_iter()
         .filter_map(|(segment_start, segment_end)| {
-            invocation_argument(source, masked_source, segment_start, segment_end)
+            invocation_argument(source, masked_source, segment_start, segment_end, closers)
         })
         .collect()
 }
@@ -23,6 +24,7 @@ fn invocation_argument(
     masked_source: &str,
     start: usize,
     end: usize,
+    closers: &impl Closers,
 ) -> Option<DartInvocationArgument> {
     let (start, end) = trim_range(source, start, end);
     if start >= end {
@@ -43,17 +45,23 @@ fn invocation_argument(
     Some(DartInvocationArgument {
         name,
         string_value: string_literal_value(&expression),
-        map_entries: map_entries(source, masked_source, expression_start, expression_end),
+        map_entries: map_entries(source, masked_source, expression_start, expression_end, closers),
         expression,
         span: span_for_byte_range(source, start, end),
     })
 }
 
-fn map_entries(source: &str, masked_source: &str, start: usize, end: usize) -> Vec<DartMapEntry> {
+fn map_entries(
+    source: &str,
+    masked_source: &str,
+    start: usize,
+    end: usize,
+    closers: &impl Closers,
+) -> Vec<DartMapEntry> {
     let Some(open) = first_top_level_byte(masked_source, start, end, b'{') else {
         return Vec::new();
     };
-    let Some(close) = matching_delimiter(masked_source, open, b'{', b'}') else {
+    let Some(close) = closers.closing_brace(open) else {
         return Vec::new();
     };
     if close >= end {
@@ -185,12 +193,14 @@ pub(super) fn string_literal_value(expression: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::scanner::Delimiters;
     use super::{invocation_arguments, string_literal_value};
 
     #[test]
     fn captures_named_arguments_and_map_entries() {
         let source = "path: '/home', routes: <String, WidgetBuilder>{'/': home, '/x': other}";
-        let args = invocation_arguments(source, source, 0, source.len());
+        let args =
+            invocation_arguments(source, source, 0, source.len(), &Delimiters::new(source));
         assert_eq!(args[0].name.as_deref(), Some("path"));
         assert_eq!(args[0].string_value.as_deref(), Some("/home"));
         assert_eq!(args[1].map_entries.len(), 2);

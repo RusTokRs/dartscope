@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use dartscope_core::DartLexicalBindingKind;
 
 use crate::declaration_tables::DeclarationTables;
@@ -17,6 +19,7 @@ pub(super) fn collect_for_regions(
     result: &mut LexicalRegionAnalysis,
 ) {
     let bytes = source.as_bytes();
+    let mut ends = StatementEnds::new(source, structure);
     let mut search = 0usize;
     while let Some(found) = find_keyword(source, "for", search) {
         search = found + "for".len();
@@ -34,12 +37,11 @@ pub(super) fn collect_for_regions(
             continue;
         };
         let Some((scope_start, scope_end, region_end)) =
-            for_body_region(source, structure, body_start)
+            for_body_region(source, structure, &mut ends, body_start)
         else {
-            result.deferred_regions.push((
-                found,
-                statement_end(source, structure, body_start).unwrap_or(bytes.len()),
-            ));
+            result
+                .deferred_regions
+                .push((found, ends.end(body_start).unwrap_or(bytes.len())));
             continue;
         };
         if tables.has_local_declaration_starting_in(scope_start, scope_end) {
@@ -68,6 +70,7 @@ pub(super) fn collect_for_regions(
 fn for_body_region(
     source: &str,
     structure: &SourceStructure,
+    ends: &mut StatementEnds<'_>,
     body_start: usize,
 ) -> Option<(usize, usize, usize)> {
     let bytes = source.as_bytes();
@@ -75,7 +78,7 @@ fn for_body_region(
         let body_close = structure.closing_brace(body_start)?;
         return Some((body_start + 1, body_close, body_close + 1));
     }
-    let body_end = statement_end(source, structure, body_start)?;
+    let body_end = ends.end(body_start)?;
     Some((body_start, body_end, body_end))
 }
 
@@ -125,81 +128,160 @@ fn block_comment_end(bytes: &[u8], start: usize) -> Option<usize> {
     None
 }
 
-fn statement_end(source: &str, structure: &SourceStructure, start: usize) -> Option<usize> {
-    let bytes = source.as_bytes();
-    let start = next_non_trivia(source, start)?;
-    if bytes.get(start) == Some(&b'{') {
-        return braced_statement_end(source, structure, start);
-    }
-    let Some(token) = identifier_at(source, start) else {
-        return terminated_statement_end(source, start);
-    };
-    if is_label(source, token) {
-        let colon = next_non_trivia(source, token.end)?;
-        return statement_end(source, structure, colon + 1);
-    }
-    match token.text {
-        "if" => if_statement_end(source, structure, token.end),
-        "for" | "while" | "switch" => header_statement_end(source, structure, token.end),
-        "await" if is_await_for(source, token) => {
-            let for_start = next_non_trivia(source, token.end)?;
-            let for_token = identifier_at(source, for_start)?;
-            header_statement_end(source, structure, for_token.end)
+/// Where the statements of a text end, remembered by the offset they start at.
+///
+/// A statement such as `for (...) for (...) ... g();` ends where the statement inside it ends, so
+/// measuring every loop of a long nest from its own start walks the rest of the nest each time, and
+/// following the nest by recursion overflows the stack when it is thousands of levels deep. This
+/// walk keeps its own stack of what is left to do with the end it finds, and remembers the end of
+/// every statement it passed, so each statement is measured once.
+struct StatementEnds<'a> {
+    source: &'a str,
+    structure: &'a SourceStructure,
+    known: HashMap<usize, Option<usize>>,
+}
+
+/// What the measurement of a statement needs next.
+enum Step {
+    /// The statement ends here, or nowhere.
+    Done(Option<usize>),
+    /// The statement ends where the statement at this offset ends.
+    Tail(usize),
+    /// An `if`: the statement ends where the branch at this offset ends, unless an `else` follows.
+    Then(usize),
+    /// A `do`: the statement ends after the `while (...);` that follows the body at this offset.
+    Body(usize),
+}
+
+/// What is left to do with the end of the statement that is being measured.
+enum Pending {
+    /// Remember it as the end of the statement that starts here.
+    Remember(usize),
+    /// It ends the branch of an `if`: look for an `else`.
+    Else,
+    /// It ends the body of a `do`: look for the `while (...);`.
+    While,
+}
+
+impl<'a> StatementEnds<'a> {
+    fn new(source: &'a str, structure: &'a SourceStructure) -> Self {
+        Self {
+            source,
+            structure,
+            known: HashMap::new(),
         }
-        "do" => do_statement_end(source, structure, token.end),
-        "try" => try_statement_end(source, structure, token.end),
-        _ => terminated_statement_end(source, start),
+    }
+
+    /// The end of the statement that starts at `start`, after any trivia; `None` when it has none.
+    fn end(&mut self, start: usize) -> Option<usize> {
+        let mut pending = Vec::new();
+        let mut at = start;
+        'measure: loop {
+            let mut value = loop {
+                let Some(statement) = next_non_trivia(self.source, at) else {
+                    break None;
+                };
+                if let Some(&known) = self.known.get(&statement) {
+                    break known;
+                }
+                pending.push(Pending::Remember(statement));
+                match self.step(statement) {
+                    Step::Done(value) => break value,
+                    Step::Tail(next) => at = next,
+                    Step::Then(next) => {
+                        pending.push(Pending::Else);
+                        at = next;
+                    }
+                    Step::Body(next) => {
+                        pending.push(Pending::While);
+                        at = next;
+                    }
+                }
+            };
+            while let Some(frame) = pending.pop() {
+                match frame {
+                    Pending::Remember(statement) => {
+                        self.known.insert(statement, value);
+                    }
+                    Pending::Else => {
+                        let Some(then_end) = value else {
+                            continue;
+                        };
+                        match self.else_keyword_end(then_end) {
+                            Some(next) => {
+                                at = next;
+                                continue 'measure;
+                            }
+                            None => value = Some(then_end),
+                        }
+                    }
+                    Pending::While => value = value.and_then(|end| self.do_end(end)),
+                }
+            }
+            return value;
+        }
+    }
+
+    /// Looks at the statement that starts at `start`, which is not trivia.
+    fn step(&self, start: usize) -> Step {
+        let source = self.source;
+        let structure = self.structure;
+        if source.as_bytes().get(start) == Some(&b'{') {
+            return Step::Done(braced_statement_end(source, structure, start));
+        }
+        let Some(token) = identifier_at(source, start) else {
+            return Step::Done(terminated_statement_end(source, start));
+        };
+        if is_label(source, token) {
+            return match next_non_trivia(source, token.end) {
+                Some(colon) => Step::Tail(colon + 1),
+                None => Step::Done(None),
+            };
+        }
+        match token.text {
+            "if" => after_header(source, structure, token.end).map_or(Step::Done(None), Step::Then),
+            "for" | "while" | "switch" => {
+                after_header(source, structure, token.end).map_or(Step::Done(None), Step::Tail)
+            }
+            "await" if is_await_for(source, token) => next_non_trivia(source, token.end)
+                .and_then(|for_start| identifier_at(source, for_start))
+                .and_then(|for_token| after_header(source, structure, for_token.end))
+                .map_or(Step::Done(None), Step::Tail),
+            "do" => Step::Body(token.end),
+            "try" => Step::Done(try_statement_end(source, structure, token.end)),
+            _ => Step::Done(terminated_statement_end(source, start)),
+        }
+    }
+
+    /// The end of the `else` keyword that follows the branch ending at `then_end`, if any.
+    fn else_keyword_end(&self, then_end: usize) -> Option<usize> {
+        let else_start = next_non_trivia(self.source, then_end)?;
+        let else_token = identifier_at(self.source, else_start)?;
+        (else_token.text == "else").then_some(else_token.end)
+    }
+
+    /// The end of a `do` statement whose body ends at `body_end`.
+    fn do_end(&self, body_end: usize) -> Option<usize> {
+        let source = self.source;
+        let while_start = next_non_trivia(source, body_end)?;
+        let while_token = identifier_at(source, while_start)?;
+        if while_token.text != "while" {
+            return None;
+        }
+        let open = next_non_trivia(source, while_token.end)?;
+        let close = self.structure.closing_paren(open)?;
+        let semicolon = next_non_trivia(source, close + 1)?;
+        (source.as_bytes().get(semicolon) == Some(&b';')).then_some(semicolon + 1)
     }
 }
 
-fn if_statement_end(
-    source: &str,
-    structure: &SourceStructure,
-    keyword_end: usize,
-) -> Option<usize> {
-    let then_end = header_statement_end(source, structure, keyword_end)?;
-    let Some(else_start) = next_non_trivia(source, then_end) else {
-        return Some(then_end);
-    };
-    let Some(else_token) = identifier_at(source, else_start) else {
-        return Some(then_end);
-    };
-    if else_token.text != "else" {
-        return Some(then_end);
-    }
-    statement_end(source, structure, else_token.end)
-}
-
-fn header_statement_end(
-    source: &str,
-    structure: &SourceStructure,
-    keyword_end: usize,
-) -> Option<usize> {
-    let bytes = source.as_bytes();
+/// The offset after the parenthesized header that follows the keyword ending at `keyword_end`.
+fn after_header(source: &str, structure: &SourceStructure, keyword_end: usize) -> Option<usize> {
     let open = next_non_trivia(source, keyword_end)?;
-    if bytes.get(open) != Some(&b'(') {
+    if source.as_bytes().get(open) != Some(&b'(') {
         return None;
     }
-    let close = structure.closing_paren(open)?;
-    statement_end(source, structure, close + 1)
-}
-
-fn do_statement_end(
-    source: &str,
-    structure: &SourceStructure,
-    keyword_end: usize,
-) -> Option<usize> {
-    let bytes = source.as_bytes();
-    let body_end = statement_end(source, structure, keyword_end)?;
-    let while_start = next_non_trivia(source, body_end)?;
-    let while_token = identifier_at(source, while_start)?;
-    if while_token.text != "while" {
-        return None;
-    }
-    let open = next_non_trivia(source, while_token.end)?;
-    let close = structure.closing_paren(open)?;
-    let semicolon = next_non_trivia(source, close + 1)?;
-    (bytes.get(semicolon) == Some(&b';')).then_some(semicolon + 1)
+    structure.closing_paren(open).map(|close| close + 1)
 }
 
 fn try_statement_end(
@@ -528,6 +610,7 @@ pub(super) fn collect_catch_regions(
     result: &mut LexicalRegionAnalysis,
 ) {
     let bytes = source.as_bytes();
+    let mut ends = StatementEnds::new(source, structure);
     let mut search = 0usize;
     while let Some(found) = find_keyword(source, "catch", search) {
         search = found + "catch".len();
@@ -545,10 +628,9 @@ pub(super) fn collect_catch_regions(
             continue;
         };
         if bytes.get(body_open) != Some(&b'{') {
-            result.deferred_regions.push((
-                found,
-                statement_end(source, structure, body_open).unwrap_or(bytes.len()),
-            ));
+            result
+                .deferred_regions
+                .push((found, ends.end(body_open).unwrap_or(bytes.len())));
             continue;
         }
         let Some(body_close) = structure.closing_brace(body_open) else {
@@ -606,4 +688,177 @@ fn simple_identifier_segments(
 
 fn is_declaration_prefix(value: &str) -> bool {
     matches!(value, "var" | "final" | "const" | "late")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The recursive measurement that `StatementEnds` replaces, kept as the specification.
+    fn oracle_statement_end(source: &str, structure: &SourceStructure, start: usize) -> Option<usize> {
+        let bytes = source.as_bytes();
+        let start = next_non_trivia(source, start)?;
+        if bytes.get(start) == Some(&b'{') {
+            return braced_statement_end(source, structure, start);
+        }
+        let Some(token) = identifier_at(source, start) else {
+            return terminated_statement_end(source, start);
+        };
+        if is_label(source, token) {
+            let colon = next_non_trivia(source, token.end)?;
+            return oracle_statement_end(source, structure, colon + 1);
+        }
+        match token.text {
+            "if" => oracle_if_statement_end(source, structure, token.end),
+            "for" | "while" | "switch" => oracle_header_statement_end(source, structure, token.end),
+            "await" if is_await_for(source, token) => {
+                let for_start = next_non_trivia(source, token.end)?;
+                let for_token = identifier_at(source, for_start)?;
+                oracle_header_statement_end(source, structure, for_token.end)
+            }
+            "do" => oracle_do_statement_end(source, structure, token.end),
+            "try" => try_statement_end(source, structure, token.end),
+            _ => terminated_statement_end(source, start),
+        }
+    }
+
+    fn oracle_if_statement_end(
+        source: &str,
+        structure: &SourceStructure,
+        keyword_end: usize,
+    ) -> Option<usize> {
+        let then_end = oracle_header_statement_end(source, structure, keyword_end)?;
+        let Some(else_start) = next_non_trivia(source, then_end) else {
+            return Some(then_end);
+        };
+        let Some(else_token) = identifier_at(source, else_start) else {
+            return Some(then_end);
+        };
+        if else_token.text != "else" {
+            return Some(then_end);
+        }
+        oracle_statement_end(source, structure, else_token.end)
+    }
+
+    fn oracle_header_statement_end(
+        source: &str,
+        structure: &SourceStructure,
+        keyword_end: usize,
+    ) -> Option<usize> {
+        let bytes = source.as_bytes();
+        let open = next_non_trivia(source, keyword_end)?;
+        if bytes.get(open) != Some(&b'(') {
+            return None;
+        }
+        let close = structure.closing_paren(open)?;
+        oracle_statement_end(source, structure, close + 1)
+    }
+
+    fn oracle_do_statement_end(
+        source: &str,
+        structure: &SourceStructure,
+        keyword_end: usize,
+    ) -> Option<usize> {
+        let bytes = source.as_bytes();
+        let body_end = oracle_statement_end(source, structure, keyword_end)?;
+        let while_start = next_non_trivia(source, body_end)?;
+        let while_token = identifier_at(source, while_start)?;
+        if while_token.text != "while" {
+            return None;
+        }
+        let open = next_non_trivia(source, while_token.end)?;
+        let close = structure.closing_paren(open)?;
+        let semicolon = next_non_trivia(source, close + 1)?;
+        (bytes.get(semicolon) == Some(&b';')).then_some(semicolon + 1)
+    }
+
+    struct Rng(u64);
+
+    impl Rng {
+        fn below(&mut self, bound: usize) -> usize {
+            self.0 ^= self.0 >> 12;
+            self.0 ^= self.0 << 25;
+            self.0 ^= self.0 >> 27;
+            let value = self.0.wrapping_mul(0x2545_F491_4F6C_DD1D);
+            usize::try_from(value % bound as u64).unwrap_or(0)
+        }
+    }
+
+    const TOKENS: &[&str] = &[
+        "for (a; b; c) ",
+        "for (x in y) ",
+        "await for (x in y) ",
+        "while (x) ",
+        "switch (v) ",
+        "if (x) ",
+        "else ",
+        "do ",
+        "while (y);",
+        "try ",
+        "on T ",
+        "catch (e) ",
+        "finally ",
+        "{ ",
+        "} ",
+        "( ",
+        ") ",
+        "[ ",
+        "] ",
+        "g(); ",
+        "x = 1; ",
+        "label: ",
+        "; ",
+        "\n",
+        "// c\n",
+        "/* c */ ",
+    ];
+
+    #[test]
+    fn the_walk_measures_every_statement_like_the_recursion() {
+        let mut rng = Rng(0x5EED_CAFE_F00D_0001);
+        let mut checked = 0usize;
+        for round in 0..3000 {
+            let count = 1 + round % 14;
+            let source: String = (0..count)
+                .map(|_| TOKENS[rng.below(TOKENS.len())])
+                .collect();
+            let structure = SourceStructure::new(&source);
+            // One walk answers every question about the text, in an order that makes it reuse
+            // what it remembered in both directions.
+            let mut ends = StatementEnds::new(&source, &structure);
+            let mut starts: Vec<usize> = (0..=source.len() + 1).collect();
+            if round % 2 == 1 {
+                starts.reverse();
+            }
+            for start in starts {
+                assert_eq!(
+                    ends.end(start),
+                    oracle_statement_end(&source, &structure, start),
+                    "{source:?} from {start}"
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 30_000, "{checked} questions were asked");
+    }
+
+    #[test]
+    fn a_nest_of_thousands_of_loops_is_measured_in_one_walk() {
+        // The recursion would need a stack frame for each of the 100,000 levels, and measuring each
+        // loop from its own start would visit about 5 * 10^9 of them.
+        let depth = 100_000;
+        let source = format!("{}g();", "for (var i = 0; i < 1; i++) ".repeat(depth));
+        let structure = SourceStructure::new(&source);
+        let mut ends = StatementEnds::new(&source, &structure);
+        let mut at = 0;
+        let mut measured = 0;
+        while let Some(found) = find_keyword(&source, "for", at) {
+            at = found + 3;
+            assert_eq!(ends.end(found), Some(source.len()));
+            measured += 1;
+        }
+        assert_eq!(measured, depth);
+        // One entry for every loop and one for the statement inside the innermost.
+        assert_eq!(ends.known.len(), depth + 1);
+    }
 }

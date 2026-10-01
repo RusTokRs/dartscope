@@ -6,7 +6,7 @@ mod syntax;
 use dartscope_core::{DartDeclaration, DartDeclarationKind, DartDiagnostic};
 
 use self::scanner::{
-    BraceDepths, EndMode, STATEMENT_PROBE_BYTES, annotations_end, body_range, declaration_end,
+    AnnotationRuns, BraceDepths, EndMode, STATEMENT_PROBE_BYTES, body_range, declaration_end,
     declaration_header, declaration_header_within, enum_member_start, first_code_byte,
     next_code_byte,
 };
@@ -104,6 +104,7 @@ fn collect_top_level(
     let mut records = Vec::new();
     let mut cursor = 0usize;
     let mut ids = SymbolIdAllocator::default();
+    let mut annotations = AnnotationRuns::new(masked.len());
 
     for line in lines.iter().copied() {
         if line.byte_end() <= cursor {
@@ -129,7 +130,7 @@ fn collect_top_level(
             if skip_surplus_closer(masked, line, &mut at) {
                 continue;
             }
-            let declared_at = annotations_end(masked, at, masked.len());
+            let declared_at = annotations.end(masked, at);
             if declared_at >= line.byte_end() {
                 break;
             }
@@ -305,6 +306,7 @@ fn collect_members(
     };
     let mut cursor = member_start;
     let mut ids = SymbolIdAllocator::default();
+    let mut annotations = AnnotationRuns::new(body_end);
 
     if owner.declaration.kind == DartDeclarationKind::Enum {
         for constant in enum_constants(masked, body_start, body_end) {
@@ -355,7 +357,7 @@ fn collect_members(
             if skip_surplus_closer(masked, line, &mut at) {
                 continue;
             }
-            let declared_at = annotations_end(masked, at, body_end);
+            let declared_at = annotations.end(masked, at);
             if declared_at >= line.byte_end() {
                 break;
             }
@@ -430,6 +432,7 @@ fn collect_locals(
     let owner_id = owner.declaration.symbol_id.as_deref().unwrap_or_default();
     let mut cursor = body_start + 1;
     let mut ids = SymbolIdAllocator::default();
+    let mut annotations = AnnotationRuns::new(body_end);
 
     let first_line = lines.partition_point(|line| line.byte_end() <= cursor);
     for line in lines.iter().copied().skip(first_line) {
@@ -450,7 +453,7 @@ fn collect_locals(
             if skip_surplus_closer(masked, line, &mut at) {
                 continue;
             }
-            let declared_at = annotations_end(masked, at, body_end);
+            let declared_at = annotations.end(masked, at);
             if declared_at >= line.byte_end() {
                 break;
             }

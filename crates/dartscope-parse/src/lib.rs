@@ -6,6 +6,7 @@ mod binding_index;
 mod declaration_inventory;
 mod declaration_tables;
 mod declarations;
+mod delimiter_pairs;
 mod file_facts;
 #[cfg(feature = "fuzzing")]
 #[doc(hidden)]

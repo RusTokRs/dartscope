@@ -6,24 +6,49 @@ mod scanner;
 use std::collections::HashMap;
 
 use dartscope_core::{
-    DartDeclaration, DartDeclarationKind, DartInvocation, DartInvocationArgument, SourceSpan,
+    DartDeclaration, DartDeclarationKind, DartDiagnostic, DartInvocation, DartInvocationArgument,
+    SourceSpan,
 };
 
 use self::arguments::invocation_arguments;
-use self::scanner::{CallCandidate, scan_call_candidates};
+use self::scanner::{CallCandidate, CopyBudget, Delimiters, scan_call_candidates};
 use crate::source_lines::{line_span_for_byte, span_for_byte_range};
+
+/// The invocation facts of one file.
+pub(crate) struct InvocationFacts {
+    pub(crate) invocations: Vec<DartInvocation>,
+    /// Present when the facts stop before the end of the file because the call targets or the
+    /// arguments would copy more source text than the file's budget allows.
+    pub(crate) truncated: Option<DartDiagnostic>,
+}
 
 pub(crate) fn collect_invocations(
     source: &str,
     masked_source: &str,
     declarations: &[DartDeclaration],
-) -> Vec<DartInvocation> {
+) -> InvocationFacts {
     let lookup = DeclarationLookup::new(masked_source, declarations);
-    let mut invocations: Vec<_> = scan_call_candidates(masked_source)
-        .into_iter()
-        .filter(|candidate| !lookup.is_header_call(candidate))
-        .map(|candidate| invocation_from_candidate(source, masked_source, &lookup, candidate))
-        .collect();
+    let delimiters = Delimiters::new(masked_source);
+    let scan = scan_call_candidates(
+        masked_source,
+        &delimiters,
+        &mut CopyBudget::for_source(source.len()),
+    );
+    let mut cut_at = scan.stopped_at.map(|at| line_span_for_byte(source, at));
+    let mut argument_budget = CopyBudget::for_source(source.len());
+    let mut invocations = Vec::new();
+    for candidate in scan.candidates {
+        if lookup.is_header_call(&candidate) {
+            continue;
+        }
+        let invocation =
+            invocation_from_candidate(source, masked_source, &lookup, &delimiters, candidate);
+        if !argument_budget.spend(argument_text_len(&invocation)) {
+            cut_at = Some(invocation.source_line_span.clone());
+            break;
+        }
+        invocations.push(invocation);
+    }
     invocations.sort_by(|left, right| {
         (left.span.byte_start, left.span.byte_end, &left.target).cmp(&(
             right.span.byte_start,
@@ -36,7 +61,33 @@ pub(crate) fn collect_invocations(
             && left.span.byte_end == right.span.byte_end
             && left.target == right.target
     });
-    invocations
+    InvocationFacts {
+        invocations,
+        truncated: cut_at.map(|span| {
+            DartDiagnostic::warning(
+                "invocation_facts_truncated",
+                "invocation facts stop here: the call targets and arguments of this file would copy more source text than the per-file budget of 32 times its size plus 1 MiB allows",
+                Some(span),
+            )
+        }),
+    }
+}
+
+/// Bytes of source text that the arguments of an invocation hold: the argument expressions and
+/// the keys and values of their map entries.
+fn argument_text_len(invocation: &DartInvocation) -> usize {
+    invocation
+        .arguments
+        .iter()
+        .map(|argument| {
+            argument.expression.len()
+                + argument
+                    .map_entries
+                    .iter()
+                    .map(|entry| entry.key.len() + entry.value.len())
+                    .sum::<usize>()
+        })
+        .sum()
 }
 
 /// Lookup structures over the declarations of one file.
@@ -140,10 +191,16 @@ fn invocation_from_candidate(
     source: &str,
     masked_source: &str,
     lookup: &DeclarationLookup<'_>,
+    delimiters: &Delimiters,
     candidate: CallCandidate,
 ) -> DartInvocation {
-    let arguments: Vec<DartInvocationArgument> =
-        invocation_arguments(source, masked_source, candidate.open + 1, candidate.close);
+    let arguments: Vec<DartInvocationArgument> = invocation_arguments(
+        source,
+        masked_source,
+        candidate.open + 1,
+        candidate.close,
+        delimiters,
+    );
     DartInvocation {
         target: candidate.target,
         arguments,
@@ -283,7 +340,12 @@ void main() {
             );
         }
 
-        let candidates = scan_call_candidates(&masked);
+        let candidates = scan_call_candidates(
+            &masked,
+            &Delimiters::new(&masked),
+            &mut CopyBudget::for_source(masked.len()),
+        )
+        .candidates;
         let header_calls = candidates
             .iter()
             .filter(|candidate| lookup.is_header_call(candidate))

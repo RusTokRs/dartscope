@@ -151,12 +151,14 @@ impl<'a> FileAnalysisState<'a> {
         let (declarations, diagnostics) =
             collect_declaration_inventory(&self.analysis.path, self.source, &self.masked_source);
         self.analysis.declarations = declarations;
-        self.analysis.invocations = collect_invocations(
+        let facts = collect_invocations(
             self.source,
             &self.masked_source,
             &self.analysis.declarations,
         );
+        self.analysis.invocations = facts.invocations;
         self.analysis.diagnostics.extend(diagnostics);
+        self.analysis.diagnostics.extend(facts.truncated);
         attach_diagnostic_paths(&mut self.analysis.diagnostics, &self.analysis.path);
         self.analysis
     }

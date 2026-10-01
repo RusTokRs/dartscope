@@ -243,7 +243,7 @@ pub(super) fn next_code_byte(source: &str, start: usize, end: usize) -> Option<u
     None
 }
 
-pub(super) use crate::metadata::annotations_end;
+pub(super) use crate::metadata::AnnotationRuns;
 
 #[cfg(test)]
 mod tests {
