@@ -9,6 +9,7 @@ use dartscope_core::{DartFileAnalysis, DartLexicalBindingKind};
 use crate::declaration_tables::{DeclarationTables, supports_parameters};
 use crate::interval_index::{IntervalSet, StabbingIndex};
 use crate::lexical::mask_non_code;
+use crate::source_structure::SourceStructure;
 
 #[derive(Debug, Clone)]
 pub(crate) struct LexicalRegionBinding {
@@ -51,12 +52,16 @@ pub(crate) fn analyze_lexical_regions(
     tables: &DeclarationTables<'_>,
 ) -> LexicalRegionAnalysis {
     let masked_source = mask_non_code(source).code;
+    let masked_structure = SourceStructure::new(&masked_source);
+    // Masking a text that is already masked leaves it as it is, so one structure serves both.
+    let source_structure = (masked_source != source).then(|| SourceStructure::new(source));
     let headers = CallableHeaders::new(analysis, source);
     let mut result = LexicalRegionAnalysis::default();
-    controls::collect_for_regions(&masked_source, tables, &mut result);
-    controls::collect_catch_regions(&masked_source, tables, &mut result);
-    closures::collect_arrow_regions(source, tables, &headers, &mut result);
-    closures::collect_block_regions(source, tables, &headers, &mut result);
+    controls::collect_for_regions(&masked_source, &masked_structure, tables, &mut result);
+    controls::collect_catch_regions(&masked_source, &masked_structure, tables, &mut result);
+    let source_structure = source_structure.as_ref().unwrap_or(&masked_structure);
+    closures::collect_arrow_regions(source, source_structure, tables, &headers, &mut result);
+    closures::collect_block_regions(source, source_structure, tables, &headers, &mut result);
     result.deferred_regions.sort_unstable();
     result.deferred_regions.dedup();
     let deferred_regions = IntervalSet::new(result.deferred_regions.iter().copied());

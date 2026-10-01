@@ -1,16 +1,18 @@
 use dartscope_core::DartLexicalBindingKind;
 
 use crate::declaration_tables::DeclarationTables;
+use crate::source_structure::SourceStructure;
 
 use super::scan::{
     contains_top_level_pattern_start, find_keyword, find_top_level_keyword, has_top_level_byte,
-    identifier_at, is_binding_name, matching_delimiter, top_level_assignment,
-    top_level_byte_positions, top_level_identifiers, top_level_segments, trim_range,
+    identifier_at, is_binding_name, top_level_assignment, top_level_byte_positions,
+    top_level_identifiers, top_level_segments, trim_range,
 };
 use super::{LexicalRegionAnalysis, binding_for_token, write_for_token};
 
 pub(super) fn collect_for_regions(
     source: &str,
+    structure: &SourceStructure,
     tables: &DeclarationTables<'_>,
     result: &mut LexicalRegionAnalysis,
 ) {
@@ -24,17 +26,17 @@ pub(super) fn collect_for_regions(
         if bytes.get(open) != Some(&b'(') {
             continue;
         }
-        let Some(close) = matching_delimiter(source, open, b'(', b')', bytes.len()) else {
+        let Some(close) = structure.closing_paren(open) else {
             continue;
         };
         let Some(body_start) = next_non_trivia(source, close + 1) else {
             result.deferred_regions.push((found, bytes.len()));
             continue;
         };
-        let Some((scope_start, scope_end, region_end)) = for_body_region(source, body_start) else {
+        let Some((scope_start, scope_end, region_end)) = for_body_region(source, structure, body_start) else {
             result.deferred_regions.push((
                 found,
-                statement_end(source, body_start).unwrap_or(bytes.len()),
+                statement_end(source, structure, body_start).unwrap_or(bytes.len()),
             ));
             continue;
         };
@@ -61,13 +63,17 @@ pub(super) fn collect_for_regions(
     }
 }
 
-fn for_body_region(source: &str, body_start: usize) -> Option<(usize, usize, usize)> {
+fn for_body_region(
+    source: &str,
+    structure: &SourceStructure,
+    body_start: usize,
+) -> Option<(usize, usize, usize)> {
     let bytes = source.as_bytes();
     if bytes.get(body_start) == Some(&b'{') {
-        let body_close = matching_delimiter(source, body_start, b'{', b'}', bytes.len())?;
+        let body_close = structure.closing_brace(body_start)?;
         return Some((body_start + 1, body_close, body_close + 1));
     }
-    let body_end = statement_end(source, body_start)?;
+    let body_end = statement_end(source, structure, body_start)?;
     Some((body_start, body_end, body_end))
 }
 
@@ -117,35 +123,35 @@ fn block_comment_end(bytes: &[u8], start: usize) -> Option<usize> {
     None
 }
 
-fn statement_end(source: &str, start: usize) -> Option<usize> {
+fn statement_end(source: &str, structure: &SourceStructure, start: usize) -> Option<usize> {
     let bytes = source.as_bytes();
     let start = next_non_trivia(source, start)?;
     if bytes.get(start) == Some(&b'{') {
-        return braced_statement_end(source, start);
+        return braced_statement_end(source, structure, start);
     }
     let Some(token) = identifier_at(source, start) else {
         return terminated_statement_end(source, start);
     };
     if is_label(source, token) {
         let colon = next_non_trivia(source, token.end)?;
-        return statement_end(source, colon + 1);
+        return statement_end(source, structure, colon + 1);
     }
     match token.text {
-        "if" => if_statement_end(source, token.end),
-        "for" | "while" | "switch" => header_statement_end(source, token.end),
+        "if" => if_statement_end(source, structure, token.end),
+        "for" | "while" | "switch" => header_statement_end(source, structure, token.end),
         "await" if is_await_for(source, token) => {
             let for_start = next_non_trivia(source, token.end)?;
             let for_token = identifier_at(source, for_start)?;
-            header_statement_end(source, for_token.end)
+            header_statement_end(source, structure, for_token.end)
         }
-        "do" => do_statement_end(source, token.end),
-        "try" => try_statement_end(source, token.end),
+        "do" => do_statement_end(source, structure, token.end),
+        "try" => try_statement_end(source, structure, token.end),
         _ => terminated_statement_end(source, start),
     }
 }
 
-fn if_statement_end(source: &str, keyword_end: usize) -> Option<usize> {
-    let then_end = header_statement_end(source, keyword_end)?;
+fn if_statement_end(source: &str, structure: &SourceStructure, keyword_end: usize) -> Option<usize> {
+    let then_end = header_statement_end(source, structure, keyword_end)?;
     let Some(else_start) = next_non_trivia(source, then_end) else {
         return Some(then_end);
     };
@@ -155,35 +161,35 @@ fn if_statement_end(source: &str, keyword_end: usize) -> Option<usize> {
     if else_token.text != "else" {
         return Some(then_end);
     }
-    statement_end(source, else_token.end)
+    statement_end(source, structure, else_token.end)
 }
 
-fn header_statement_end(source: &str, keyword_end: usize) -> Option<usize> {
+fn header_statement_end(source: &str, structure: &SourceStructure, keyword_end: usize) -> Option<usize> {
     let bytes = source.as_bytes();
     let open = next_non_trivia(source, keyword_end)?;
     if bytes.get(open) != Some(&b'(') {
         return None;
     }
-    let close = matching_delimiter(source, open, b'(', b')', bytes.len())?;
-    statement_end(source, close + 1)
+    let close = structure.closing_paren(open)?;
+    statement_end(source, structure, close + 1)
 }
 
-fn do_statement_end(source: &str, keyword_end: usize) -> Option<usize> {
+fn do_statement_end(source: &str, structure: &SourceStructure, keyword_end: usize) -> Option<usize> {
     let bytes = source.as_bytes();
-    let body_end = statement_end(source, keyword_end)?;
+    let body_end = statement_end(source, structure, keyword_end)?;
     let while_start = next_non_trivia(source, body_end)?;
     let while_token = identifier_at(source, while_start)?;
     if while_token.text != "while" {
         return None;
     }
     let open = next_non_trivia(source, while_token.end)?;
-    let close = matching_delimiter(source, open, b'(', b')', bytes.len())?;
+    let close = structure.closing_paren(open)?;
     let semicolon = next_non_trivia(source, close + 1)?;
     (bytes.get(semicolon) == Some(&b';')).then_some(semicolon + 1)
 }
 
-fn try_statement_end(source: &str, keyword_end: usize) -> Option<usize> {
-    let mut end = braced_statement_end(source, keyword_end)?;
+fn try_statement_end(source: &str, structure: &SourceStructure, keyword_end: usize) -> Option<usize> {
+    let mut end = braced_statement_end(source, structure, keyword_end)?;
     let mut saw_handler = false;
     loop {
         let Some(clause_start) = next_non_trivia(source, end) else {
@@ -194,20 +200,20 @@ fn try_statement_end(source: &str, keyword_end: usize) -> Option<usize> {
         };
         match clause.text {
             "on" => {
-                end = on_clause_end(source, clause.end)?;
+                end = on_clause_end(source, structure, clause.end)?;
                 saw_handler = true;
             }
             "catch" => {
-                end = catch_clause_end(source, clause.end)?;
+                end = catch_clause_end(source, structure, clause.end)?;
                 saw_handler = true;
             }
-            "finally" => return braced_statement_end(source, clause.end),
+            "finally" => return braced_statement_end(source, structure, clause.end),
             _ => return saw_handler.then_some(end),
         }
     }
 }
 
-fn on_clause_end(source: &str, keyword_end: usize) -> Option<usize> {
+fn on_clause_end(source: &str, structure: &SourceStructure, keyword_end: usize) -> Option<usize> {
     let bytes = source.as_bytes();
     let mut parens = 0usize;
     let mut brackets = 0usize;
@@ -215,14 +221,14 @@ fn on_clause_end(source: &str, keyword_end: usize) -> Option<usize> {
     while at < bytes.len() {
         if parens == 0 && brackets == 0 {
             if bytes[at] == b'{' {
-                return braced_statement_end(source, at);
+                return braced_statement_end(source, structure, at);
             }
             if matches!(bytes[at], b';' | b'}') {
                 return None;
             }
             if let Some(token) = identifier_at(source, at) {
                 if token.text == "catch" {
-                    return catch_clause_end(source, token.end);
+                    return catch_clause_end(source, structure, token.end);
                 }
                 at = token.end;
                 continue;
@@ -242,23 +248,23 @@ fn on_clause_end(source: &str, keyword_end: usize) -> Option<usize> {
     None
 }
 
-fn catch_clause_end(source: &str, keyword_end: usize) -> Option<usize> {
+fn catch_clause_end(source: &str, structure: &SourceStructure, keyword_end: usize) -> Option<usize> {
     let bytes = source.as_bytes();
     let open = next_non_trivia(source, keyword_end)?;
     if bytes.get(open) != Some(&b'(') {
         return None;
     }
-    let close = matching_delimiter(source, open, b'(', b')', bytes.len())?;
-    braced_statement_end(source, close + 1)
+    let close = structure.closing_paren(open)?;
+    braced_statement_end(source, structure, close + 1)
 }
 
-fn braced_statement_end(source: &str, start: usize) -> Option<usize> {
+fn braced_statement_end(source: &str, structure: &SourceStructure, start: usize) -> Option<usize> {
     let bytes = source.as_bytes();
     let open = next_non_trivia(source, start)?;
     if bytes.get(open) != Some(&b'{') {
         return None;
     }
-    matching_delimiter(source, open, b'{', b'}', bytes.len()).map(|end| end + 1)
+    structure.closing_brace(open).map(|end| end + 1)
 }
 
 fn terminated_statement_end(source: &str, start: usize) -> Option<usize> {
@@ -495,6 +501,7 @@ fn parse_for_in_header(
 
 pub(super) fn collect_catch_regions(
     source: &str,
+    structure: &SourceStructure,
     tables: &DeclarationTables<'_>,
     result: &mut LexicalRegionAnalysis,
 ) {
@@ -508,7 +515,7 @@ pub(super) fn collect_catch_regions(
         if bytes.get(open) != Some(&b'(') {
             continue;
         }
-        let Some(close) = matching_delimiter(source, open, b'(', b')', bytes.len()) else {
+        let Some(close) = structure.closing_paren(open) else {
             continue;
         };
         let Some(body_open) = next_non_trivia(source, close + 1) else {
@@ -518,11 +525,11 @@ pub(super) fn collect_catch_regions(
         if bytes.get(body_open) != Some(&b'{') {
             result.deferred_regions.push((
                 found,
-                statement_end(source, body_open).unwrap_or(bytes.len()),
+                statement_end(source, structure, body_open).unwrap_or(bytes.len()),
             ));
             continue;
         }
-        let Some(body_close) = matching_delimiter(source, body_open, b'{', b'}', bytes.len())
+        let Some(body_close) = structure.closing_brace(body_open)
         else {
             result.deferred_regions.push((found, bytes.len()));
             continue;

@@ -19,6 +19,11 @@ pub(crate) struct SourceStructure {
     /// Depth of unclosed `<` after every `<`, `>` and statement boundary that changes it, as
     /// `(position, depth)`. Depth restarts at zero after each boundary and never goes below it.
     angle_depths: Vec<(usize, usize)>,
+    /// Positions of every `(`, in increasing order, and the position of the `)` that closes each.
+    paren_opens: Vec<usize>,
+    paren_closes: Vec<Option<usize>>,
+    /// The matched pairs of parentheses as `(close, open)`, in increasing order of the close.
+    paren_pairs: Vec<(usize, usize)>,
     /// Positions of every `{`, in increasing order, and the position of the `}` that closes each.
     brace_opens: Vec<usize>,
     brace_closes: Vec<Option<usize>>,
@@ -37,6 +42,9 @@ impl SourceStructure {
             boundaries: Vec::new(),
             closing_angles: Vec::new(),
             angle_depths: Vec::new(),
+            paren_opens: Vec::new(),
+            paren_closes: Vec::new(),
+            paren_pairs: Vec::new(),
             brace_opens: Vec::new(),
             brace_closes: Vec::new(),
             brace_tops: Vec::new(),
@@ -45,25 +53,28 @@ impl SourceStructure {
         };
         let mut depth = 0usize;
         let mut open_blocks: Vec<usize> = Vec::new();
+        // The open parentheses are kept as indexes into `paren_opens`.
         let mut open_parens: Vec<usize> = Vec::new();
         let mut open_brackets: Vec<usize> = Vec::new();
         for (at, byte) in source.bytes().enumerate() {
             match byte {
-                b'(' => open_parens.push(at),
+                b'(' => {
+                    open_parens.push(structure.paren_opens.len());
+                    structure.paren_opens.push(at);
+                    structure.paren_closes.push(None);
+                }
                 b')' => {
-                    open_parens.pop();
+                    if let Some(index) = open_parens.pop() {
+                        structure.paren_closes[index] = Some(at);
+                        structure.paren_pairs.push((at, structure.paren_opens[index]));
+                    }
                 }
                 b'[' => open_brackets.push(at),
                 b']' => {
                     open_brackets.pop();
                 }
                 b',' => {
-                    let innermost = innermost_open(
-                        &open_parens,
-                        &open_brackets,
-                        &open_blocks,
-                        &structure.brace_opens,
-                    );
+                    let innermost = innermost_open(&structure, &open_parens, &open_brackets, &open_blocks);
                     structure.breaks.push((at, innermost));
                 }
                 b'<' => {
@@ -84,12 +95,7 @@ impl SourceStructure {
                     let key = if byte == b'}' {
                         brace_top
                     } else {
-                        innermost_open(
-                            &open_parens,
-                            &open_brackets,
-                            &open_blocks,
-                            &structure.brace_opens,
-                        )
+                        innermost_open(&structure, &open_parens, &open_brackets, &open_blocks)
                     };
                     structure.breaks.push((at, key));
                     if depth > 0 {
@@ -189,6 +195,21 @@ impl SourceStructure {
         Some(self.breaks[index].0)
     }
 
+    /// The `)` that closes the `(` at `open`; `None` when `open` is not a `(` or is never closed.
+    pub(crate) fn closing_paren(&self, open: usize) -> Option<usize> {
+        let index = self.paren_opens.binary_search(&open).ok()?;
+        self.paren_closes[index]
+    }
+
+    /// The `(` that the `)` at `close` closes; `None` when `close` is not a `)` or closes nothing.
+    pub(crate) fn opening_paren(&self, close: usize) -> Option<usize> {
+        let index = self
+            .paren_pairs
+            .binary_search_by_key(&close, |&(at, _)| at)
+            .ok()?;
+        Some(self.paren_pairs[index].1)
+    }
+
     /// The `}` that closes the `{` at `open`.
     pub(crate) fn closing_brace(&self, open: usize) -> Option<usize> {
         let index = self.brace_opens.binary_search(&open).ok()?;
@@ -200,14 +221,18 @@ impl SourceStructure {
 /// parenthesis, bracket or block that opened last: one more than its position, so that zero means
 /// there is none and the break ends every scan.
 fn innermost_open(
+    structure: &SourceStructure,
     parens: &[usize],
     brackets: &[usize],
     blocks: &[usize],
-    brace_opens: &[usize],
 ) -> usize {
-    let paren = parens.last().map_or(0, |&at| at + 1);
+    let paren = parens
+        .last()
+        .map_or(0, |&index| structure.paren_opens[index] + 1);
     let bracket = brackets.last().map_or(0, |&at| at + 1);
-    let brace = blocks.last().map_or(0, |&index| brace_opens[index] + 1);
+    let brace = blocks
+        .last()
+        .map_or(0, |&index| structure.brace_opens[index] + 1);
     paren.max(bracket).max(brace)
 }
 
@@ -323,6 +348,50 @@ mod tests {
             blocks.last().copied()
         }
 
+        pub(super) fn closing_paren(source: &str, open: usize) -> Option<usize> {
+            let bytes = source.as_bytes();
+            if bytes.get(open) != Some(&b'(') {
+                return None;
+            }
+            let mut depth = 1usize;
+            let mut at = open + 1;
+            while at < bytes.len() {
+                match bytes[at] {
+                    b'(' => depth += 1,
+                    b')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            return Some(at);
+                        }
+                    }
+                    _ => {}
+                }
+                at += 1;
+            }
+            None
+        }
+
+        pub(super) fn opening_paren(source: &str, close: usize) -> Option<usize> {
+            let bytes = source.as_bytes();
+            if bytes.get(close) != Some(&b')') {
+                return None;
+            }
+            let mut depth = 1usize;
+            let mut at = close;
+            while at > 0 {
+                at -= 1;
+                if bytes[at] == b')' {
+                    depth += 1;
+                } else if bytes[at] == b'(' {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(at);
+                    }
+                }
+            }
+            None
+        }
+
         pub(super) fn closing_brace(source: &str, open: usize, limit: usize) -> Option<usize> {
             let bytes = source.as_bytes();
             if bytes.get(open) != Some(&b'{') {
@@ -361,8 +430,7 @@ mod tests {
 
     fn random_source(rng: &mut Rng) -> String {
         const PIECES: &[&str] = &[
-            "<", ">", "<", ">", ";", "{", "}", "{", "}", "(", ")", "[", "]", "a", "bc", " ", "\n",
-            "=>", ", ",
+            "<", ">", "<", ">", ";", "{", "}", "{", "}", "(", ")", "[", "]", "a", "bc", " ", "\n", "=>", ", ",
         ];
         let count = rng.below(24);
         (0..count)
@@ -407,6 +475,18 @@ mod tests {
                         "innermost_open_brace({at}, {other}) in {source:?}"
                     );
                 }
+            }
+            for open in 0..len + 2 {
+                assert_eq!(
+                    structure.closing_paren(open),
+                    linear::closing_paren(&source, open),
+                    "closing_paren({open}) in {source:?}"
+                );
+                assert_eq!(
+                    structure.opening_paren(open),
+                    linear::opening_paren(&source, open),
+                    "opening_paren({open}) in {source:?}"
+                );
             }
             for open in 0..len {
                 for limit in [open + 1, len, len + 3] {

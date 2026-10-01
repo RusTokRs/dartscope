@@ -1,13 +1,18 @@
 use super::IdentifierToken;
 use crate::identifiers::{is_identifier_continue, is_identifier_start};
+use crate::source_structure::SourceStructure;
 
-pub(super) fn arrow_parameter_range(source: &str, arrow: usize) -> Option<(usize, usize, usize)> {
+pub(super) fn arrow_parameter_range(
+    source: &str,
+    structure: &SourceStructure,
+    arrow: usize,
+) -> Option<(usize, usize, usize)> {
     let bytes = source.as_bytes();
     let previous = previous_non_whitespace(bytes, arrow)?;
     if bytes[previous] != b')' {
         return None;
     }
-    let open = matching_open_delimiter(source, previous, b'(', b')')?;
+    let open = structure.opening_paren(previous)?;
     Some((open + 1, previous, open))
 }
 
@@ -233,54 +238,6 @@ pub(super) fn trim_range(source: &str, mut start: usize, mut end: usize) -> Opti
         end -= 1;
     }
     (start < end).then_some((start, end))
-}
-
-pub(super) fn matching_delimiter(
-    source: &str,
-    open: usize,
-    opening: u8,
-    closing: u8,
-    limit: usize,
-) -> Option<usize> {
-    let bytes = source.as_bytes();
-    if bytes.get(open) != Some(&opening) {
-        return None;
-    }
-    let mut depth = 1usize;
-    let mut at = open + 1;
-    while at < limit.min(bytes.len()) {
-        if bytes[at] == opening {
-            depth += 1;
-        } else if bytes[at] == closing {
-            depth -= 1;
-            if depth == 0 {
-                return Some(at);
-            }
-        }
-        at += 1;
-    }
-    None
-}
-
-fn matching_open_delimiter(source: &str, close: usize, opening: u8, closing: u8) -> Option<usize> {
-    let bytes = source.as_bytes();
-    if bytes.get(close) != Some(&closing) {
-        return None;
-    }
-    let mut depth = 1usize;
-    let mut at = close;
-    while at > 0 {
-        at -= 1;
-        if bytes[at] == closing {
-            depth += 1;
-        } else if bytes[at] == opening {
-            depth -= 1;
-            if depth == 0 {
-                return Some(at);
-            }
-        }
-    }
-    None
 }
 
 pub(super) fn identifier_at(source: &str, start: usize) -> Option<IdentifierToken<'_>> {

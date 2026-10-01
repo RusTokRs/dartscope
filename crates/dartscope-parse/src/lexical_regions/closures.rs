@@ -1,12 +1,13 @@
 use dartscope_core::DartLexicalBindingKind;
 
 use crate::declaration_tables::DeclarationTables;
+use crate::source_structure::SourceStructure;
 
 use super::scan::{
     arrow_expression_end, arrow_parameter_range, contains_receiver_formal,
     contains_top_level_pattern_start, is_binding_name, is_control_header,
-    last_top_level_identifier, matching_delimiter, next_non_whitespace, top_level_assignment,
-    top_level_segments, trim_range,
+    last_top_level_identifier, next_non_whitespace, top_level_assignment, top_level_segments,
+    trim_range,
 };
 use super::{CallableHeaders, IdentifierToken, LexicalRegionAnalysis, binding_for_token};
 
@@ -22,6 +23,7 @@ struct ClosureRegion {
 
 pub(super) fn collect_arrow_regions(
     source: &str,
+    structure: &SourceStructure,
     tables: &DeclarationTables<'_>,
     headers: &CallableHeaders,
     result: &mut LexicalRegionAnalysis,
@@ -34,7 +36,7 @@ pub(super) fn collect_arrow_regions(
             continue;
         }
         let Some((parameter_start, parameter_end, region_start)) =
-            arrow_parameter_range(source, at)
+            arrow_parameter_range(source, structure, at)
         else {
             at += 2;
             continue;
@@ -63,6 +65,7 @@ pub(super) fn collect_arrow_regions(
 
 pub(super) fn collect_block_regions(
     source: &str,
+    structure: &SourceStructure,
     tables: &DeclarationTables<'_>,
     headers: &CallableHeaders,
     result: &mut LexicalRegionAnalysis,
@@ -74,7 +77,7 @@ pub(super) fn collect_block_regions(
             open += 1;
             continue;
         }
-        let Some(close) = matching_delimiter(source, open, b'(', b')', bytes.len()) else {
+        let Some(close) = structure.closing_paren(open) else {
             open += 1;
             continue;
         };
@@ -88,7 +91,7 @@ pub(super) fn collect_block_regions(
             open += 1;
             continue;
         }
-        let Some(body_close) = matching_delimiter(source, body_open, b'{', b'}', bytes.len())
+        let Some(body_close) = structure.closing_brace(body_open)
         else {
             result.deferred_regions.push((open, bytes.len()));
             open += 1;
