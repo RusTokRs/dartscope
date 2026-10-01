@@ -242,8 +242,8 @@ impl DartLintConfig {
             .has_prefix(path, &normalize_path(prefix.to_string()))
     }
 
-    /// Whether findings in `path` are suppressed by `exclude`.
-    pub(crate) fn excludes(&self, path: &str) -> bool {
+    /// Whether `path` is excluded: no rule reports on it, and callers may skip it as input too.
+    pub fn is_excluded(&self, path: &str) -> bool {
         self.exclude
             .path_prefixes
             .iter()

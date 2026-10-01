@@ -7,11 +7,22 @@ use dartscope_core::{
     FlutterWidgetHint,
 };
 
+use crate::widget_classes::{WidgetClasses, flutter_base};
+
 /// Derives Flutter conventions from generic Dart declarations, imports, and invocations.
 ///
 /// This function performs no source parsing and no I/O. The parser-independent facts in
-/// [`DartFileAnalysis`] are the only input to the convention layer.
+/// [`DartFileAnalysis`] are the only input to the convention layer. A widget is found through the
+/// classes of this file only; [`populate_flutter_project_analysis`] also follows `extends` into
+/// other files.
 pub fn derive_flutter_file_hints(file: &DartFileAnalysis) -> FlutterFileHints {
+    derive_hints(
+        file,
+        &WidgetClasses::new(std::slice::from_ref(file)),
+    )
+}
+
+fn derive_hints(file: &DartFileAnalysis, widget_classes: &WidgetClasses<'_>) -> FlutterFileHints {
     let constants: HashMap<_, _> = file
         .string_constants
         .iter()
@@ -33,17 +44,30 @@ pub fn derive_flutter_file_hints(file: &DartFileAnalysis) -> FlutterFileHints {
         if let Some(base_class) = declaration
             .extends
             .as_deref()
-            .filter(|base| is_flutter_base(base))
+            .filter(|base| flutter_base(base).is_some())
         {
             hints.widgets.push(FlutterWidgetHint {
                 class_name: declaration.name.clone(),
                 base_class: base_class.to_string(),
                 confidence: Confidence::High,
                 span: declaration.span.clone(),
+                inherited_via: None,
+            });
+        } else if let Some(reached) = widget_classes.reached(&file.path, declaration) {
+            // `class Screen extends BaseScreen`, where `BaseScreen` is a project class that
+            // extends a Flutter base. The chain is followed by class name only, so the finding
+            // is not as certain as a direct subclass.
+            hints.widgets.push(FlutterWidgetHint {
+                class_name: declaration.name.clone(),
+                base_class: reached.base.to_string(),
+                confidence: Confidence::Medium,
+                span: declaration.span.clone(),
+                inherited_via: reached.via.map(str::to_string),
             });
         }
     }
 
+    let official_flutter = imports_official_flutter(file);
     for invocation in &file.invocations {
         if let Some(asset) = asset_hint(invocation) {
             hints.assets.push(asset);
@@ -51,11 +75,9 @@ pub fn derive_flutter_file_hints(file: &DartFileAnalysis) -> FlutterFileHints {
         if let Some(localization) = localization_hint(invocation) {
             hints.localizations.push(localization);
         }
-        hints.routes.extend(route_hints(
-            invocation,
-            &constants,
-            imports_official_flutter(file),
-        ));
+        hints
+            .routes
+            .extend(route_hints(invocation, &constants, official_flutter));
     }
 
     sort_and_deduplicate(&mut hints);
@@ -69,8 +91,18 @@ pub fn populate_flutter_file_hints(file: &mut DartFileAnalysis) {
 
 /// Populates compatibility Flutter projections and summary counts on a parsed project.
 pub fn populate_flutter_project_analysis(project: &mut DartProjectAnalysis) {
-    for file in &mut project.files {
-        populate_flutter_file_hints(file);
+    // The hints of a file come from the classes of the whole project, so they are computed for
+    // every file before any of them is stored.
+    let hints: Vec<FlutterFileHints> = {
+        let widget_classes = WidgetClasses::new(&project.files);
+        project
+            .files
+            .iter()
+            .map(|file| derive_hints(file, &widget_classes))
+            .collect()
+    };
+    for (file, hints) in project.files.iter_mut().zip(hints) {
+        file.flutter = hints;
     }
     project.summary.flutter_widgets = project
         .files
@@ -94,8 +126,11 @@ pub fn populate_flutter_project_analysis(project: &mut DartProjectAnalysis) {
         .sum();
 }
 
-pub(crate) fn effective_flutter_file_hints(file: &DartFileAnalysis) -> FlutterFileHints {
-    let mut derived = derive_flutter_file_hints(file);
+pub(crate) fn effective_flutter_file_hints(
+    file: &DartFileAnalysis,
+    widget_classes: &WidgetClasses<'_>,
+) -> FlutterFileHints {
+    let mut derived = derive_hints(file, widget_classes);
     if file.invocations.is_empty() {
         if derived.routes.is_empty() {
             derived.routes = file.flutter.routes.clone();
@@ -418,19 +453,6 @@ fn resolve_interpolated_string(value: &str, constants: &HashMap<&str, &str>) -> 
         resolved.push_str(constants.get(name.as_str())?);
     }
     Some(resolved)
-}
-
-fn is_flutter_base(base: &str) -> bool {
-    let base = base.rsplit('.').next().unwrap_or(base);
-    matches!(
-        base,
-        "Widget"
-            | "StatelessWidget"
-            | "StatefulWidget"
-            | "InheritedWidget"
-            | "State"
-            | "ConsumerWidget"
-    )
 }
 
 fn imports_official_flutter(file: &DartFileAnalysis) -> bool {

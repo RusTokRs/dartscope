@@ -22,7 +22,8 @@ status: active
 - `DartLintConfig::default()` enables no rules.
 - `DartLintConfig::path_match` (`DartLintPathMatch::String` by default, or `Segment`) decides how
   every configured path prefix is compared, and `DartLintConfig::exclude` (`DartLintExclusions`)
-  drops findings about files under given prefixes or with given suffixes, such as `.g.dart`.
+  drops findings about files under given prefixes or with given suffixes, such as `.g.dart`;
+  `DartLintConfig::is_excluded(path)` answers the same question for callers that load the project.
 - severity overrides use `DiagnosticSeverity`.
 - diagnostics retain rule ID, severity, message, normalized path, optional source span, and optional
   related paths.

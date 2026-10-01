@@ -38,6 +38,25 @@ The umbrella crate exposes `analyze_file_with_flutter` and `analyze_project_with
 The library itself never discovers or reads those files, and non-catalog CLI commands do not
 read them.
 
+## Widget classes
+
+A class (never an `extension` or a `mixin`) is a widget when its superclass chain ends at `Widget`,
+`StatelessWidget`, `StatefulWidget`, `InheritedWidget`, `State` or `ConsumerWidget`.
+
+- A direct subclass is reported with confidence `high` and the superclass as written in `base_class`.
+- A class that reaches the base through other classes of the project (`class Screen extends
+  BaseScreen`, where `BaseScreen extends StatelessWidget` is declared in the same or another file) is
+  reported with confidence `medium`, the Flutter base it reaches in `base_class`, and the superclass it
+  names in the additive `inherited_via` (omitted for a direct subclass). `populate_flutter_project_analysis`
+  and `extract_flutter_inventory` follow the chain through the whole project;
+  `derive_flutter_file_hints` and `populate_flutter_file_hints` see the classes of their own file only.
+- The chain is followed by simple class name (an import prefix is ignored), at any depth. A private
+  name (`_Base`) is looked up in its own file only. A public name that more than one class of the
+  project declares is not followed, because without the import graph the library cannot tell which
+  one is meant, and a cycle or a superclass outside the project ends the chain without a finding.
+- A mixin never changes the superclass, so `with` does not make a widget: a class that applies
+  `mixin M on StatelessWidget` has to extend a widget itself, and then the chain finds it.
+
 ## Compatibility policy
 
 `DartFileAnalysis.invocations` is an additive optional v1 field. The legacy `flutter` field remains

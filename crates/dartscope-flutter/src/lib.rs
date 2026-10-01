@@ -23,6 +23,7 @@ mod catalogs;
 mod conventions;
 mod ecosystem;
 mod themes;
+mod widget_classes;
 
 pub use catalogs::{
     FlutterArbCatalog, FlutterArbInput, FlutterArbMessage, FlutterAssetDeclarationEntry,
@@ -52,6 +53,7 @@ use dartscope_core::{
 };
 
 use crate::conventions::effective_flutter_file_hints;
+use crate::widget_classes::WidgetClasses;
 use serde::{Deserialize, Serialize};
 
 /// Project-level Flutter inventory aggregated from [`DartProjectAnalysis`].
@@ -101,6 +103,10 @@ pub struct FlutterWidgetEntry {
     pub confidence: Confidence,
     /// Source location of the class declaration.
     pub span: SourceSpan,
+    /// The project class this widget extends when it reaches `base_class` through other classes;
+    /// absent for a direct subclass of `base_class`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inherited_via: Option<String>,
 }
 
 /// A route hint finding with its source location.
@@ -205,8 +211,9 @@ pub fn extract_flutter_inventory(project: &DartProjectAnalysis) -> FlutterInvent
     let mut localizations: Vec<FlutterLocalizationEntry> = Vec::new();
     let mut flutter_file_paths: Vec<String> = Vec::new();
 
+    let widget_classes = WidgetClasses::new(&project.files);
     for file in &project.files {
-        let hints = effective_flutter_file_hints(file);
+        let hints = effective_flutter_file_hints(file, &widget_classes);
         if hints.imports_flutter {
             flutter_file_paths.push(file.path.clone());
         }
@@ -288,6 +295,7 @@ fn flutter_widget_entry(file_path: &str, hint: &FlutterWidgetHint) -> FlutterWid
         base_class: hint.base_class.clone(),
         confidence: hint.confidence,
         span: hint.span.clone(),
+        inherited_via: hint.inherited_via.clone(),
     }
 }
 
@@ -387,6 +395,7 @@ mod tests {
             base_class: "StatelessWidget".to_string(),
             confidence: Confidence::High,
             span: dummy_span(),
+            inherited_via: None,
         });
 
         let mut file2 = DartFileAnalysis::empty("lib/profile.dart");
@@ -396,6 +405,7 @@ mod tests {
             base_class: "StatefulWidget".to_string(),
             confidence: Confidence::High,
             span: dummy_span(),
+            inherited_via: None,
         });
 
         project.files = vec![file, file2];
@@ -497,6 +507,7 @@ mod tests {
             base_class: "StatelessWidget".to_string(),
             confidence: Confidence::High,
             span: dummy_span(),
+            inherited_via: None,
         });
         let mut a_file = DartFileAnalysis::empty("lib/a.dart");
         a_file.flutter.imports_flutter = true;
@@ -505,6 +516,7 @@ mod tests {
             base_class: "StatelessWidget".to_string(),
             confidence: Confidence::High,
             span: dummy_span(),
+            inherited_via: None,
         });
         project.files = vec![z_file, a_file];
 

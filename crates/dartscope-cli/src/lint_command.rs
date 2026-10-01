@@ -26,12 +26,12 @@ pub(super) fn execute(
         config.failure_threshold = LintFailureThreshold::Warning;
     }
 
+    let engine_config = config.engine_config();
     let project = analyze_project(collect_project_input(path)?);
-    if let Some(message) = malformed_project_message(&project) {
+    if let Some(message) = malformed_project_message(&project, &engine_config) {
         return Err(CliError::project(message));
     }
 
-    let engine_config = config.engine_config();
     let analysis = lint_project(&project, &engine_config);
     let exit_code = if config.failure_threshold.is_failure(&analysis) {
         EXIT_FINDINGS
@@ -334,44 +334,57 @@ fn normalize_required_prefix(value: &str, label: &str, path: &str) -> Result<Str
     Ok(normalized)
 }
 
-fn malformed_project_message(project: &DartProjectAnalysis) -> Option<String> {
-    for diagnostic in &project.diagnostics {
-        if let Some(message) = project_error("<project>", diagnostic) {
-            return Some(message);
-        }
-    }
-    for file in &project.files {
-        for diagnostic in &file.diagnostics {
-            if let Some(message) = project_error(&file.path, diagnostic) {
-                return Some(message);
-            }
-        }
-    }
-    for pubspec in &project.pubspecs {
-        for diagnostic in &pubspec.diagnostics {
-            if let Some(message) = project_error(&pubspec.path, diagnostic) {
-                return Some(message);
-            }
-        }
-    }
-    for config in &project.package_configs {
-        for diagnostic in &config.diagnostics {
-            if let Some(message) = project_error(&config.path, diagnostic) {
-                return Some(message);
-            }
-        }
-    }
-    None
+/// The first error diagnostic of the loaded project, which makes rule results untrustworthy. A
+/// file the configuration excludes (a template `pubspec.yaml` with placeholders, vendored code)
+/// is not part of what is checked, so its errors do not stop the run.
+fn malformed_project_message(
+    project: &DartProjectAnalysis,
+    config: &DartLintConfig,
+) -> Option<String> {
+    let first_error = |fallback_path: &str, diagnostics: &[DartDiagnostic]| {
+        diagnostics
+            .iter()
+            .find_map(|diagnostic| project_error(fallback_path, diagnostic, config))
+    };
+    first_error("<project>", &project.diagnostics)
+        .or_else(|| {
+            project
+                .files
+                .iter()
+                .find_map(|file| first_error(&file.path, &file.diagnostics))
+        })
+        .or_else(|| {
+            project
+                .pubspecs
+                .iter()
+                .find_map(|pubspec| first_error(&pubspec.path, &pubspec.diagnostics))
+        })
+        .or_else(|| {
+            project
+                .package_configs
+                .iter()
+                .find_map(|package_config| {
+                    first_error(&package_config.path, &package_config.diagnostics)
+                })
+        })
 }
 
-fn project_error(fallback_path: &str, diagnostic: &DartDiagnostic) -> Option<String> {
-    (diagnostic.severity == DiagnosticSeverity::Error).then(|| {
-        let path = diagnostic.path.as_deref().unwrap_or(fallback_path);
-        format!(
-            "malformed project input at {path}: {}: {}",
-            diagnostic.code, diagnostic.message
-        )
-    })
+fn project_error(
+    fallback_path: &str,
+    diagnostic: &DartDiagnostic,
+    config: &DartLintConfig,
+) -> Option<String> {
+    if diagnostic.severity != DiagnosticSeverity::Error {
+        return None;
+    }
+    let path = diagnostic.path.as_deref().unwrap_or(fallback_path);
+    if config.is_excluded(path) {
+        return None;
+    }
+    Some(format!(
+        "malformed project input at {path}: {}: {}",
+        diagnostic.code, diagnostic.message
+    ))
 }
 #[cfg(test)]
 mod input_limit_tests {

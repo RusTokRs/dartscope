@@ -772,6 +772,11 @@ pub struct FlutterWidgetHint {
     pub base_class: String,
     pub confidence: Confidence,
     pub span: SourceSpan,
+    /// The project class named in `extends` when the widget reaches `base_class` through other
+    /// classes (`class Screen extends BaseScreen`, where `BaseScreen extends StatelessWidget`);
+    /// absent for a direct subclass of `base_class`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inherited_via: Option<String>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]

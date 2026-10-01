@@ -102,7 +102,9 @@ A forbidden import pattern with `match_kind = "segment_prefix"` does the same fo
 run as usual, and a finding whose path is under one of `path_prefixes` (compared as `path_match`
 says) or ends with one of `path_suffixes` (a plain string suffix such as `.g.dart`) is dropped
 before the output is built, so `summary` counts only what is reported. The exclusions apply to
-every rule, including `dartscope.orphan_file` and the unresolved-part findings.
+every rule, including `dartscope.orphan_file` and the unresolved-part findings. An error diagnostic
+about an excluded file (a template `pubspec.yaml` with placeholders under `templates/`, for example)
+does not end the run with exit code `6` either; the errors of every other file still do.
 
 ## Exit Codes
 

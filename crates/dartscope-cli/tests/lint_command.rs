@@ -357,6 +357,42 @@ fn segment_matching_and_exclusions_come_from_the_toml() {
 }
 
 #[test]
+fn errors_in_excluded_files_do_not_stop_the_run() {
+    let project = sample_project("excluded template");
+    write_file(
+        &project.path().join("templates/app/pubspec.yaml"),
+        "flutter: [unterminated\n",
+    );
+    let config = project.path().join("dartscope.toml");
+    let lint = |config_text: &str| {
+        write_file(&config, config_text);
+        run_os([
+            OsString::from("lint"),
+            project.path().as_os_str().to_owned(),
+            OsString::from("--config"),
+            config.clone().into_os_string(),
+        ])
+    };
+    let rules = "version = 1\nenabled_rules = [\"dartscope.naming_convention\"]\n";
+
+    // The template is part of the project, so its malformed pubspec still ends the run.
+    assert_error(lint(rules), 6, "malformed project input at templates/app/pubspec.yaml");
+
+    // Excluded, it is not checked, and the rest of the project is linted as usual.
+    let output = lint(&format!(
+        "{rules}\n[exclude]\npath_prefixes = [\"templates/\"]\n"
+    ));
+    assert_structured_output(&output, 0, "dartscope.lint-analysis");
+
+    // An exclusion of something else changes nothing.
+    assert_error(
+        lint(&format!("{rules}\n[exclude]\npath_prefixes = [\"vendor/\"]\n")),
+        6,
+        "malformed project input",
+    );
+}
+
+#[test]
 fn lint_output_can_be_compact_json_or_compact_sarif() {
     let project = sample_project("compact lint");
     write_file(&project.path().join("lib/BadName.dart"), "class Fine {}\n");
