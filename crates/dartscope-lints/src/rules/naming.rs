@@ -1,4 +1,4 @@
-use dartscope_core::{DartDeclarationKind, normalize_path};
+use dartscope_core::DartDeclarationKind;
 
 use crate::context::RuleContext;
 use crate::rules::diagnostic;
@@ -12,7 +12,7 @@ pub(crate) fn run(
     let severity = config.severity(DartLintRuleId::NamingConvention);
     for file in &context.project.files {
         if !context.includes_path(&file.path)
-            || ignored(&file.path, &config.naming.ignored_path_prefixes)
+            || ignored(config, &file.path, &config.naming.ignored_path_prefixes)
         {
             continue;
         }
@@ -52,10 +52,10 @@ pub(crate) fn run(
     }
 }
 
-fn ignored(path: &str, prefixes: &[String]) -> bool {
+fn ignored(config: &DartLintConfig, path: &str, prefixes: &[String]) -> bool {
     prefixes
         .iter()
-        .any(|prefix| path.starts_with(&normalize_path(prefix.clone())))
+        .any(|prefix| config.path_has_prefix(path, prefix))
 }
 
 fn valid_dart_file_name(path: &str) -> bool {

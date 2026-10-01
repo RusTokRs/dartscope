@@ -11,6 +11,9 @@ additive `0.2` lint command.
 - `dartscope help <command>` and `dartscope <command> --help` print command-specific help.
 - Successful analysis commands write one versioned JSON envelope to stdout and write nothing to
   stderr.
+- `--compact` (every analysis command, after the path, at most once) writes the same JSON document
+  on one line instead of indented. Only whitespace between tokens differs, so the two forms parse to
+  the same value; the default stays indented.
 - Argument and input errors write nothing to stdout and one human-readable error to stderr.
 
 The CLI is built with the optional Flutter feature. `analyze-file` and `analyze-project`
@@ -22,14 +25,14 @@ The supported commands are:
 
 | Command | Input | Optional arguments | JSON schema |
 | --- | --- | --- | --- |
-| `analyze-file` | Dart file | none | `dartscope.file-analysis` |
-| `pubspec` | `pubspec.yaml` | none | `dartscope.pubspec-analysis` |
-| `pubspec-config` | `pubspec.yaml` | none | `dartscope.pubspec-configuration` |
-| `analyze-project` | project directory | none | `dartscope.project-analysis` |
-| `graphql-contracts` | project directory | repeatable `--env key=value` | `dartscope.graphql-contracts` |
-| `uri-graph` | project directory | repeatable `--env key=value` | `dartscope.uri-graph` |
-| `flutter-inventory` | project directory | none | `dartscope.flutter-inventory` |
-| `lint` | project directory | `--config`, `--format`, `--deny-warnings` | `dartscope.lint-analysis` or SARIF 2.1.0 |
+| `analyze-file` | Dart file | `--compact` | `dartscope.file-analysis` |
+| `pubspec` | `pubspec.yaml` | `--compact` | `dartscope.pubspec-analysis` |
+| `pubspec-config` | `pubspec.yaml` | `--compact` | `dartscope.pubspec-configuration` |
+| `analyze-project` | project directory | `--relative-root`, `--skip-symlinks`, `--compact` | `dartscope.project-analysis` |
+| `graphql-contracts` | project directory | repeatable `--env key=value`, `--compact` | `dartscope.graphql-contracts` |
+| `uri-graph` | project directory | repeatable `--env key=value`, `--compact` | `dartscope.uri-graph` |
+| `flutter-inventory` | project directory | `--compact` | `dartscope.flutter-inventory` |
+| `lint` | project directory | `--config`, `--format`, `--deny-warnings`, `--compact` | `dartscope.lint-analysis` or SARIF 2.1.0 |
 
 ## Exit codes
 
@@ -57,6 +60,12 @@ Project commands recursively visit regular files under the explicitly supplied r
 normalized to forward slashes in analysis inputs and sorted before analysis, so traversal order is
 stable across Linux and Windows.
 
+`data.root` of `analyze-project` is the absolute path of the project directory with its `.`
+components dropped: `dartscope analyze-project .` run in `/work/app` reports `/work/app`, not
+`/work/app/.`. `--relative-root` reports `.` instead, so the document does not depend on where the
+project was checked out and can be compared or cached across machines; file paths are relative to the
+root either way.
+
 Each discovered `pubspec.yaml` owns the nearest sibling `.dart_tool/package_config.json` below the
 same package directory. This supports nested packages without borrowing a package configuration
 from a parent package.
@@ -65,7 +74,9 @@ A symbolic link to a file whose target stays inside the project root is read lik
 to; this includes a symlinked package-config file. A link whose target leaves the root, a link to a
 directory, and a link that cannot be resolved fail the run with exit code `3` and a message that
 starts with `input_symlink_rejected`: the CLI does not follow anything it cannot show to be inside
-the root. Directories in the skip lists below are never entered, so the links that Flutter and
+the root. `analyze-project --skip-symlinks` leaves such a link out instead and reports the warning
+`input_symlink_skipped` with its path and the reason, so one stray link does not hide the rest of a
+monorepo; the other commands cannot carry that report and keep failing. Directories in the skip lists below are never entered, so the links that Flutter and
 CocoaPods create inside them do not matter. An explicitly supplied project root may be a symlink
 because it is an intentional user-selected boundary.
 
@@ -90,6 +101,12 @@ names inside the source roots, so they are skipped only when no directory betwee
 and the folder is one of `lib`, `bin`, `test`, `test_driver`, `tool`, `integration_test` or
 `benchmark`. `lib/src/build/steps.dart` is analyzed; `build/generated.dart` and
 `packages/app/build/x.dart` are not.
+
+`analyze-project` names the skipped directories that a reader might expect to be analyzed: one
+`input_directory_skipped` diagnostic of severity `info` with the directory path for each `build`,
+`coverage`, `target`, `Pods`, `node_modules`, `.symlinks` and `.plugin_symlinks` the walk did not
+enter (counted in `summary.diagnostics`). Tool state (`.git`, `.dart_tool`, `.idea`, `.pub-cache`,
+`.vscode`) is skipped silently, and so is a source folder that happens to be named `build`.
 
 A `.dart` file that is not valid UTF-8 is not Dart source the analysis can describe. `analyze-project`
 leaves it out and reports the warning `input_file_not_utf8` with the file path (counted in

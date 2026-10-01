@@ -1,8 +1,6 @@
-use dartscope_core::normalize_path;
-
 use crate::context::RuleContext;
 use crate::rules::diagnostic;
-use crate::{DartImportPatternKind, DartLintConfig, DartLintDiagnostic, DartLintRuleId};
+use crate::{DartLintConfig, DartLintDiagnostic, DartLintRuleId};
 
 pub(crate) fn run(
     context: &RuleContext<'_>,
@@ -43,8 +41,8 @@ pub(crate) fn run(
             );
             for uri in uris {
                 for pattern in &patterns {
-                    if !source_matches(&file.path, pattern.source_prefix.as_deref())
-                        || !uri_matches(uri, &pattern.uri, pattern.match_kind)
+                    if !source_matches(config, &file.path, pattern.source_prefix.as_deref())
+                        || !pattern.match_kind.matches(uri, &pattern.uri)
                     {
                         continue;
                     }
@@ -65,15 +63,8 @@ pub(crate) fn run(
     }
 }
 
-fn source_matches(path: &str, source_prefix: Option<&str>) -> bool {
+fn source_matches(config: &DartLintConfig, path: &str, source_prefix: Option<&str>) -> bool {
     source_prefix
-        .map(|prefix| path.starts_with(&normalize_path(prefix.to_string())))
+        .map(|prefix| config.path_has_prefix(path, prefix))
         .unwrap_or(true)
-}
-
-fn uri_matches(uri: &str, pattern: &str, kind: DartImportPatternKind) -> bool {
-    match kind {
-        DartImportPatternKind::Exact => uri == pattern,
-        DartImportPatternKind::Prefix => uri.starts_with(pattern),
-    }
 }

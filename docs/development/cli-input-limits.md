@@ -34,6 +34,9 @@ JSON is never partially written on a limit failure. The error is emitted only on
 validation remains separate: in-root file symlinks are allowed, while escaping links and directory
 symlinks are rejected before reading. Directories of the skip list (for example the Flutter
 `.symlinks` and `.plugin_symlinks` folders) are not entered, so their links are not validated.
+`analyze-project --skip-symlinks` reports a rejected symlink as the warning `input_symlink_skipped`
+instead of failing, and always reports the directories of the skip list that hold generated or
+third-party files as `input_directory_skipped` (severity `info`).
 A `.dart` file that is not valid UTF-8 is skipped with the warning `input_file_not_utf8` by
 `analyze-project` and rejected by every other command; it still counts toward the project budgets.
 

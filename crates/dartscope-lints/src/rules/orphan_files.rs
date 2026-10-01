@@ -69,7 +69,7 @@ pub(crate) fn run(
                 .orphan_files
                 .ignored_path_prefixes
                 .iter()
-                .any(|prefix| path.starts_with(&normalize_path(prefix.clone())))
+                .any(|prefix| config.path_has_prefix(&path, prefix))
         {
             continue;
         }

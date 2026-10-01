@@ -16,8 +16,10 @@ use dartscope::{
     JsonContract, PackageConfigInput, PubspecInput, analyze_file_with_flutter,
     analyze_graphql_contracts_with_options, analyze_project, analyze_project_with_flutter,
     build_uri_graph_with_options, extract_flutter_inventory_with_catalogs, parse_pubspec,
-    parse_pubspec_configuration, to_json_contract_pretty,
+    parse_pubspec_configuration, to_json, to_json_contract, to_json_contract_pretty,
+    to_json_pretty,
 };
+use serde::Serialize;
 
 const EXIT_INTERNAL: u8 = 1;
 const EXIT_USAGE: u8 = 2;
@@ -45,14 +47,64 @@ impl CliOutput {
     }
 }
 
-macro_rules! serialize_contract {
-    ($contract:expr, $value:expr) => {
-        to_json_contract_pretty($contract, $value)
+/// How JSON is written: indented for people (the default) or on one line for pipelines.
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
+enum JsonStyle {
+    #[default]
+    Pretty,
+    Compact,
+}
+
+impl JsonStyle {
+    /// Serializes `value` inside the versioned envelope of `contract`.
+    fn contract_text<T: Serialize + ?Sized>(
+        self,
+        contract: JsonContract,
+        value: &T,
+    ) -> Result<String, String> {
+        let json = match self {
+            Self::Pretty => to_json_contract_pretty(contract, value),
+            Self::Compact => to_json_contract(contract, value),
+        };
+        json.map_err(|error| error.to_string())
+    }
+
+    /// Serializes a value that has its own schema outside the DartScope envelopes, like SARIF.
+    fn plain_text<T: Serialize + ?Sized>(self, value: &T) -> Result<String, String> {
+        let json = match self {
+            Self::Pretty => to_json_pretty(value),
+            Self::Compact => to_json(value),
+        };
+        json.map_err(|error| error.to_string())
+    }
+
+    fn contract_output<T: Serialize + ?Sized>(
+        self,
+        contract: JsonContract,
+        value: &T,
+    ) -> Result<CliOutput, CliError> {
+        self.contract_text(contract, value)
             .map(CliOutput::success)
             .map_err(|error| {
                 CliError::internal(format!("failed to serialize JSON output: {error}"))
             })
-    };
+    }
+}
+
+/// Takes the output options that every command shares out of its arguments.
+fn split_json_style(args: &[String]) -> Result<(JsonStyle, Vec<String>), CliError> {
+    let mut style = JsonStyle::Pretty;
+    let mut rest = Vec::with_capacity(args.len());
+    for argument in args {
+        if argument != "--compact" {
+            rest.push(argument.clone());
+        } else if style == JsonStyle::Compact {
+            return Err(CliError::usage("--compact may be given only once"));
+        } else {
+            style = JsonStyle::Compact;
+        }
+    }
+    Ok((style, rest))
 }
 
 fn main() -> ExitCode {
@@ -136,7 +188,8 @@ fn run(args: impl IntoIterator<Item = String>) -> Result<CliOutput, CliError> {
             command.help()
         ))
     })?;
-    execute(command, path, &args[2..])
+    let (style, extra_args) = split_json_style(&args[2..])?;
+    execute(command, path, &extra_args, style)
 }
 
 fn help_command(args: &[String]) -> Result<CliOutput, CliError> {
@@ -151,57 +204,66 @@ fn help_command(args: &[String]) -> Result<CliOutput, CliError> {
     }
 }
 
-fn execute(command: CliCommand, path: &str, extra_args: &[String]) -> Result<CliOutput, CliError> {
+fn execute(
+    command: CliCommand,
+    path: &str,
+    extra_args: &[String],
+    style: JsonStyle,
+) -> Result<CliOutput, CliError> {
     match command {
         CliCommand::AnalyzeFile => {
             reject_extra_args(extra_args, command)?;
             let source = read_source(path)?;
             let analysis = analyze_file_with_flutter(DartFileInput::new(path, source));
-            serialize_contract!(JsonContract::FileAnalysis, &analysis)
+            style.contract_output(JsonContract::FileAnalysis, &analysis)
         }
         CliCommand::Pubspec => {
             reject_extra_args(extra_args, command)?;
             let source = read_source(path)?;
             let analysis = parse_pubspec(PubspecInput::new(path, source));
-            serialize_contract!(JsonContract::PubspecAnalysis, &analysis)
+            style.contract_output(JsonContract::PubspecAnalysis, &analysis)
         }
         CliCommand::PubspecConfig => {
             reject_extra_args(extra_args, command)?;
             let source = read_source(path)?;
             let analysis = parse_pubspec_configuration(PubspecInput::new(path, source));
-            serialize_contract!(JsonContract::PubspecConfiguration, &analysis)
+            style.contract_output(JsonContract::PubspecConfiguration, &analysis)
         }
         CliCommand::AnalyzeProject => {
-            reject_extra_args(extra_args, command)?;
-            let sources = collect_project_sources_reporting_skips(path)?;
+            let options = ProjectOptions::parse(extra_args, command)?;
+            let mut sources = collect_project_sources_reporting_skips(path, options)?;
+            if options.relative_root {
+                // Keeps the report free of the machine it ran on, so it can be diffed and cached.
+                sources.dart.root = ".".to_string();
+            }
             let analysis = with_input_diagnostics(
                 analyze_project_with_flutter(sources.dart),
                 sources.input_diagnostics,
             );
-            serialize_contract!(JsonContract::ProjectAnalysis, &analysis)
+            style.contract_output(JsonContract::ProjectAnalysis, &analysis)
         }
         CliCommand::GraphqlContracts => {
             let options = parse_index_options(extra_args, command)?;
             let input = collect_project_input(path)?;
             let project = analyze_project(input);
             let analysis = analyze_graphql_contracts_with_options(&project, &options);
-            serialize_contract!(JsonContract::GraphqlContracts, &analysis)
+            style.contract_output(JsonContract::GraphqlContracts, &analysis)
         }
         CliCommand::UriGraph => {
             let options = parse_index_options(extra_args, command)?;
             let input = collect_project_input(path)?;
             let project = analyze_project(input);
             let graph = build_uri_graph_with_options(&project, &options);
-            serialize_contract!(JsonContract::UriGraph, &graph)
+            style.contract_output(JsonContract::UriGraph, &graph)
         }
         CliCommand::FlutterInventory => {
             reject_extra_args(extra_args, command)?;
             let input = collect_flutter_project_sources(path)?;
             let project = analyze_project(input.dart);
             let inventory = extract_flutter_inventory_with_catalogs(&project, &input.flutter);
-            serialize_contract!(JsonContract::FlutterInventory, &inventory)
+            style.contract_output(JsonContract::FlutterInventory, &inventory)
         }
-        CliCommand::Lint => lint_command::execute(path, extra_args),
+        CliCommand::Lint => lint_command::execute(path, extra_args, style),
     }
 }
 
@@ -261,6 +323,40 @@ fn parse_index_options(args: &[String], command: CliCommand) -> Result<DartIndex
     Ok(options)
 }
 
+/// Options of `analyze-project`.
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
+struct ProjectOptions {
+    /// Report the project root as `.` instead of the absolute path of this machine.
+    relative_root: bool,
+    /// Report a symlink the walker refuses to follow as a diagnostic instead of failing the run.
+    skip_symlinks: bool,
+}
+
+impl ProjectOptions {
+    fn parse(args: &[String], command: CliCommand) -> Result<Self, CliError> {
+        let mut options = Self::default();
+        for argument in args {
+            let flag = match argument.as_str() {
+                "--relative-root" => &mut options.relative_root,
+                "--skip-symlinks" => &mut options.skip_symlinks,
+                other => {
+                    return Err(CliError::usage(format!(
+                        "unexpected argument for {}: {other}\n\n{}",
+                        command.name(),
+                        command.help()
+                    )));
+                }
+            };
+            if std::mem::replace(flag, true) {
+                return Err(CliError::usage(format!(
+                    "{argument} may be given only once"
+                )));
+            }
+        }
+        Ok(options)
+    }
+}
+
 fn parse_environment_entry(pair: &str) -> Result<(String, String), CliError> {
     let Some((key, value)) = pair.split_once('=') else {
         return Err(CliError::usage(format!(
@@ -300,6 +396,10 @@ struct ProjectSourceAccumulator {
     /// Leave a source that is not valid UTF-8 out of the project and report it, instead of
     /// failing. Only commands that can show the report ask for this.
     skip_invalid_utf8: bool,
+    /// Leave a rejected symlink out of the project and report it, instead of failing.
+    skip_symlinks: bool,
+    /// Report the directories the walk does not enter, such as `build` or `Pods`.
+    report_skipped_directories: bool,
 }
 
 impl ProjectSourceAccumulator {
@@ -321,7 +421,7 @@ impl ProjectSourceAccumulator {
         self.arb_files
             .sort_by(|left, right| left.path.cmp(&right.path));
         self.input_diagnostics
-            .sort_by(|left, right| left.path.cmp(&right.path));
+            .sort_by(|left, right| (&left.path, &left.code).cmp(&(&right.path, &right.code)));
 
         CollectedProjectSources {
             dart: DartProjectInput::new(
@@ -344,6 +444,41 @@ fn with_input_diagnostics(
     analysis.diagnostics.extend(input_diagnostics);
     analysis.summary.diagnostics = analysis.diagnostics.len();
     analysis
+}
+
+/// Why the walk does not enter a directory worth telling the user about, or `None` for tool state
+/// (`.git`, `.dart_tool`, ...) nobody expects to be analyzed.
+fn skipped_directory_reason(name: &str) -> Option<&'static str> {
+    match name {
+        "build" | "coverage" | "target" => Some(
+            "build output directories are only analyzed inside lib, bin, test, test_driver, tool, integration_test and benchmark",
+        ),
+        "Pods" | "node_modules" => Some("dependency directories are not analyzed"),
+        ".symlinks" | ".plugin_symlinks" => {
+            Some("Flutter plugin link directories are not analyzed")
+        }
+        _ => None,
+    }
+}
+
+fn skipped_directory_diagnostic(path: String, reason: &str) -> DartDiagnostic {
+    let mut diagnostic = DartDiagnostic::info(
+        "input_directory_skipped",
+        format!("the directory was not analyzed: {reason}"),
+        None,
+    );
+    diagnostic.path = Some(path);
+    diagnostic
+}
+
+fn skipped_symlink_diagnostic(path: String, reason: &str) -> DartDiagnostic {
+    let mut diagnostic = DartDiagnostic::warning(
+        "input_symlink_skipped",
+        format!("the symlink was left out of the analysis: {reason}"),
+        None,
+    );
+    diagnostic.path = Some(path);
+    diagnostic
 }
 
 fn not_utf8_diagnostic(path: String) -> DartDiagnostic {
@@ -388,12 +523,15 @@ fn collect_project_sources_with_limits(
 }
 
 /// Collects a project like [`collect_project_sources`], but leaves sources that are not valid
-/// UTF-8 out and returns a diagnostic for each of them.
+/// UTF-8 out and returns a diagnostic for each of them, and for every directory the walk skips.
 fn collect_project_sources_reporting_skips(
     root: &str,
+    options: ProjectOptions,
 ) -> Result<CollectedProjectSources, CliError> {
     let mut sources = ProjectSourceAccumulator::new(false);
     sources.skip_invalid_utf8 = true;
+    sources.skip_symlinks = options.skip_symlinks;
+    sources.report_skipped_directories = true;
     collect_into_accumulator(root, sources, input_limits::DEFAULT_INPUT_LIMITS)
 }
 
@@ -431,6 +569,9 @@ fn resolve_project_root(root: &str) -> Result<ProjectRoot, CliError> {
             .map_err(|error| CliError::input(format!("failed to read current directory: {error}")))?
             .join(path)
     };
+    // `dartscope analyze-project .` would otherwise report `/work/project/.`. Dropping the `.`
+    // components is purely lexical: `..` stays, so nothing is resolved through a symlink here.
+    let path: PathBuf = path.components().collect();
 
     let metadata = fs::metadata(&path).map_err(|error| {
         CliError::input(format!(
@@ -500,7 +641,9 @@ fn collect_sources(
             })?;
 
             if file_type.is_dir() {
-                if !is_skipped_directory(&root.logical, &path) {
+                if is_skipped_directory(&root.logical, &path) {
+                    sources.note_skipped_directory(root, &path);
+                } else {
                     traversal.ensure_can_queue_directory(
                         &path,
                         pending_directories.len(),
@@ -510,7 +653,7 @@ fn collect_sources(
                 }
                 continue;
             }
-            let Some(source_read_path) = source_file_read_path(root, &path, &file_type)? else {
+            let Some(source_read_path) = sources.readable_path(root, &path, &file_type)? else {
                 continue;
             };
 
@@ -536,7 +679,7 @@ fn collect_sources(
                         let package_config_path =
                             package_root.join(".dart_tool").join("package_config.json");
                         if let Some(package_config_read_path) =
-                            optional_source_file_read_path(root, &package_config_path)?
+                            sources.optional_readable_path(root, &package_config_path)?
                         {
                             let source = input_limits::read_project_path(
                                 &package_config_read_path,
@@ -599,17 +742,68 @@ fn collect_sources(
     Ok(())
 }
 
-fn optional_source_file_read_path(
-    root: &ProjectRoot,
-    path: &Path,
-) -> Result<Option<PathBuf>, CliError> {
-    match fs::symlink_metadata(path) {
-        Ok(metadata) => source_file_read_path(root, path, &metadata.file_type()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(CliError::input(format!(
-            "failed to inspect {}: {error}",
-            path.display()
-        ))),
+/// A symlink the walker refuses to follow, and why.
+#[derive(Debug)]
+struct RejectedSymlink(String);
+
+impl From<RejectedSymlink> for CliError {
+    fn from(rejected: RejectedSymlink) -> Self {
+        CliError::input(format!("input_symlink_rejected: {}", rejected.0))
+    }
+}
+
+impl ProjectSourceAccumulator {
+    /// The path to read a directory entry from: the entry itself for a file, the target of a
+    /// symlink that stays inside the project, `None` for anything that is not a source file.
+    /// A rejected symlink is an input error, or a diagnostic with `skip_symlinks`.
+    fn readable_path(
+        &mut self,
+        root: &ProjectRoot,
+        path: &Path,
+        file_type: &fs::FileType,
+    ) -> Result<Option<PathBuf>, CliError> {
+        match source_file_read_path(root, path, file_type) {
+            Ok(read_path) => Ok(read_path),
+            Err(rejected) if self.skip_symlinks => {
+                let shown = relative_path(&root.logical, path)
+                    .unwrap_or_else(|| path.display().to_string());
+                self.input_diagnostics
+                    .push(skipped_symlink_diagnostic(shown, &rejected.0));
+                Ok(None)
+            }
+            Err(rejected) => Err(rejected.into()),
+        }
+    }
+
+    /// Like [`Self::readable_path`] for a file that may not exist.
+    fn optional_readable_path(
+        &mut self,
+        root: &ProjectRoot,
+        path: &Path,
+    ) -> Result<Option<PathBuf>, CliError> {
+        match fs::symlink_metadata(path) {
+            Ok(metadata) => self.readable_path(root, path, &metadata.file_type()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(CliError::input(format!(
+                "failed to inspect {}: {error}",
+                path.display()
+            ))),
+        }
+    }
+
+    /// Records a directory the walk does not enter, when the command reports them.
+    fn note_skipped_directory(&mut self, root: &ProjectRoot, path: &Path) {
+        if !self.report_skipped_directories {
+            return;
+        }
+        let reason = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(skipped_directory_reason);
+        if let (Some(reason), Some(shown)) = (reason, relative_path(&root.logical, path)) {
+            self.input_diagnostics
+                .push(skipped_directory_diagnostic(shown, reason));
+        }
     }
 }
 
@@ -617,7 +811,7 @@ fn source_file_read_path(
     root: &ProjectRoot,
     path: &Path,
     file_type: &fs::FileType,
-) -> Result<Option<PathBuf>, CliError> {
+) -> Result<Option<PathBuf>, RejectedSymlink> {
     if file_type.is_file() {
         return Ok(Some(path.to_path_buf()));
     }
@@ -626,14 +820,14 @@ fn source_file_read_path(
     }
 
     let target = fs::canonicalize(path).map_err(|error| {
-        CliError::input(format!(
-            "input_symlink_rejected: failed to resolve symlink {}: {error}",
+        RejectedSymlink(format!(
+            "failed to resolve symlink {}: {error}",
             path.display()
         ))
     })?;
     if !target.starts_with(&root.canonical) {
-        return Err(CliError::input(format!(
-            "input_symlink_rejected: symlink {} resolves outside project root {}: {}",
+        return Err(RejectedSymlink(format!(
+            "symlink {} resolves outside project root {}: {}",
             path.display(),
             root.logical.display(),
             target.display()
@@ -641,21 +835,21 @@ fn source_file_read_path(
     }
 
     let metadata = fs::metadata(&target).map_err(|error| {
-        CliError::input(format!(
-            "input_symlink_rejected: failed to inspect symlink target {}: {error}",
+        RejectedSymlink(format!(
+            "failed to inspect symlink target {}: {error}",
             target.display()
         ))
     })?;
     if metadata.is_dir() {
-        return Err(CliError::input(format!(
-            "input_symlink_rejected: symlinked directories are not supported: {} -> {}",
+        return Err(RejectedSymlink(format!(
+            "symlinked directories are not supported: {} -> {}",
             path.display(),
             target.display()
         )));
     }
     if !metadata.is_file() {
-        return Err(CliError::input(format!(
-            "input_symlink_rejected: symlink target is not a regular file: {} -> {}",
+        return Err(RejectedSymlink(format!(
+            "symlink target is not a regular file: {} -> {}",
             path.display(),
             target.display()
         )));
@@ -770,31 +964,45 @@ impl CliCommand {
 
     const fn usage(self) -> &'static str {
         match self {
-            Self::AnalyzeFile => "dartscope analyze-file <path>",
-            Self::Pubspec => "dartscope pubspec <path>",
-            Self::PubspecConfig => "dartscope pubspec-config <path>",
-            Self::AnalyzeProject => "dartscope analyze-project <path>",
-            Self::GraphqlContracts => "dartscope graphql-contracts <path> [--env <key=value>]...",
-            Self::UriGraph => "dartscope uri-graph <path> [--env <key=value>]...",
-            Self::FlutterInventory => "dartscope flutter-inventory <path>",
-            Self::Lint => "dartscope lint <project>",
+            Self::AnalyzeFile => "dartscope analyze-file <path> [--compact]",
+            Self::Pubspec => "dartscope pubspec <path> [--compact]",
+            Self::PubspecConfig => "dartscope pubspec-config <path> [--compact]",
+            Self::AnalyzeProject => {
+                "dartscope analyze-project <path> [--relative-root] [--skip-symlinks] [--compact]"
+            }
+            Self::GraphqlContracts => {
+                "dartscope graphql-contracts <path> [--env <key=value>]... [--compact]"
+            }
+            Self::UriGraph => "dartscope uri-graph <path> [--env <key=value>]... [--compact]",
+            Self::FlutterInventory => "dartscope flutter-inventory <path> [--compact]",
+            Self::Lint => {
+                "dartscope lint <project> [--config <path>] [--format <json|sarif>] [--deny-warnings] [--compact]"
+            }
+        }
+    }
+
+    /// The options only this command takes, one per line.
+    const fn specific_options(self) -> &'static str {
+        match self {
+            Self::AnalyzeProject => {
+                "  --relative-root        Report the project root as `.` instead of an absolute path\n  --skip-symlinks        Report a rejected symlink as a diagnostic instead of failing\n"
+            }
+            Self::GraphqlContracts | Self::UriGraph => {
+                "  --env <key=value>      Add a Dart compilation-environment entry; repeatable\n"
+            }
+            Self::Lint => {
+                "  --config <path>        Read versioned TOML lint configuration\n  --format <json|sarif>  Select structured output; default: json\n  --deny-warnings        Fail when warning findings are present\n"
+            }
+            _ => "",
         }
     }
 
     fn help(self) -> String {
-        let options = match self {
-            Self::GraphqlContracts | Self::UriGraph => {
-                "\nOPTIONS:\n  --env <key=value>  Add a Dart compilation-environment entry; repeatable\n  -h, --help         Print command help"
-            }
-            Self::Lint => {
-                "\nOPTIONS:\n  --config <path>        Read versioned TOML lint configuration\n  --format <json|sarif>  Select structured output; default: json\n  --deny-warnings        Fail when warning findings are present\n  -h, --help             Print command help"
-            }
-            _ => "\nOPTIONS:\n  -h, --help  Print command help",
-        };
         format!(
-            "{}\n\nUSAGE:\n  {}\n{options}",
+            "{}\n\nUSAGE:\n  {}\n\nOPTIONS:\n{}  --compact              Print the JSON on one line instead of indented\n  -h, --help             Print command help",
             self.summary(),
-            self.usage()
+            self.usage(),
+            self.specific_options()
         )
     }
 }

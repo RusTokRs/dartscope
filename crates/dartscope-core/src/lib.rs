@@ -850,6 +850,21 @@ pub struct DartDiagnostic {
 }
 
 impl DartDiagnostic {
+    pub fn info(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        span: Option<SourceSpan>,
+    ) -> Self {
+        Self {
+            path: None,
+            code: code.into(),
+            severity: DiagnosticSeverity::Info,
+            message: message.into(),
+            span,
+            confidence: None,
+        }
+    }
+
     pub fn warning(
         code: impl Into<String>,
         message: impl Into<String>,

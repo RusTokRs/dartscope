@@ -273,6 +273,120 @@ fn orphan_rule_without_entry_points_is_a_configuration_error() {
     );
 }
 
+#[test]
+fn a_configuration_that_enables_no_rule_is_an_error() {
+    let project = sample_project("config without rules");
+    let config = project.path().join("dartscope.toml");
+    write_file(&config, "version = 1\n");
+
+    assert_error(
+        run_os([
+            OsString::from("lint"),
+            project.path().as_os_str().to_owned(),
+            OsString::from("--config"),
+            config.into_os_string(),
+        ]),
+        5,
+        "no lint rule is enabled",
+    );
+}
+
+#[test]
+fn segment_matching_and_exclusions_come_from_the_toml() {
+    let project = sample_project("segment and exclusions");
+    for (path, source) in [
+        (
+            "lib/ui/screen.dart",
+            "import 'package:flutter_bloc/flutter_bloc.dart';\nclass Screen {}\n",
+        ),
+        (
+            "lib/ui_kit/button.dart",
+            "import 'package:flutter_bloc/flutter_bloc.dart';\nclass Button {}\n",
+        ),
+        ("lib/model.g.dart", "class bad_generated {}\n"),
+        ("lib/generated/other.dart", "class bad_other {}\n"),
+    ] {
+        write_file(&project.path().join(path), source);
+    }
+    // Top-level keys have to come before the first table.
+    let rules = concat!(
+        "version = 1\n",
+        "enabled_rules = [\"dartscope.forbidden_import\", \"dartscope.naming_convention\"]\n",
+    );
+    let segment_matching = "path_match = \"segment\"\n";
+    let pattern = concat!(
+        "\n[[forbidden_imports]]\n",
+        "uri = \"package:flutter_bloc\"\n",
+        "source_prefix = \"lib/ui\"\n",
+    );
+    let segment_pattern = "match_kind = \"segment_prefix\"\n";
+    let exclusions = concat!(
+        "\n[exclude]\n",
+        "path_prefixes = [\"lib\\\\generated\"]\n",
+        "path_suffixes = [\".g.dart\"]\n",
+    );
+    let lint = |config_text: &str| {
+        let config = project.path().join("dartscope.toml");
+        write_file(&config, config_text);
+        let output = run_os([
+            OsString::from("lint"),
+            project.path().as_os_str().to_owned(),
+            OsString::from("--config"),
+            config.into_os_string(),
+        ]);
+        assert_structured_output(&output, 0, "dartscope.lint-analysis");
+        stdout(&output)
+    };
+
+    // Version 1 behavior: plain string prefixes and no exclusions.
+    let by_string = lint(&format!("{rules}{pattern}"));
+    assert!(by_string.contains("lib/ui_kit/button.dart"), "{by_string}");
+    assert!(by_string.contains("lib/model.g.dart"), "{by_string}");
+    assert!(by_string.contains("lib/generated/other.dart"), "{by_string}");
+
+    let tuned = lint(&format!(
+        "{rules}{segment_matching}{pattern}{segment_pattern}{exclusions}"
+    ));
+    assert!(tuned.contains("lib/ui/screen.dart"), "{tuned}");
+    assert!(!tuned.contains("lib/ui_kit/button.dart"), "{tuned}");
+    assert!(!tuned.contains("model.g.dart"), "{tuned}");
+    assert!(!tuned.contains("lib/generated"), "{tuned}");
+}
+
+#[test]
+fn lint_output_can_be_compact_json_or_compact_sarif() {
+    let project = sample_project("compact lint");
+    write_file(&project.path().join("lib/BadName.dart"), "class Fine {}\n");
+    let config = project.path().join("dartscope.toml");
+    write_file(
+        &config,
+        "version = 1\nenabled_rules = [\"dartscope.naming_convention\"]\n",
+    );
+    for format in ["json", "sarif"] {
+        let run_lint = |compact: bool| {
+            let mut args = vec![
+                OsString::from("lint"),
+                project.path().as_os_str().to_owned(),
+                OsString::from("--config"),
+                config.clone().into_os_string(),
+                OsString::from("--format"),
+                OsString::from(format),
+            ];
+            if compact {
+                args.push(OsString::from("--compact"));
+            }
+            run_os(args)
+        };
+        let pretty = stdout(&run_lint(false));
+        let compact = run_lint(true);
+        assert_output_code(&compact, 0);
+        let compact = stdout(&compact);
+        assert_eq!(compact.matches('\n').count(), 1, "{format}: {compact}");
+        assert!(compact.len() < pretty.len(), "{format}");
+        assert!(compact.starts_with('{') && compact.trim_end().ends_with('}'));
+    }
+}
+
 fn sample_project(label: &str) -> TempDirectory {
     let project = TempDirectory::new(label);
     write_file(&project.path().join("lib/main.dart"), "void main() {}\n");

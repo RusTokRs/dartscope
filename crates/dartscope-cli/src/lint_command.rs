@@ -1,18 +1,22 @@
 use dartscope::{
     DartDiagnostic, DartForbiddenImportPattern, DartLayerBoundary, DartLintAnalysis,
-    DartLintConfig, DartLintRuleId, DartLintSeverityOverride, DartNamingRuleConfig,
-    DartOrphanFileRuleConfig, DartProjectAnalysis, DiagnosticSeverity, JsonContract,
-    analyze_project, lint_project, to_json_contract_pretty,
+    DartLintConfig, DartLintExclusions, DartLintPathMatch, DartLintRuleId,
+    DartLintSeverityOverride, DartNamingRuleConfig, DartOrphanFileRuleConfig, DartProjectAnalysis,
+    DiagnosticSeverity, JsonContract, analyze_project, lint_project,
 };
 use serde::Deserialize;
 use std::collections::BTreeSet;
 
-use super::{CliError, CliOutput, EXIT_FINDINGS, collect_project_input, input_limits};
+use super::{CliError, CliOutput, EXIT_FINDINGS, JsonStyle, collect_project_input, input_limits};
 
 const CONFIG_VERSION: u16 = 1;
 mod sarif;
 
-pub(super) fn execute(path: &str, arguments: &[String]) -> Result<CliOutput, CliError> {
+pub(super) fn execute(
+    path: &str,
+    arguments: &[String],
+    style: JsonStyle,
+) -> Result<CliOutput, CliError> {
     let options = LintOptions::parse(arguments)?;
     let mut config = match options.config_path.as_deref() {
         Some(config_path) => read_config(config_path)?,
@@ -35,12 +39,13 @@ pub(super) fn execute(path: &str, arguments: &[String]) -> Result<CliOutput, Cli
         0
     };
     let output = match options.format {
-        LintOutputFormat::Json => to_json_contract_pretty(JsonContract::LintAnalysis, &analysis)
+        LintOutputFormat::Json => style
+            .contract_text(JsonContract::LintAnalysis, &analysis)
             .map_err(|error| {
                 CliError::internal(format!("failed to serialize lint JSON output: {error}"))
             })?,
         LintOutputFormat::Sarif => {
-            sarif::to_pretty_json(&analysis, &engine_config).map_err(|error| {
+            sarif::to_json_text(&analysis, &engine_config, style).map_err(|error| {
                 CliError::internal(format!("failed to serialize SARIF output: {error}"))
             })?
         }
@@ -156,6 +161,8 @@ struct LintFileConfig {
     layer_boundaries: Vec<DartLayerBoundary>,
     naming: DartNamingRuleConfig,
     orphan_files: DartOrphanFileRuleConfig,
+    path_match: DartLintPathMatch,
+    exclude: DartLintExclusions,
 }
 
 impl Default for LintFileConfig {
@@ -169,6 +176,8 @@ impl Default for LintFileConfig {
             layer_boundaries: Vec::new(),
             naming: DartNamingRuleConfig::default(),
             orphan_files: DartOrphanFileRuleConfig::default(),
+            path_match: DartLintPathMatch::default(),
+            exclude: DartLintExclusions::default(),
         }
     }
 }
@@ -182,6 +191,13 @@ impl LintFileConfig {
             )));
         }
 
+        if self.enabled_rules.is_empty() {
+            // A configuration file exists to name what is checked; with no rule the run would
+            // report nothing, which looks the same as a project without findings.
+            return Err(CliError::configuration(format!(
+                "no lint rule is enabled in {path}; list at least one in enabled_rules"
+            )));
+        }
         reject_duplicates(self.enabled_rules.iter().copied(), "enabled rule", path)?;
         reject_duplicates(
             self.severity_overrides
@@ -210,6 +226,16 @@ impl LintFileConfig {
         normalize_prefixes(
             &mut self.naming.ignored_path_prefixes,
             "naming ignored path prefix",
+            path,
+        )?;
+        normalize_prefixes(
+            &mut self.exclude.path_prefixes,
+            "excluded path prefix",
+            path,
+        )?;
+        normalize_prefixes(
+            &mut self.exclude.path_suffixes,
+            "excluded path suffix",
             path,
         )?;
         normalize_prefixes(
@@ -243,6 +269,8 @@ impl LintFileConfig {
             layer_boundaries: self.layer_boundaries.clone(),
             naming: self.naming.clone(),
             orphan_files: self.orphan_files.clone(),
+            path_match: self.path_match,
+            exclude: self.exclude.clone(),
         }
     }
 }

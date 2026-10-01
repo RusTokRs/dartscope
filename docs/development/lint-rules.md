@@ -20,14 +20,18 @@ status: active
   `DartWorkspaceUpdate::affected_libraries`.
 - `DartLintRuleId::ALL` lists built-in rules in stable execution order.
 - `DartLintConfig::default()` enables no rules.
+- `DartLintConfig::path_match` (`DartLintPathMatch::String` by default, or `Segment`) decides how
+  every configured path prefix is compared, and `DartLintConfig::exclude` (`DartLintExclusions`)
+  drops findings about files under given prefixes or with given suffixes, such as `.g.dart`.
 - severity overrides use `DiagnosticSeverity`.
 - diagnostics retain rule ID, severity, message, normalized path, optional source span, and optional
   related paths.
 
 ## Built-In Rule IDs
 
-- `dartscope.forbidden_import` matches configured exact or prefix URI patterns against `import` and
-  `export` directives and against the alternatives of conditional directives (`if (dart.library.io)
+- `dartscope.forbidden_import` matches configured exact, prefix or segment-prefix
+  (`DartImportPatternKind::SegmentPrefix`: `package:flutter` but not `package:flutter_bloc`) URI
+  patterns against `import` and `export` directives and against the alternatives of conditional directives (`if (dart.library.io)
   '…'`), optionally scoped to source path prefixes.
 - `dartscope.layer_boundary` checks resolved internal `import` and `export` targets against
   configured source and denied target path prefixes; a `part` stays inside its own library and is

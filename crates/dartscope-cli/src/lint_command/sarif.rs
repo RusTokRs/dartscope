@@ -2,18 +2,21 @@ use std::collections::BTreeMap;
 
 use dartscope::{
     DartLintAnalysis, DartLintConfig, DartLintDiagnostic, DartLintRuleId, DiagnosticSeverity,
-    SourceSpan, to_json_pretty,
+    SourceSpan,
 };
 use serde::Serialize;
+
+use crate::JsonStyle;
 
 const SARIF_VERSION: &str = "2.1.0";
 const SARIF_SCHEMA: &str = "https://json.schemastore.org/sarif-2.1.0.json";
 
-pub(super) fn to_pretty_json(
+pub(super) fn to_json_text(
     analysis: &DartLintAnalysis,
     config: &DartLintConfig,
+    style: JsonStyle,
 ) -> Result<String, String> {
-    to_json_pretty(&SarifLog::from_analysis(analysis, config)).map_err(|error| error.to_string())
+    style.plain_text(&SarifLog::from_analysis(analysis, config))
 }
 
 #[derive(Debug, Serialize)]

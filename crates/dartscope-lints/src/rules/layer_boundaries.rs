@@ -1,4 +1,4 @@
-use dartscope_core::{DartUriReferenceKind, DartUriResolution, normalize_path};
+use dartscope_core::{DartUriReferenceKind, DartUriResolution};
 
 use crate::context::RuleContext;
 use crate::rules::diagnostic;
@@ -35,13 +35,10 @@ pub(crate) fn run(
             continue;
         };
         for boundary in &boundaries {
-            if !reference
-                .source_path
-                .starts_with(&normalize_path(boundary.source_prefix.clone()))
-            {
+            if !config.path_has_prefix(&reference.source_path, &boundary.source_prefix) {
                 continue;
             }
-            if let Some(denied_prefix) = denied_prefix(boundary, target_path) {
+            if let Some(denied_prefix) = denied_prefix(config, boundary, target_path) {
                 diagnostics.push(diagnostic(
                     DartLintRuleId::LayerBoundary,
                     severity,
@@ -65,12 +62,15 @@ pub(crate) fn run(
     }
 }
 
-fn denied_prefix<'a>(boundary: &'a DartLayerBoundary, target_path: &str) -> Option<&'a str> {
+fn denied_prefix<'a>(
+    config: &DartLintConfig,
+    boundary: &'a DartLayerBoundary,
+    target_path: &str,
+) -> Option<&'a str> {
     boundary
         .denied_target_prefixes
         .iter()
-        .map(|prefix| (prefix, normalize_path(prefix.clone())))
-        .filter(|(_, normalized)| target_path.starts_with(normalized))
-        .map(|(prefix, _)| prefix.as_str())
+        .filter(|prefix| config.path_has_prefix(target_path, prefix))
+        .map(String::as_str)
         .min()
 }

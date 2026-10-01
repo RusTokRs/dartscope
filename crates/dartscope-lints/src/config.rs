@@ -1,4 +1,4 @@
-use dartscope_core::DiagnosticSeverity;
+use dartscope_core::{DiagnosticSeverity, normalize_path};
 use serde::{Deserialize, Serialize};
 
 /// Stable identifier for one DartScope lint rule.
@@ -88,8 +88,69 @@ pub struct DartLintSeverityOverride {
 #[serde(rename_all = "snake_case")]
 pub enum DartImportPatternKind {
     Exact,
+    /// A plain string prefix: `package:flutter` also matches `package:flutter_bloc/...`.
     #[default]
     Prefix,
+    /// The pattern names whole URI segments: `package:flutter` matches `package:flutter` and
+    /// `package:flutter/material.dart`, but not `package:flutter_bloc/...`.
+    SegmentPrefix,
+}
+
+impl DartImportPatternKind {
+    pub(crate) fn matches(self, uri: &str, pattern: &str) -> bool {
+        match self {
+            Self::Exact => uri == pattern,
+            Self::Prefix => uri.starts_with(pattern),
+            Self::SegmentPrefix => {
+                let pattern = pattern.trim_end_matches('/');
+                uri == pattern
+                    || uri
+                        .strip_prefix(pattern)
+                        .is_some_and(|rest| rest.starts_with('/'))
+            }
+        }
+    }
+}
+
+/// How a configured path prefix is compared with a project-relative path.
+#[derive(Debug, Clone, Copy, Default, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DartLintPathMatch {
+    /// A plain string prefix, as configurations written for version 1 expect: `lib/ui` also
+    /// matches `lib/ui_kit/button.dart`.
+    #[default]
+    String,
+    /// The prefix names whole path segments: `lib/ui` matches `lib/ui` and `lib/ui/button.dart`,
+    /// but not `lib/ui_kit/button.dart`.
+    Segment,
+}
+
+impl DartLintPathMatch {
+    /// Whether `path` lies under `prefix`; both use `/` separators.
+    pub fn has_prefix(self, path: &str, prefix: &str) -> bool {
+        match self {
+            Self::String => path.starts_with(prefix),
+            Self::Segment => {
+                let prefix = prefix.trim_end_matches('/');
+                !prefix.is_empty()
+                    && (path == prefix
+                        || path
+                            .strip_prefix(prefix)
+                            .is_some_and(|rest| rest.starts_with('/')))
+            }
+        }
+    }
+}
+
+/// Files that no rule reports on, such as generated code.
+#[derive(Debug, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DartLintExclusions {
+    /// Paths under any of these prefixes are not reported (compared as `path_match` says).
+    #[serde(default)]
+    pub path_prefixes: Vec<String>,
+    /// Paths that end with any of these suffixes are not reported, for example `.g.dart`.
+    #[serde(default)]
+    pub path_suffixes: Vec<String>,
 }
 
 /// One forbidden import URI pattern, optionally scoped to source paths.
@@ -155,6 +216,12 @@ pub struct DartLintConfig {
     pub naming: DartNamingRuleConfig,
     #[serde(default)]
     pub orphan_files: DartOrphanFileRuleConfig,
+    /// How every configured path prefix is compared with a path.
+    #[serde(default)]
+    pub path_match: DartLintPathMatch,
+    /// Files no rule reports on.
+    #[serde(default)]
+    pub exclude: DartLintExclusions,
 }
 
 impl DartLintConfig {
@@ -167,6 +234,25 @@ impl DartLintConfig {
 
     pub fn all_rules() -> Self {
         Self::new(DartLintRuleId::ALL)
+    }
+
+    /// Whether `path` lies under the configured `prefix`, as `path_match` defines it.
+    pub(crate) fn path_has_prefix(&self, path: &str, prefix: &str) -> bool {
+        self.path_match
+            .has_prefix(path, &normalize_path(prefix.to_string()))
+    }
+
+    /// Whether findings in `path` are suppressed by `exclude`.
+    pub(crate) fn excludes(&self, path: &str) -> bool {
+        self.exclude
+            .path_prefixes
+            .iter()
+            .any(|prefix| self.path_has_prefix(path, prefix))
+            || self
+                .exclude
+                .path_suffixes
+                .iter()
+                .any(|suffix| path.ends_with(&normalize_path(suffix.clone())))
     }
 
     pub(crate) fn enabled_rule_ids(&self) -> Vec<DartLintRuleId> {

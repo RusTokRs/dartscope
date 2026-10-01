@@ -504,6 +504,273 @@ fn a_closed_stdout_ends_the_command_quietly() {
     );
 }
 
+/// Removes the whitespace between JSON tokens, so pretty and compact output can be compared.
+fn without_json_whitespace(json: &str) -> String {
+    let mut out = String::with_capacity(json.len());
+    let (mut in_string, mut escaped) = (false, false);
+    for ch in json.chars() {
+        if in_string {
+            out.push(ch);
+            match (escaped, ch) {
+                (true, _) => escaped = false,
+                (false, '\\') => escaped = true,
+                (false, '"') => in_string = false,
+                _ => {}
+            }
+        } else if ch == '"' {
+            in_string = true;
+            out.push(ch);
+        } else if !ch.is_whitespace() {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+#[test]
+fn compact_prints_the_same_document_on_one_line() {
+    let project = sample_project("compact output");
+    let source = project.path().join("lib/main.dart");
+    let cases: Vec<Vec<OsString>> = vec![
+        vec!["analyze-file".into(), source.as_os_str().to_owned()],
+        vec![
+            "pubspec".into(),
+            project.path().join("pubspec.yaml").into_os_string(),
+        ],
+        vec!["analyze-project".into(), project.path().as_os_str().to_owned()],
+        vec!["uri-graph".into(), project.path().as_os_str().to_owned()],
+        vec![
+            "graphql-contracts".into(),
+            project.path().as_os_str().to_owned(),
+        ],
+        vec![
+            "flutter-inventory".into(),
+            project.path().as_os_str().to_owned(),
+        ],
+        vec!["lint".into(), project.path().as_os_str().to_owned()],
+    ];
+    for case in cases {
+        let pretty = run_os(case.clone());
+        let mut compact_args = case.clone();
+        compact_args.push("--compact".into());
+        let compact = run_os(compact_args);
+
+        assert_eq!(compact.status.code(), Some(0), "{case:?}: {}", stderr(&compact));
+        assert!(stderr(&compact).is_empty(), "stderr: {}", stderr(&compact));
+        let compact_text = stdout(&compact);
+        let compact_json = compact_text.strip_suffix('\n').expect("one trailing newline");
+        assert!(!compact_json.contains('\n'), "{case:?}: {compact_json}");
+        assert!(
+            compact_json.len() < stdout(&pretty).len(),
+            "{case:?}: compact output is smaller"
+        );
+        assert_eq!(
+            without_json_whitespace(&stdout(&pretty)),
+            compact_json,
+            "{case:?}: the same document"
+        );
+    }
+}
+
+#[test]
+fn compact_is_accepted_anywhere_after_the_path_and_only_once() {
+    let project = sample_project("compact position");
+    let path = project.path().as_os_str().to_owned();
+
+    let after_env = run_os([
+        OsString::from("uri-graph"),
+        path.clone(),
+        OsString::from("--env"),
+        OsString::from("flag=true"),
+        OsString::from("--compact"),
+    ]);
+    assert_eq!(after_env.status.code(), Some(0), "{}", stderr(&after_env));
+    assert!(!stdout(&after_env).trim_end().contains('\n'));
+
+    let before_env = run_os([
+        OsString::from("uri-graph"),
+        path.clone(),
+        OsString::from("--compact"),
+        OsString::from("--env"),
+        OsString::from("flag=true"),
+    ]);
+    assert_eq!(stdout(&before_env), stdout(&after_env));
+
+    assert_error(
+        run_os([
+            OsString::from("analyze-project"),
+            path.clone(),
+            OsString::from("--compact"),
+            OsString::from("--compact"),
+        ]),
+        2,
+        "--compact may be given only once",
+    );
+    for command in command_names() {
+        let help = run([command, "--help"]);
+        assert!(stdout(&help).contains("--compact"), "{command}");
+    }
+}
+
+#[test]
+fn analyze_project_reports_the_root_without_dot_components_or_as_a_dot() {
+    let project = sample_project("root label");
+    let in_project = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_dartscope"))
+            .current_dir(project.path())
+            .args(args)
+            .output()
+            .expect("run dartscope")
+    };
+
+    let default = in_project(&["analyze-project", "."]);
+    assert_json_success(&default, "dartscope.project-analysis");
+    let root = json_string_field(&stdout(&default), "root");
+    assert_ne!(root, ".", "the default root stays absolute");
+    assert!(
+        Path::new(&root).is_absolute()
+            && Path::new(&root).file_name() == project.path().file_name(),
+        "root: {root}"
+    );
+    assert!(
+        !root.ends_with("/.") && !root.ends_with("\\."),
+        "no trailing dot component in {root}"
+    );
+
+    let relative = in_project(&["analyze-project", ".", "--relative-root"]);
+    assert_json_success(&relative, "dartscope.project-analysis");
+    assert_eq!(json_string_field(&stdout(&relative), "root"), ".");
+    assert!(stdout(&relative).contains("\"path\": \"lib/main.dart\""));
+
+    // Only analyze-project reports a root.
+    assert_error(
+        in_project(&["uri-graph", ".", "--relative-root"]),
+        2,
+        "unexpected argument for uri-graph: --relative-root",
+    );
+    assert_error(
+        in_project(&["analyze-project", ".", "--relative-root", "--relative-root"]),
+        2,
+        "--relative-root may be given only once",
+    );
+}
+
+/// The value of the first `"<name>": "<value>"` pair of pretty JSON output.
+fn json_string_field(json: &str, name: &str) -> String {
+    let marker = format!("\"{name}\": \"");
+    let start = json.find(&marker).expect("field is present") + marker.len();
+    let rest = &json[start..];
+    let end = rest.find('"').expect("field ends");
+    rest[..end].replace("\\\\", "\\")
+}
+
+#[test]
+fn directories_that_are_not_walked_are_reported_as_info_diagnostics() {
+    let project = TempDirectory::new("skipped directories");
+    write_package(project.path(), "root_package", "lib/root.dart");
+    for skipped in [
+        "build/out.dart",
+        "ios/Pods/Pod.dart",
+        "ios/.symlinks/plugin.dart",
+        "node_modules/dep.dart",
+        ".git/hook.dart",
+        "coverage/lcov.dart",
+    ] {
+        write_file(&project.path().join(skipped), "void skipped() {}\n");
+    }
+    write_file(&project.path().join("lib/build/kept.dart"), "void kept() {}\n");
+
+    let output = run_os([
+        OsString::from("analyze-project"),
+        project.path().as_os_str().to_owned(),
+    ]);
+
+    assert_json_success(&output, "dartscope.project-analysis");
+    let json = stdout(&output);
+    assert_eq!(
+        json.matches("\"code\": \"input_directory_skipped\"").count(),
+        5,
+        "stdout: {json}"
+    );
+    for path in [
+        "build",
+        "coverage",
+        "ios/.symlinks",
+        "ios/Pods",
+        "node_modules",
+    ] {
+        assert!(
+            json.contains(&format!("\"path\": \"{path}\"")),
+            "{path}: {json}"
+        );
+    }
+    // Tool state and source folders named like output are not worth a message.
+    assert!(!json.contains("\"path\": \".git\""), "stdout: {json}");
+    assert!(!json.contains("\"path\": \"lib/build\""), "stdout: {json}");
+    assert!(json.contains("\"severity\": \"info\""), "stdout: {json}");
+    assert!(json.contains("\"dart_files\": 2"), "stdout: {json}");
+    assert!(!json.contains("out.dart"), "stdout: {json}");
+}
+
+#[cfg(unix)]
+#[test]
+fn skip_symlinks_turns_rejected_links_into_warnings() {
+    use std::os::unix::fs::symlink;
+
+    let project = TempDirectory::new("skip symlinks");
+    write_package(project.path(), "root_package", "lib/root.dart");
+    write_file(&project.path().join("lib/real/inner.dart"), "void inner() {}\n");
+    let outside = TempDirectory::new("skip symlinks outside");
+    write_file(&outside.path().join("outside.dart"), "void outside() {}\n");
+    symlink(
+        outside.path().join("outside.dart"),
+        project.path().join("lib/escape.dart"),
+    )
+    .expect("escaping link");
+    symlink("real", project.path().join("lib/linked")).expect("directory link");
+    symlink("missing.dart", project.path().join("lib/dangling.dart")).expect("dangling link");
+
+    let rejected = run_os([
+        OsString::from("analyze-project"),
+        project.path().as_os_str().to_owned(),
+    ]);
+    assert_error(rejected, 3, "input_symlink_rejected");
+
+    let output = run_os([
+        OsString::from("analyze-project"),
+        project.path().as_os_str().to_owned(),
+        OsString::from("--skip-symlinks"),
+    ]);
+    assert_json_success(&output, "dartscope.project-analysis");
+    let json = stdout(&output);
+    assert_eq!(
+        json.matches("\"code\": \"input_symlink_skipped\"").count(),
+        3,
+        "stdout: {json}"
+    );
+    for path in ["lib/escape.dart", "lib/linked", "lib/dangling.dart"] {
+        assert!(
+            json.contains(&format!("\"path\": \"{path}\"")),
+            "{path}: {json}"
+        );
+    }
+    assert!(json.contains("\"severity\": \"warning\""), "stdout: {json}");
+    assert!(json.contains("\"dart_files\": 2"), "stdout: {json}");
+    assert!(json.contains("lib/real/inner.dart"), "stdout: {json}");
+    assert!(!json.contains("void outside"), "stdout: {json}");
+
+    // The other commands cannot carry a report, so they keep failing.
+    assert_error(
+        run_os([
+            OsString::from("uri-graph"),
+            project.path().as_os_str().to_owned(),
+            OsString::from("--skip-symlinks"),
+        ]),
+        2,
+        "unexpected argument for uri-graph: --skip-symlinks",
+    );
+}
+
 fn command_names() -> [&'static str; 7] {
     [
         "analyze-file",

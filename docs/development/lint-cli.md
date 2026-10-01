@@ -16,11 +16,13 @@ non-symlink-following walker as other project commands, analyzes normalized fact
 ## Command
 
 ```text
-dartscope lint <project> [--config <path>] [--format <json|sarif>] [--deny-warnings]
+dartscope lint <project> [--config <path>] [--format <json|sarif>] [--deny-warnings] [--compact]
 ```
 
 - No configuration path means `DartLintConfig::default()`: no rules are enabled and the command is
   inert, so a project is only linted against what its configuration names.
+- A configuration file that enables no rule is a configuration error (exit code `5`): the file
+  exists to name what is checked, and a run that checks nothing looks the same as a clean project.
 - `dartscope.orphan_file` needs at least one `[orphan_files].entry_points` entry. Enabling it with an
   empty list is a configuration error (exit code `5`), and a listed entry point that is not an
   analyzed Dart file is reported as a finding instead of silently disabling the rule.
@@ -28,6 +30,8 @@ dartscope lint <project> [--config <path>] [--format <json|sarif>] [--deny-warni
 - `--format sarif` emits SARIF 2.1.0 with rule metadata, normalized artifact paths, exact available
   source regions, severities, and related-path evidence.
 - `--deny-warnings` overrides the configured failure threshold for that invocation.
+- `--compact` prints the JSON or SARIF document on one line (the same document without the
+  indentation).
 - Findings at the threshold still produce structured stdout and exit code `4`; stderr remains empty.
 
 ## TOML Configuration Version 1
@@ -38,6 +42,7 @@ or severity entries, empty required values, and malformed TOML are configuration
 ```toml
 version = 1
 failure_threshold = "error" # error, warning, or never
+path_match = "string" # string (default) or segment; see "Path matching"
 enabled_rules = [
   "dartscope.forbidden_import",
   "dartscope.layer_boundary",
@@ -52,7 +57,7 @@ severity = "error"
 
 [[forbidden_imports]]
 uri = "package:legacy/"
-match_kind = "prefix" # prefix or exact
+match_kind = "prefix" # prefix (default), segment_prefix or exact
 source_prefix = "lib/"
 
 [[layer_boundaries]]
@@ -67,12 +72,37 @@ ignored_path_prefixes = ["lib/generated/"]
 [orphan_files]
 entry_points = ["lib/main.dart"]
 ignored_path_prefixes = ["test/fixtures/"]
+
+[exclude] # no rule reports on these files
+path_prefixes = ["lib/generated/"]
+path_suffixes = [".g.dart", ".freezed.dart"]
 ```
 
-Configuration path prefixes accept `/` or `\`; the CLI normalizes them to `/` before invoking the
-engine. A prefix is matched as a plain string prefix of the normalized path, so `lib/ui` also covers
-`lib/ui_kit/`; write `lib/ui/` to name the directory. Configuration order does not change rule
-execution or diagnostic ordering.
+Configuration paths accept `/` or `\`; the CLI normalizes them to `/` before invoking the engine.
+Configuration order does not change rule execution or diagnostic ordering.
+
+### Path matching
+
+`path_match` decides how every configured path prefix is compared with a normalized project path:
+`source_prefix`, `denied_target_prefixes`, `[naming].ignored_path_prefixes`,
+`[orphan_files].ignored_path_prefixes` and `[exclude].path_prefixes`.
+
+- `"string"` (the default, and the only behavior of earlier configurations) is a plain string
+  prefix: `lib/ui` also covers `lib/ui_kit/button.dart`, so write `lib/ui/` to name the directory.
+- `"segment"` compares whole path segments: `lib/ui` and `lib/ui/` both cover `lib/ui` and
+  `lib/ui/button.dart`, and neither covers `lib/ui_kit/button.dart`.
+
+A forbidden import pattern with `match_kind = "segment_prefix"` does the same for URIs:
+`package:flutter` matches `package:flutter` and `package:flutter/material.dart`, but not
+`package:flutter_bloc/flutter_bloc.dart`, which the default `prefix` kind also matches.
+
+### Exclusions
+
+`[exclude]` removes findings about generated or vendored files without touching the rules: the rules
+run as usual, and a finding whose path is under one of `path_prefixes` (compared as `path_match`
+says) or ends with one of `path_suffixes` (a plain string suffix such as `.g.dart`) is dropped
+before the output is built, so `summary` counts only what is reported. The exclusions apply to
+every rule, including `dartscope.orphan_file` and the unresolved-part findings.
 
 ## Exit Codes
 

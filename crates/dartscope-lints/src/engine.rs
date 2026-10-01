@@ -73,6 +73,9 @@ fn lint_with_context(
         }
     }
 
+    // Generated files and the like: the rules run over everything, and what is reported about an
+    // excluded file is dropped here, so every rule honors the exclusions the same way.
+    diagnostics.retain(|diagnostic| !config.excludes(&diagnostic.path));
     analysis_from_diagnostics(enabled.len(), diagnostics)
 }
 

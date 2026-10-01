@@ -12,7 +12,8 @@ mod rules;
 
 pub use config::{
     DartForbiddenImportPattern, DartImportPatternKind, DartLayerBoundary, DartLintConfig,
-    DartLintRuleId, DartLintSeverityOverride, DartNamingRuleConfig, DartOrphanFileRuleConfig,
+    DartLintExclusions, DartLintPathMatch, DartLintRuleId, DartLintSeverityOverride,
+    DartNamingRuleConfig, DartOrphanFileRuleConfig,
 };
 pub use engine::{lint_project, lint_workspace_snapshot};
 pub use incremental::{
