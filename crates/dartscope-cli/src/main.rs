@@ -11,13 +11,12 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use dartscope::{
-    DartCompilationEnvironment, DartDiagnostic, DartFileInput, DartIndexOptions, DartProjectAnalysis,
-    DartProjectInput, FlutterArbInput,
-    FlutterCatalogInput, FlutterL10nInput, JsonContract, PackageConfigInput, PubspecInput,
-    analyze_file_with_flutter, analyze_graphql_contracts_with_options, analyze_project,
-    analyze_project_with_flutter, build_uri_graph_with_options,
-    extract_flutter_inventory_with_catalogs, parse_pubspec, parse_pubspec_configuration,
-    to_json_contract_pretty,
+    DartCompilationEnvironment, DartDiagnostic, DartFileInput, DartIndexOptions,
+    DartProjectAnalysis, DartProjectInput, FlutterArbInput, FlutterCatalogInput, FlutterL10nInput,
+    JsonContract, PackageConfigInput, PubspecInput, analyze_file_with_flutter,
+    analyze_graphql_contracts_with_options, analyze_project, analyze_project_with_flutter,
+    build_uri_graph_with_options, extract_flutter_inventory_with_catalogs, parse_pubspec,
+    parse_pubspec_configuration, to_json_contract_pretty,
 };
 
 const EXIT_INTERNAL: u8 = 1;

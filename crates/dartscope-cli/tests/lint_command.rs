@@ -223,7 +223,10 @@ fn full_toml_surface_maps_to_the_existing_lint_engine() {
 #[test]
 fn sarif_uris_are_percent_encoded_and_file_level_findings_get_a_region() {
     let project = sample_project("sarif uri");
-    write_file(&project.path().join("lib/Bad Name#1.dart"), "class Fine {}\n");
+    write_file(
+        &project.path().join("lib/Bad Name#1.dart"),
+        "class Fine {}\n",
+    );
     let config = project.path().join("dartscope.toml");
     write_file(
         &config,

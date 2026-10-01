@@ -425,8 +425,14 @@ fn a_source_that_is_not_utf8_is_reported_instead_of_aborting_analyze_project() {
     assert_json_success(&output, "dartscope.project-analysis");
     let json = stdout(&output);
     assert!(json.contains("lib/root.dart"), "stdout: {json}");
-    assert!(json.contains("\"code\": \"input_file_not_utf8\""), "stdout: {json}");
-    assert!(json.contains("\"path\": \"lib/latin1.dart\""), "stdout: {json}");
+    assert!(
+        json.contains("\"code\": \"input_file_not_utf8\""),
+        "stdout: {json}"
+    );
+    assert!(
+        json.contains("\"path\": \"lib/latin1.dart\""),
+        "stdout: {json}"
+    );
     assert!(json.contains("\"dart_files\": 1"), "stdout: {json}");
     assert!(json.contains("\"diagnostics\": 1"), "stdout: {json}");
     assert!(!json.contains("cafe"), "stdout: {json}");

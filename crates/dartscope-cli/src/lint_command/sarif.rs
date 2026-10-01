@@ -312,7 +312,10 @@ mod tests {
     #[test]
     fn uri_references_percent_encode_everything_but_unreserved_characters_and_slashes() {
         assert_eq!(uri_reference("lib/main.dart"), "lib/main.dart");
-        assert_eq!(uri_reference("lib\\ui\\a_b-c~d.dart"), "lib/ui/a_b-c~d.dart");
+        assert_eq!(
+            uri_reference("lib\\ui\\a_b-c~d.dart"),
+            "lib/ui/a_b-c~d.dart"
+        );
         assert_eq!(uri_reference("lib/a b.dart"), "lib/a%20b.dart");
         assert_eq!(uri_reference("lib/a#b?c%d.dart"), "lib/a%23b%3Fc%25d.dart");
         assert_eq!(

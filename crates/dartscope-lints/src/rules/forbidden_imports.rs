@@ -51,7 +51,10 @@ pub(crate) fn run(
                     diagnostics.push(diagnostic(
                         DartLintRuleId::ForbiddenImport,
                         severity,
-                        format!("{keyword} `{uri}` is forbidden by pattern `{}`", pattern.uri),
+                        format!(
+                            "{keyword} `{uri}` is forbidden by pattern `{}`",
+                            pattern.uri
+                        ),
                         file.path.clone(),
                         Some(span.clone()),
                         Vec::new(),
