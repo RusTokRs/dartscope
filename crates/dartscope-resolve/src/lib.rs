@@ -8,7 +8,12 @@ use percent_encoding::{NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode
 use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
-use uriparse::{URI, URIReference};
+
+mod uri;
+#[cfg(test)]
+mod uri_differential;
+
+use uri::UriReference;
 
 const SUPPORTED_CONFIG_VERSION: u64 = 2;
 const PROJECT_URI_ROOT: &str = "file:///__dartscope_project__/";
@@ -171,17 +176,17 @@ pub fn resolve_package_uri(
         .find(|package| package.name == package_name)
         .ok_or_else(|| PackageUriResolutionError::UnknownPackage(package_name.to_string()))?;
     let config_uri = project_file_uri(&config.path)?;
-    let root_reference = URIReference::try_from(package.root_uri.as_str())
+    let root_reference = UriReference::parse(package.root_uri.as_str())
         .map_err(|_| PackageUriResolutionError::InvalidConfiguredUri(package.name.clone()))?;
-    let root_uri = directory_uri(config_uri.resolve(&root_reference), &package.name)?;
+    let root_uri = directory_uri(&config_uri.resolve(&root_reference), &package.name)?;
     let package_base_uri = if let Some(package_uri) = package.package_uri.as_deref() {
-        let reference = URIReference::try_from(package_uri)
+        let reference = UriReference::parse(package_uri)
             .map_err(|_| PackageUriResolutionError::InvalidConfiguredUri(package.name.clone()))?;
-        directory_uri(root_uri.resolve(&reference), &package.name)?
+        directory_uri(&root_uri.resolve(&reference), &package.name)?
     } else {
         root_uri
     };
-    let library_reference = URIReference::try_from(library_path)
+    let library_reference = UriReference::parse(library_path)
         .map_err(|_| PackageUriResolutionError::InvalidPackageUri(package_uri.to_string()))?;
     let resolved_uri = package_base_uri.resolve(&library_reference).to_string();
 
@@ -192,30 +197,27 @@ pub fn resolve_package_uri(
     })
 }
 
-fn project_file_uri(path: &str) -> Result<URI<'static>, PackageUriResolutionError> {
+fn project_file_uri(path: &str) -> Result<UriReference, PackageUriResolutionError> {
     let encoded_path = path
         .split('/')
         .map(|segment| utf8_percent_encode(segment, NON_ALPHANUMERIC).to_string())
         .collect::<Vec<_>>()
         .join("/");
     let value = format!("{PROJECT_URI_ROOT}{encoded_path}");
-    URI::try_from(value.as_str())
-        .map(URI::into_owned)
-        .map_err(|_| {
-            PackageUriResolutionError::InvalidConfiguredUri("package config path".to_string())
-        })
+    UriReference::parse_absolute(&value).map_err(|_| {
+        PackageUriResolutionError::InvalidConfiguredUri("package config path".to_string())
+    })
 }
 
 fn directory_uri(
-    uri: URI<'_>,
+    uri: &UriReference,
     package_name: &str,
-) -> Result<URI<'static>, PackageUriResolutionError> {
+) -> Result<UriReference, PackageUriResolutionError> {
     let mut value = uri.to_string();
     if !value.ends_with('/') {
         value.push('/');
     }
-    URI::try_from(value.as_str())
-        .map(URI::into_owned)
+    UriReference::parse_absolute(&value)
         .map_err(|_| PackageUriResolutionError::InvalidConfiguredUri(package_name.to_string()))
 }
 
@@ -433,14 +435,14 @@ fn validate_package_layout(
 }
 
 fn resolve_package_directories(
-    config_uri: &URI<'_>,
+    config_uri: &UriReference,
     package: &DartPackageConfigEntry,
 ) -> Option<PackageDirectories> {
-    let root_reference = URIReference::try_from(package.root_uri.as_str()).ok()?;
-    let root_uri = directory_uri(config_uri.resolve(&root_reference), &package.name).ok()?;
+    let root_reference = UriReference::parse(package.root_uri.as_str()).ok()?;
+    let root_uri = directory_uri(&config_uri.resolve(&root_reference), &package.name).ok()?;
     let package_uri = if let Some(package_uri) = package.package_uri.as_deref() {
-        let reference = URIReference::try_from(package_uri).ok()?;
-        directory_uri(root_uri.resolve(&reference), &package.name).ok()?
+        let reference = UriReference::parse(package_uri).ok()?;
+        directory_uri(&root_uri.resolve(&reference), &package.name).ok()?
     } else {
         root_uri.clone()
     };
@@ -451,7 +453,7 @@ fn resolve_package_directories(
     })
 }
 
-fn canonical_directory(uri: &URI<'_>) -> Option<CanonicalDirectory> {
+fn canonical_directory(uri: &UriReference) -> Option<CanonicalDirectory> {
     let value = uri.to_string();
     let (scheme, remainder) = value.split_once(':')?;
     let (has_authority, authority, path) = if let Some(hierarchical) = remainder.strip_prefix("//")
@@ -587,7 +589,7 @@ fn is_package_name(name: &str) -> bool {
 }
 
 fn is_relative_uri_path_inside_root(uri: &str) -> bool {
-    let Ok(reference) = URIReference::try_from(uri) else {
+    let Ok(reference) = UriReference::parse(uri) else {
         return false;
     };
     if reference.scheme().is_some()
@@ -615,7 +617,7 @@ fn is_relative_uri_path_inside_root(uri: &str) -> bool {
 }
 
 fn is_root_uri(uri: &str) -> bool {
-    URIReference::try_from(uri)
+    UriReference::parse(uri)
         .is_ok_and(|reference| reference.query().is_none() && reference.fragment().is_none())
 }
 

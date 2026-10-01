@@ -40,6 +40,12 @@ if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[fuzz-long\]
   } >"$OUT/fuzzlong.sum"
   emit fuzzlong "$OUT/fuzzlong.sum" --chunk 3900 --max 6
 fi
+if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[uri\]'; then
+  # The one-off comparison of crate::uri with the uriparse crate that it replaces.
+  run u_diff cargo test -p dartscope-resolve --lib --locked -- --ignored --nocapture differential
+  grep -E '^differential|panicked|error' "$OUT/u_diff.log" | cut -c1-600 >"$OUT/uri.sum"
+  emit uri "$OUT/uri.sum" --chunk 3900 --max 6
+fi
 if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[gates\]'; then
   # Emulate the final tree: the loop and its workflow are not part of it.
   cp -r loop "$RUNNER_TEMP/loop-copy"

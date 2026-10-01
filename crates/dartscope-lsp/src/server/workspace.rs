@@ -147,12 +147,11 @@ impl DartLspServer {
         }
         match kind {
             Some(FileKind::Config(_)) => self.rebuild_index(),
-            Some(FileKind::Dart) => {
-                if !self.documents.contains_key(&key) {
-                    self.reindex_from_disk(&key);
-                }
+            // An open buffer is not replaced by the file changing under it.
+            Some(FileKind::Dart) if !self.documents.contains_key(&key) => {
+                self.reindex_from_disk(&key);
             }
-            None => {}
+            Some(FileKind::Dart) | None => {}
         }
     }
 

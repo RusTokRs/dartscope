@@ -16,6 +16,8 @@ description = "Package and URI resolution inputs for DartScope"
 dartscope-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-uriparse.workspace = true
 percent-encoding.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+uriparse.workspace = true
