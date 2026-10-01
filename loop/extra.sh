@@ -25,6 +25,21 @@ if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[fuzz\]'; th
   } >"$OUT/fuzz.sum"
   emit fuzz "$OUT/fuzz.sum" --chunk 3900 --max 4
 fi
+if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[fuzz-long\]'; then
+  # One longer coverage-guided campaign over the whole file analysis (a hunt, not a gate).
+  run h_toolchains bash -c 'rustup toolchain install 1.95.0 --profile minimal && rustup toolchain install nightly-2026-07-01 --profile minimal --component rustfmt'
+  run h_install cargo +1.95.0 install cargo-fuzz --version 0.13.2 --locked
+  run h_fuzz bash -c 'cargo +nightly-2026-07-01 fuzz build file_analysis && cargo +nightly-2026-07-01 fuzz run file_analysis -- -max_total_time=1080 -max_len=4096 -timeout=10 -rss_limit_mb=2048 -print_final_stats=1; code=$?; echo "fuzz exit code: $code"; for f in fuzz/artifacts/file_analysis/*; do [ -f "$f" ] && { echo "### artifact $f"; head -c 4000 "$f" | cat -v | head -120; }; done; exit 0'
+  {
+    echo "== toolchains: $(tail -n 1 "$OUT/h_toolchains.log")"
+    echo "== install: $(tail -n 1 "$OUT/h_install.log")"
+    echo "== fuzz: $(tail -n 1 "$OUT/h_fuzz.log")"
+    grep -E 'fuzz exit code|^### artifact|panicked|ERROR|SUMMARY|stat::|Done [0-9]+ runs|cov:.*exec/s' "$OUT/h_fuzz.log" | tail -n 40 | cut -c1-300
+    echo "--- artifacts ---"
+    sed -n '/^### artifact/,$p' "$OUT/h_fuzz.log" | head -n 200 | cut -c1-300
+  } >"$OUT/fuzzlong.sum"
+  emit fuzzlong "$OUT/fuzzlong.sum" --chunk 3900 --max 6
+fi
 if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[gates\]'; then
   # Emulate the final tree: the loop and its workflow are not part of it.
   cp -r loop "$RUNNER_TEMP/loop-copy"
