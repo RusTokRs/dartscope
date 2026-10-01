@@ -547,4 +547,114 @@ mod tests {
             "{scanned} header bytes were scanned for {lines} argument lines"
         );
     }
+
+    /// TEMPORARY development-loop measurement (removed before hand-off).
+    #[test]
+    #[ignore = "development-loop measurement"]
+    fn zz_phase_timing() {
+        use crate::source_lines::LineIndexScope;
+        use std::time::Instant;
+
+        for n in [2000usize, 8000, 16000] {
+            let mut source = String::new();
+            for i in 0..n {
+                source.push_str(&format!(
+                    "class C{i} {{\\n  final int f{i};\\n  C{i}(this.f{i});\\n  int m{i}(int a) => a + f{i};\\n}}\\n"
+                ));
+            }
+            let _scope = LineIndexScope::enter(&source);
+            let t = Instant::now();
+            let lexical = mask_non_code(&source);
+            let t_mask = t.elapsed();
+            let masked = lexical.code;
+            let t = Instant::now();
+            let lines = source_lines(&masked);
+            let t_lines = t.elapsed();
+            let t = Instant::now();
+            let line_depths = line_brace_depths(&masked, &lines);
+            let t_depths = t.elapsed();
+            let mut diagnostics = Vec::new();
+            let t = Instant::now();
+            let mut records = collect_top_level(
+                "lib/a.dart",
+                &source,
+                &masked,
+                &lines,
+                &line_depths,
+                &mut diagnostics,
+            );
+            let t_top = t.elapsed();
+            let t = Instant::now();
+            let type_records: Vec<_> = records
+                .iter()
+                .filter(|record| is_type_kind(record.declaration.kind))
+                .cloned()
+                .collect();
+            for type_record in type_records {
+                collect_members(
+                    &source,
+                    &masked,
+                    &lines,
+                    &line_depths,
+                    &type_record,
+                    &mut records,
+                    &mut diagnostics,
+                );
+            }
+            let t_members = t.elapsed();
+            let t = Instant::now();
+            let callable_records: Vec<_> = records
+                .iter()
+                .filter(|record| is_callable_kind(record.declaration.kind))
+                .cloned()
+                .collect();
+            for callable in callable_records {
+                collect_locals(&source, &masked, &lines, &callable, &mut records);
+            }
+            let t_locals = t.elapsed();
+            let t = Instant::now();
+            records.sort_by(|left, right| {
+                left.declaration
+                    .declaration_span
+                    .as_ref()
+                    .map(|span| span.byte_start)
+                    .cmp(
+                        &right
+                            .declaration
+                            .declaration_span
+                            .as_ref()
+                            .map(|span| span.byte_start),
+                    )
+            });
+            let t_sort = t.elapsed();
+            let declarations: Vec<_> = records
+                .into_iter()
+                .map(|record| record.declaration)
+                .collect();
+            let t = Instant::now();
+            let invocations = crate::invocations::collect_invocations(&source, &masked, &declarations);
+            let t_invocations = t.elapsed();
+            let t = Instant::now();
+            let graphql = crate::graphql::extract_graphql_operations(&source, &masked);
+            let uses = crate::graphql::extract_graphql_operation_uses(&source, &masked);
+            let t_graphql = t.elapsed();
+            let t = Instant::now();
+            let directives = crate::namespace::extract_namespace_directives(&source, &masked);
+            let t_namespace = t.elapsed();
+            let t = Instant::now();
+            let analysis = crate::analyze_file(dartscope_core::DartFileInput::new(
+                "lib/a.dart",
+                source.clone(),
+            ));
+            let t_total = t.elapsed();
+            println!(
+                "phase n={n} mask={t_mask:?} lines={t_lines:?} depths={t_depths:?} top={t_top:?} members={t_members:?} locals={t_locals:?} sort={t_sort:?} invocations={t_invocations:?} graphql={t_graphql:?} namespace={t_namespace:?} analyze_file={t_total:?} (decls={} calls={} {} {} {})",
+                declarations.len(),
+                invocations.len(),
+                graphql.len(),
+                uses.len(),
+                directives.0.len() + analysis.declarations.len()
+            );
+        }
+    }
 }
