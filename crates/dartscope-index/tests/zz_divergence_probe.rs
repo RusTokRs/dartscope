@@ -10,7 +10,8 @@ use dartscope_parse::{analyze_file_with_references, analyze_project_with_referen
 
 const A0: &str = "library lib_a;\n\npart 'b.dart';\n\nclass Owner {\n  void use() {\n    inPart();\n    FromPart().touch();\n  }\n}\n";
 const A_NO_PART: &str = "library lib_a;\n\nclass Owner {\n  void use() {\n    inPart();\n    FromPart().touch();\n  }\n}\n";
-const B0: &str = "part of 'a.dart';\n\nvoid inPart() {}\n\nclass FromPart {\n  void touch() {}\n}\n";
+const B0: &str =
+    "part of 'a.dart';\n\nvoid inPart() {}\n\nclass FromPart {\n  void touch() {}\n}\n";
 const B_CUT: &str = "part of 'a.dart';\n\nvoid inPart() {}\n\nclass FromPart {";
 
 fn project(a: &str, b: &str) -> DartProjectReferenceAnalysis {
@@ -37,7 +38,11 @@ fn lines(analysis: &DartIdentifierReferenceResolutionAnalysis) -> Vec<String> {
                 r.status,
                 r.candidates
                     .iter()
-                    .map(|c| format!("{}:{}", c.declaration_path.trim_start_matches("lib/"), c.name))
+                    .map(|c| format!(
+                        "{}:{}",
+                        c.declaration_path.trim_start_matches("lib/"),
+                        c.name
+                    ))
                     .collect::<Vec<_>>()
                     .join(",")
             )
@@ -90,10 +95,40 @@ fn probe(label: &str, from: (&str, &str), to: (&str, &str), a_first: bool, out: 
 #[test]
 fn probe_part_divergence() {
     let mut out = Vec::new();
-    probe("remove part directive", (A0, B0), (A_NO_PART, B0), true, &mut out);
-    probe("add part directive", (A_NO_PART, B0), (A0, B0), true, &mut out);
-    probe("a1=' FromPart()', b unchanged", (A0, B0), (" FromPart()", B0), true, &mut out);
-    probe("a1=' FromPart()', b cut, a first", (A0, B0), (" FromPart()", B_CUT), true, &mut out);
-    probe("a1=' FromPart()', b cut, b first", (A0, B0), (" FromPart()", B_CUT), false, &mut out);
+    probe(
+        "remove part directive",
+        (A0, B0),
+        (A_NO_PART, B0),
+        true,
+        &mut out,
+    );
+    probe(
+        "add part directive",
+        (A_NO_PART, B0),
+        (A0, B0),
+        true,
+        &mut out,
+    );
+    probe(
+        "a1=' FromPart()', b unchanged",
+        (A0, B0),
+        (" FromPart()", B0),
+        true,
+        &mut out,
+    );
+    probe(
+        "a1=' FromPart()', b cut, a first",
+        (A0, B0),
+        (" FromPart()", B_CUT),
+        true,
+        &mut out,
+    );
+    probe(
+        "a1=' FromPart()', b cut, b first",
+        (A0, B0),
+        (" FromPart()", B_CUT),
+        false,
+        &mut out,
+    );
     assert!(out.is_empty(), "\n{}", out.join("\n"));
 }
