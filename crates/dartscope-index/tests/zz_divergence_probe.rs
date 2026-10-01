@@ -9,7 +9,8 @@ use dartscope_index::{
 use dartscope_parse::{analyze_file_with_references, analyze_project_with_references};
 
 const A0: &str = "library lib_a;\n\npart 'b.dart';\n\nclass Owner {\n  void use() {\n    inPart();\n    FromPart().touch();\n  }\n}\n";
-const B0: &str = "part of 'a.dart';\n\nvoid inPart() {}\n\nclass FromPart {\n  void touch() {}\n}\n";
+const B0: &str =
+    "part of 'a.dart';\n\nvoid inPart() {}\n\nclass FromPart {\n  void touch() {}\n}\n";
 const B_LINUX: &str = "part of 'a.dart';\n\nvoid inPart() {}\n\nclass FromPart {";
 const B_MAC: &str = "part of 'a.dart';\n\nvoid inPart() {}\n\nclass FromPart )";
 
@@ -28,7 +29,10 @@ fn fields(r: &DartIdentifierReferenceResolution) -> Vec<(String, String)> {
     let mut out = vec![
         ("status".to_string(), format!("{:?}", r.status)),
         ("kind".to_string(), format!("{:?}", r.reference.kind)),
-        ("confidence".to_string(), format!("{:?}", r.reference.confidence)),
+        (
+            "confidence".to_string(),
+            format!("{:?}", r.reference.confidence),
+        ),
         ("prefix".to_string(), format!("{:?}", r.reference.prefix)),
         (
             "enclosing".to_string(),
@@ -36,7 +40,10 @@ fn fields(r: &DartIdentifierReferenceResolution) -> Vec<(String, String)> {
         ),
         (
             "span".to_string(),
-            format!("{:?}", (r.reference.span.byte_start, r.reference.span.byte_end)),
+            format!(
+                "{:?}",
+                (r.reference.span.byte_start, r.reference.span.byte_end)
+            ),
         ),
         ("candidates".to_string(), r.candidates.len().to_string()),
     ];
@@ -123,9 +130,33 @@ fn probe(label: &str, from: (&str, &str), to: (&str, &str), a_first: bool, out: 
 fn probe_part_divergence() {
     let mut out = Vec::new();
     probe("a1 only", (A0, B0), (" FromPart()", B0), true, &mut out);
-    probe("linux, a first", (A0, B0), (" FromPart()", B_LINUX), true, &mut out);
-    probe("linux, b first", (A0, B0), (" FromPart()", B_LINUX), false, &mut out);
-    probe("mac, a first", (A0, B0), (" FromPart()", B_MAC), true, &mut out);
-    probe("mac, b first", (A0, B0), (" FromPart()", B_MAC), false, &mut out);
+    probe(
+        "linux, a first",
+        (A0, B0),
+        (" FromPart()", B_LINUX),
+        true,
+        &mut out,
+    );
+    probe(
+        "linux, b first",
+        (A0, B0),
+        (" FromPart()", B_LINUX),
+        false,
+        &mut out,
+    );
+    probe(
+        "mac, a first",
+        (A0, B0),
+        (" FromPart()", B_MAC),
+        true,
+        &mut out,
+    );
+    probe(
+        "mac, b first",
+        (A0, B0),
+        (" FromPart()", B_MAC),
+        false,
+        &mut out,
+    );
     assert!(out.is_empty(), "\n{}", out.join("\n"));
 }
