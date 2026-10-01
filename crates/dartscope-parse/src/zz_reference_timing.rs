@@ -44,7 +44,8 @@ fn zz_reference_timing() {
         let bindings = collect_lexical_bindings(&source, &lexical.code, &file);
         let t_bindings = t.elapsed();
         let t = Instant::now();
-        let mut references = collect_identifier_references(&source, &lexical.code, &file, &bindings);
+        let mut references =
+            collect_identifier_references(&source, &lexical.code, &file, &bindings);
         let t_identifiers = t.elapsed();
         let t = Instant::now();
         let reads =
@@ -57,15 +58,30 @@ fn zz_reference_timing() {
         references.extend(writes);
         let t_writes = t.elapsed();
         let t = Instant::now();
-        let updates =
-            collect_lexical_update_references(&source, &lexical.code, &file, &bindings, &references);
+        let updates = collect_lexical_update_references(
+            &source,
+            &lexical.code,
+            &file,
+            &bindings,
+            &references,
+        );
         references.extend(updates);
         let t_updates = t.elapsed();
         let t = Instant::now();
-        references.extend(collect_method_references(&source, &lexical.code, &file, &bindings));
+        references.extend(collect_method_references(
+            &source,
+            &lexical.code,
+            &file,
+            &bindings,
+        ));
         let t_methods = t.elapsed();
         let t = Instant::now();
-        references.extend(collect_property_references(&source, &lexical.code, &file, &bindings));
+        references.extend(collect_property_references(
+            &source,
+            &lexical.code,
+            &file,
+            &bindings,
+        ));
         let t_properties = t.elapsed();
         let t = Instant::now();
         references.extend(collect_operator_references(&source, &lexical.code, &file));
