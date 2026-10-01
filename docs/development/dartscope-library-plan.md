@@ -1129,8 +1129,9 @@ compiled only after the audit's minimal fixes and did not work against a real ed
    uses `EnumMember` and `Property` where they apply and selects the declared name inside the range.
 6. Cost: one document is re-analyzed per change and the incremental index updated in place; the
    resolution context is built once per index generation. A document over 256 KiB keeps outline and
-   diagnostics but is left out of navigation (information diagnostic `navigation_disabled_large_file`),
-   because reference analysis is superlinear in the size of one file.
+   diagnostics but is left out of navigation (information diagnostic `navigation_disabled_large_file`).
+   The limit bounds the work done after every edit; the reference analysis itself is linear in the size of
+   one file (about a quarter of a second per MiB in a release build) since the `FileFacts` rewrite.
 7. Tests: unit tests for coordinates, server and `rpc`, and process tests that drive the real binary
    over pipes (`crates/dartscope-lsp/tests/stdio.rs`).
 

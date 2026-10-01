@@ -76,12 +76,103 @@ fn tree(n: usize) -> String {
     source
 }
 
+fn functions(n: usize) -> String {
+    let mut source = String::from("int f0(int a) => a;\n");
+    for i in 1..n {
+        source.push_str(&format!("int f{i}(int a) => f{}(a) + a;\n", i - 1));
+    }
+    source
+}
+
+fn same_name_locals(n: usize) -> String {
+    let mut source = String::from("class L {\n  void run(int seed) {\n");
+    for i in 0..n {
+        source.push_str(&format!("    {{\n      var tmp = seed + {i};\n      print(tmp);\n    }}\n"));
+    }
+    source.push_str("  }\n}\n");
+    source
+}
+
+fn closures(n: usize) -> String {
+    let mut source = String::from("class C {\n  void run(List<int> items) {\n");
+    for i in 0..n {
+        source.push_str(&format!(
+            "    items.map((x) => x + {i}).toList();\n    items.forEach((y) {{ print(y); }});\n    for (var i = 0; i < {i}; i++) {{ print(i); }}\n    for (final z in items) {{ print(z); }}\n    try {{ run(items); }} catch (e, s) {{ print(e); }}\n"
+        ));
+    }
+    source.push_str("  }\n}\n");
+    source
+}
+
+fn long_expression(n: usize) -> String {
+    let mut source = String::from("int run(int a) {\n  return a");
+    for i in 0..n {
+        source.push_str(if i % 7 == 0 { " + f(a)" } else { " + a" });
+    }
+    source.push_str(";\n}\nint f(int a) => a;\n");
+    source
+}
+
+fn imports(n: usize) -> String {
+    let mut source = String::new();
+    for i in 0..n {
+        source.push_str(&format!("import 'package:a/a{i}.dart' as p{i};\n"));
+    }
+    source.push_str("void run() {\n");
+    for i in 0..n {
+        source.push_str(&format!("  p{i}.Thing.make();\n  p{i}.go();\n"));
+    }
+    source.push_str("}\n");
+    source
+}
+
+fn literals(n: usize) -> String {
+    let mut source = String::from("const Map<String, int> table = {\n");
+    for i in 0..n {
+        source.push_str(&format!("  'k{i}': {i},\n"));
+    }
+    source.push_str("};\nfinal items = [\n");
+    for i in 0..n {
+        source.push_str(&format!("  Item(id: {i}, name: 'n{i}', tags: const <String>['a']),\n"));
+    }
+    source.push_str("];\n");
+    source
+}
+
+fn deep_parens(n: usize) -> String {
+    let mut source = String::from("void run() {\n  f");
+    for _ in 0..n {
+        source.push_str("(g");
+    }
+    for _ in 0..n {
+        source.push(')');
+    }
+    source.push_str(";\n}\n");
+    source
+}
+
+fn unbalanced(n: usize) -> String {
+    let mut source = String::from("void run() {\n");
+    for i in 0..n {
+        source.push_str(&format!("  f{i}(a, b {{ \n"));
+    }
+    source
+}
+
 fn all_seeds() -> Vec<String> {
     let mut seeds: Vec<String> = SEEDS.iter().map(|seed| (*seed).to_string()).collect();
     seeds.push(classes(4));
     seeds.push(widgets(3));
     seeds.push(statements(6));
     seeds.push(tree(8));
+    seeds.push(functions(8));
+    seeds.push(same_name_locals(6));
+    seeds.push(closures(5));
+    seeds.push(long_expression(30));
+    seeds.push(imports(5));
+    seeds.push(literals(6));
+    seeds.push(deep_parens(10));
+    seeds.push(unbalanced(10));
     seeds
 }
 
@@ -94,11 +185,11 @@ fn candidates(salt: usize, index: usize, seed: &str, rounds: usize) -> Vec<Strin
     result
 }
 
-fn analyze(source: &str) -> Result<String, ()> {
+fn analyze(source: &str, pretty: bool) -> Result<String, ()> {
     panic::catch_unwind(AssertUnwindSafe(|| {
         let analysis =
             analyze_file_with_references(DartFileInput::new("lib/a.dart", source.to_string()));
-        format!("{analysis:#?}")
+        if pretty { format!("{analysis:#?}") } else { format!("{analysis:?}") }
     }))
     .map_err(|_| ())
 }
@@ -117,7 +208,7 @@ fn main() {
         let id: Vec<usize> = args[position + 1].split(':').map(|part| part.parse().unwrap()).collect();
         let source = candidates(id[0], id[1], &seeds[id[1]], rounds).swap_remove(id[2]);
         println!("=== source ===\\n{source}\\n=== analysis ===");
-        match analyze(&source) {
+        match analyze(&source, true) {
             Ok(text) => println!("{text}"),
             Err(()) => println!("PANIC"),
         }
@@ -126,7 +217,7 @@ fn main() {
     for salt in 0..salts {
         for (index, seed) in seeds.iter().enumerate() {
             for (n, source) in candidates(salt, index, seed, rounds).iter().enumerate() {
-                match analyze(source) {
+                match analyze(source, false) {
                     Ok(text) => println!("{salt}:{index}:{n}:{:016x}", fnv(&text)),
                     Err(()) => println!("{salt}:{index}:{n}:PANIC"),
                 }

@@ -109,15 +109,19 @@ immutable-snapshot parity. Keep arbitrary receiver inference, cascades, null-awa
 dispatch, patterns, and flow-sensitive behavior behind later focused slices.
 
 The 2026-09-30 engineering audit (`docs/development/audit-findings-2026-09-30.md`) was worked off on the
-audit branch; section 16 of that report is the status of every finding. The highest-value open item is the
-reference passes of `dartscope-parse` (`lexical_reads`, `lexical_writes`, `identifier_references`,
-`member_references`, `property_references`, `operator_references`, `lexical_regions`): they scan all
-bindings, references or declarations for every identifier token, so `analyze_file_with_references` is
-quadratic in the size of one file (the LSP protects itself with a 256 KiB navigation limit). Replace the
-scans with per-file lookup tables built once, the way `invocations` and `LineTable` do, and keep the
-counter-based scaling tests (never wall-clock assertions). Next in line: an end-to-end fuzz target for
-`analyze_file_with_references`, splitting `incremental.rs`, and `lint` configuration for generated-file
-exclusions.
+audit branch; section 16 of that report is the status of every finding. The reference passes of
+`dartscope-parse` (`lexical_reads`, `lexical_writes`, `identifier_references`, `member_references`,
+`property_references`, `operator_references`, `lexical_regions`, `lexical_bindings`) are linear in the size
+of one file because they take every per-token answer from structures built once per file: `FileFacts`
+(`file_facts.rs`) with `DeclarationTables` (`declaration_tables.rs`) and `SourceStructure`
+(`source_structure.rs`), plus `BindingIndex` (`binding_index.rs`) per pass, all on the interval primitives
+of `interval_index.rs`. Keep it that way: a pass must not walk `analysis.declarations`, the bindings or the
+references found so far, or rescan the text around a token, from inside a per-token loop. When a pass needs
+a new question answered, add it to one of those structures together with a test that compares it with the
+scan it replaces (the `linear` modules next to the existing ones), and check a restructuring with the
+differential run described in `docs/development/fuzzing.md`; do not assert wall-clock time. Next in line:
+an end-to-end fuzz target for `analyze_file_with_references`, splitting `incremental.rs`, and `lint`
+configuration for generated-file exclusions.
 
 Separately, the 2026-09-25 review consolidated Dart identifier scanning into
 `crates/dartscope-parse/src/identifiers.rs` after finding that thirteen local character classes had

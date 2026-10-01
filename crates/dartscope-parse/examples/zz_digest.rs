@@ -341,6 +341,7 @@ fn mutate(rng: &mut Rng, source: &str) -> String {
     chars.into_iter().collect()
 }
 
+
 fn fnv(text: &str) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325u64;
     for byte in text.bytes() {
@@ -353,11 +354,7 @@ fn fnv(text: &str) -> u64 {
 fn classes(n: usize) -> String {
     let mut source = String::new();
     for class in 0..n {
-        let base = if class > 0 {
-            format!("C{}", class - 1)
-        } else {
-            "Object".to_string()
-        };
+        let base = if class > 0 { format!("C{}", class - 1) } else { "Object".to_string() };
         source.push_str(&format!(
             "class C{class} extends {base} {{\n  int a{class} = 0;\n  int m{class}(int x) {{\n    this.a{class} = x;\n    return this.m0(x) + this.a{class};\n  }}\n  void run{class}() {{\n    this.run0();\n    this.m{class}(1);\n    this.missing();\n    helper();\n  }}\n}}\n"
         ));
@@ -400,12 +397,142 @@ fn tree(n: usize) -> String {
     source
 }
 
+fn functions(n: usize) -> String {
+    let mut source = String::from("int f0(int a) => a;
+");
+    for i in 1..n {
+        source.push_str(&format!("int f{i}(int a) => f{}(a) + a;
+", i - 1));
+    }
+    source
+}
+
+fn same_name_locals(n: usize) -> String {
+    let mut source = String::from("class L {
+  void run(int seed) {
+");
+    for i in 0..n {
+        source.push_str(&format!("    {{
+      var tmp = seed + {i};
+      print(tmp);
+    }}
+"));
+    }
+    source.push_str("  }
+}
+");
+    source
+}
+
+fn closures(n: usize) -> String {
+    let mut source = String::from("class C {
+  void run(List<int> items) {
+");
+    for i in 0..n {
+        source.push_str(&format!(
+            "    items.map((x) => x + {i}).toList();
+    items.forEach((y) {{ print(y); }});
+    for (var i = 0; i < {i}; i++) {{ print(i); }}
+    for (final z in items) {{ print(z); }}
+    try {{ run(items); }} catch (e, s) {{ print(e); }}
+"
+        ));
+    }
+    source.push_str("  }
+}
+");
+    source
+}
+
+fn long_expression(n: usize) -> String {
+    let mut source = String::from("int run(int a) {
+  return a");
+    for i in 0..n {
+        source.push_str(if i % 7 == 0 { " + f(a)" } else { " + a" });
+    }
+    source.push_str(";
+}
+int f(int a) => a;
+");
+    source
+}
+
+fn imports(n: usize) -> String {
+    let mut source = String::new();
+    for i in 0..n {
+        source.push_str(&format!("import 'package:a/a{i}.dart' as p{i};
+"));
+    }
+    source.push_str("void run() {
+");
+    for i in 0..n {
+        source.push_str(&format!("  p{i}.Thing.make();
+  p{i}.go();
+"));
+    }
+    source.push_str("}
+");
+    source
+}
+
+fn literals(n: usize) -> String {
+    let mut source = String::from("const Map<String, int> table = {
+");
+    for i in 0..n {
+        source.push_str(&format!("  'k{i}': {i},
+"));
+    }
+    source.push_str("};
+final items = [
+");
+    for i in 0..n {
+        source.push_str(&format!("  Item(id: {i}, name: 'n{i}', tags: const <String>['a']),
+"));
+    }
+    source.push_str("];
+");
+    source
+}
+
+fn deep_parens(n: usize) -> String {
+    let mut source = String::from("void run() {
+  f");
+    for _ in 0..n {
+        source.push_str("(g");
+    }
+    for _ in 0..n {
+        source.push(')');
+    }
+    source.push_str(";
+}
+");
+    source
+}
+
+fn unbalanced(n: usize) -> String {
+    let mut source = String::from("void run() {
+");
+    for i in 0..n {
+        source.push_str(&format!("  f{i}(a, b {{ 
+"));
+    }
+    source
+}
+
 fn all_seeds() -> Vec<String> {
     let mut seeds: Vec<String> = SEEDS.iter().map(|seed| (*seed).to_string()).collect();
     seeds.push(classes(4));
     seeds.push(widgets(3));
     seeds.push(statements(6));
     seeds.push(tree(8));
+    seeds.push(functions(8));
+    seeds.push(same_name_locals(6));
+    seeds.push(closures(5));
+    seeds.push(long_expression(30));
+    seeds.push(imports(5));
+    seeds.push(literals(6));
+    seeds.push(deep_parens(10));
+    seeds.push(unbalanced(10));
     seeds
 }
 
@@ -418,20 +545,17 @@ fn candidates(salt: usize, index: usize, seed: &str, rounds: usize) -> Vec<Strin
     result
 }
 
-fn analyze(source: &str) -> Result<String, ()> {
+fn analyze(source: &str, pretty: bool) -> Result<String, ()> {
     panic::catch_unwind(AssertUnwindSafe(|| {
         let analysis =
             analyze_file_with_references(DartFileInput::new("lib/a.dart", source.to_string()));
-        format!("{analysis:#?}")
+        if pretty { format!("{analysis:#?}") } else { format!("{analysis:?}") }
     }))
     .map_err(|_| ())
 }
 
 fn number(name: &str, default: usize) -> usize {
-    std::env::var(name)
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(default)
+    std::env::var(name).ok().and_then(|value| value.parse().ok()).unwrap_or(default)
 }
 
 fn main() {
@@ -441,13 +565,10 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let seeds = all_seeds();
     if let Some(position) = args.iter().position(|arg| arg == "--dump") {
-        let id: Vec<usize> = args[position + 1]
-            .split(':')
-            .map(|part| part.parse().unwrap())
-            .collect();
+        let id: Vec<usize> = args[position + 1].split(':').map(|part| part.parse().unwrap()).collect();
         let source = candidates(id[0], id[1], &seeds[id[1]], rounds).swap_remove(id[2]);
         println!("=== source ===\n{source}\n=== analysis ===");
-        match analyze(&source) {
+        match analyze(&source, true) {
             Ok(text) => println!("{text}"),
             Err(()) => println!("PANIC"),
         }
@@ -456,7 +577,7 @@ fn main() {
     for salt in 0..salts {
         for (index, seed) in seeds.iter().enumerate() {
             for (n, source) in candidates(salt, index, seed, rounds).iter().enumerate() {
-                match analyze(source) {
+                match analyze(source, false) {
                     Ok(text) => println!("{salt}:{index}:{n}:{:016x}", fnv(&text)),
                     Err(()) => println!("{salt}:{index}:{n}:PANIC"),
                 }

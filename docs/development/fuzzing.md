@@ -81,6 +81,25 @@ is not valid Dart (a slice at a byte that is not on a character boundary) and an
 staleness (a cached resolution kept the full span of its target declaration, and the invalidation
 compared only line spans and top-level declarations).
 
+### Differential check when the reference passes are restructured
+
+The mutation corpus doubles as a differential test. The reference passes were rewritten from per-token
+scans to lookup structures (`FileFacts`, 2026-10-01) with the requirement that the output stays identical,
+not just plausible. The check that was used, and that suits any such rewrite:
+
+1. Write an example program (not committed) that replays the seeds and the mutation operators of
+   `robustness_mutations.rs` and prints `salt:seed:mutant:hash` for every mutant, where the hash covers
+   `format!("{:?}", analyze_file_with_references(..))`, plus a `--dump salt:seed:mutant` mode that prints the
+   source and the pretty `Debug` output of one mutant. Add a few generated large shapes as seeds (many
+   classes, widgets with locals and closures, one method with thousands of statements, one long expression).
+2. Build it at the previous commit (`git worktree add`) and at the new tree, run both and `diff` the output.
+   Any difference is a defect of the rewrite; diff the two `--dump` outputs of the first mismatch.
+
+The rewrite of `FileFacts` produced no difference in 15,652 mutants of 13 seeds, and none in a longer
+campaign of 150,000 mutants of 21 seeds. Each structure additionally has an equivalence test against the scan
+it replaces (the `linear` modules in the tests of `interval_index.rs`, `source_structure.rs`,
+`declaration_tables.rs`, `binding_index.rs` and `lexical_reads.rs`).
+
 ## Toolchain And CI Boundary
 
 CI pins `cargo-fuzz 0.13.2`, `libfuzzer-sys 0.4.13`, and `nightly-2026-07-01`. The normal workspace stays

@@ -28,10 +28,10 @@ use crate::types::{
 
 /// The largest document, in bytes, that is analyzed for navigation.
 ///
-/// Reference analysis grows faster than linearly with the size of one file (a file of 330 KB takes
-/// about 0.8 s, one of 1.3 MB about 25 s), and it runs again after every edit. A larger document
-/// keeps its outline and diagnostics, which are linear, but is not part of navigation, and says so
-/// with a diagnostic instead of freezing the editor.
+/// Reference analysis is linear in the size of one file (about a quarter of a second per MiB in a
+/// release build), but it runs again after every edit, on the thread that serves the editor. A larger
+/// document keeps its outline and diagnostics but is not part of navigation, and says so with a
+/// diagnostic instead of making every keystroke wait for a multi-megabyte analysis.
 pub const MAX_NAVIGATION_BYTES: usize = 256 * 1024;
 
 /// Code of the diagnostic that reports a document left out of navigation by its size.

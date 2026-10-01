@@ -5,7 +5,7 @@ if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[perf\]'; th
   grep -E '^(phase|test result|error)' "$OUT/perf_phase.log" > "$OUT/perf_phase.sum"
   emit perf_phase "$OUT/perf_phase.sum" --chunk 3900 --max 3
 fi
-if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[diff\]'; then
+if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -qE '\[diff(-big)?\]'; then
   # Differential run: the baseline commit and this tree must produce byte-identical analyses.
   BASE_SHA="$(cat "$GITHUB_WORKSPACE/loop/baseline")"
   run diff_fetch git fetch --depth 1 origin "$BASE_SHA"
@@ -20,6 +20,7 @@ if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[diff\]'; th
   : >"$OUT/diff.sum"
   if [ -x "$OUT/digest_new" ] && [ -x "$OUT/digest_old" ]; then
     export DIGEST_ROUNDS="${DIGEST_ROUNDS:-300}" DIGEST_SALTS="${DIGEST_SALTS:-4}"
+    if printf '%s' "$msg" | grep -q '\[diff-big\]'; then export DIGEST_ROUNDS=1200 DIGEST_SALTS=6; fi
     "$OUT/digest_new" >"$OUT/digest_new.txt" 2>"$OUT/digest_new.err"
     "$OUT/digest_old" >"$OUT/digest_old.txt" 2>"$OUT/digest_old.err"
     {
