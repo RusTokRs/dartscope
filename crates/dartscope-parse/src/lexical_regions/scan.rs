@@ -43,11 +43,14 @@ pub(super) fn find_top_level_keyword(
     keyword: &str,
 ) -> Option<usize> {
     let bytes = source.as_bytes();
+    let limit = end.min(bytes.len());
     let mut depth = DelimiterDepth::default();
     let mut at = start;
-    while at < end.min(bytes.len()) {
+    while at < limit {
         depth.observe(bytes[at]);
-        if depth.is_zero() && source[at..end].starts_with(keyword) {
+        // Compared as bytes: `at` visits every byte, and slicing the text there would panic inside a
+        // multi-byte character of code that is not valid Dart.
+        if depth.is_zero() && bytes[at..limit].starts_with(keyword.as_bytes()) {
             let before = at.checked_sub(1).and_then(|index| bytes.get(index));
             let after = bytes.get(at + keyword.len());
             if before.is_none_or(|byte| !is_identifier_continue(*byte))
