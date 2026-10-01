@@ -537,7 +537,10 @@ fn compact_prints_the_same_document_on_one_line() {
             "pubspec".into(),
             project.path().join("pubspec.yaml").into_os_string(),
         ],
-        vec!["analyze-project".into(), project.path().as_os_str().to_owned()],
+        vec![
+            "analyze-project".into(),
+            project.path().as_os_str().to_owned(),
+        ],
         vec!["uri-graph".into(), project.path().as_os_str().to_owned()],
         vec![
             "graphql-contracts".into(),
@@ -555,10 +558,17 @@ fn compact_prints_the_same_document_on_one_line() {
         compact_args.push("--compact".into());
         let compact = run_os(compact_args);
 
-        assert_eq!(compact.status.code(), Some(0), "{case:?}: {}", stderr(&compact));
+        assert_eq!(
+            compact.status.code(),
+            Some(0),
+            "{case:?}: {}",
+            stderr(&compact)
+        );
         assert!(stderr(&compact).is_empty(), "stderr: {}", stderr(&compact));
         let compact_text = stdout(&compact);
-        let compact_json = compact_text.strip_suffix('\n').expect("one trailing newline");
+        let compact_json = compact_text
+            .strip_suffix('\n')
+            .expect("one trailing newline");
         assert!(!compact_json.contains('\n'), "{case:?}: {compact_json}");
         assert!(
             compact_json.len() < stdout(&pretty).len(),
@@ -678,7 +688,10 @@ fn directories_that_are_not_walked_are_reported_as_info_diagnostics() {
     ] {
         write_file(&project.path().join(skipped), "void skipped() {}\n");
     }
-    write_file(&project.path().join("lib/build/kept.dart"), "void kept() {}\n");
+    write_file(
+        &project.path().join("lib/build/kept.dart"),
+        "void kept() {}\n",
+    );
 
     let output = run_os([
         OsString::from("analyze-project"),
@@ -688,7 +701,8 @@ fn directories_that_are_not_walked_are_reported_as_info_diagnostics() {
     assert_json_success(&output, "dartscope.project-analysis");
     let json = stdout(&output);
     assert_eq!(
-        json.matches("\"code\": \"input_directory_skipped\"").count(),
+        json.matches("\"code\": \"input_directory_skipped\"")
+            .count(),
         5,
         "stdout: {json}"
     );
@@ -719,7 +733,10 @@ fn skip_symlinks_turns_rejected_links_into_warnings() {
 
     let project = TempDirectory::new("skip symlinks");
     write_package(project.path(), "root_package", "lib/root.dart");
-    write_file(&project.path().join("lib/real/inner.dart"), "void inner() {}\n");
+    write_file(
+        &project.path().join("lib/real/inner.dart"),
+        "void inner() {}\n",
+    );
     let outside = TempDirectory::new("skip symlinks outside");
     write_file(&outside.path().join("outside.dart"), "void outside() {}\n");
     symlink(

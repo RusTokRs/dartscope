@@ -342,7 +342,10 @@ fn segment_matching_and_exclusions_come_from_the_toml() {
     let by_string = lint(&format!("{rules}{pattern}"));
     assert!(by_string.contains("lib/ui_kit/button.dart"), "{by_string}");
     assert!(by_string.contains("lib/model.g.dart"), "{by_string}");
-    assert!(by_string.contains("lib/generated/other.dart"), "{by_string}");
+    assert!(
+        by_string.contains("lib/generated/other.dart"),
+        "{by_string}"
+    );
 
     let tuned = lint(&format!(
         "{rules}{segment_matching}{pattern}{segment_pattern}{exclusions}"

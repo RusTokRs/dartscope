@@ -45,14 +45,21 @@ fn excluded_suffixes_and_prefixes_silence_every_rule_for_those_files() {
     let filtered = lint_project(&project, &config);
 
     assert!(!filtered.diagnostics.is_empty());
-    assert!(paths(&filtered).iter().all(|path| *path == "lib/BadName.dart"));
+    assert!(
+        paths(&filtered)
+            .iter()
+            .all(|path| *path == "lib/BadName.dart")
+    );
     assert_eq!(filtered.summary.diagnostics, filtered.diagnostics.len());
 }
 
 #[test]
 fn segment_matching_does_not_cross_a_directory_name() {
     let project = project(&[
-        ("lib/ui/screen.dart", "import '../database/store.dart';\nimport '../data/repo.dart';\n"),
+        (
+            "lib/ui/screen.dart",
+            "import '../database/store.dart';\nimport '../data/repo.dart';\n",
+        ),
         ("lib/ui_kit/button.dart", "import '../data/repo.dart';\n"),
         ("lib/data/repo.dart", "class Repo {}\n"),
         ("lib/database/store.dart", "class Store {}\n"),
@@ -68,7 +75,11 @@ fn segment_matching_does_not_cross_a_directory_name() {
     let by_string = lint_project(&project, &config);
     assert_eq!(
         paths(&by_string),
-        ["lib/ui/screen.dart", "lib/ui/screen.dart", "lib/ui_kit/button.dart"]
+        [
+            "lib/ui/screen.dart",
+            "lib/ui/screen.dart",
+            "lib/ui_kit/button.dart"
+        ]
     );
 
     // Segments: only `lib/ui/` is the source layer, and only `lib/data/` is denied.
@@ -91,17 +102,28 @@ fn segment_matching_applies_to_ignored_paths_and_exclusions() {
     config.naming.ignored_path_prefixes = vec!["lib/gen".to_string()];
 
     let by_string = lint_project(&project, &config);
-    assert!(by_string.diagnostics.is_empty(), "lib/gen is a string prefix of lib/generic");
+    assert!(
+        by_string.diagnostics.is_empty(),
+        "lib/gen is a string prefix of lib/generic"
+    );
 
     config.path_match = DartLintPathMatch::Segment;
     let by_segment = lint_project(&project, &config);
     assert!(!by_segment.diagnostics.is_empty());
-    assert!(paths(&by_segment).iter().all(|path| *path == "lib/generic/b.dart"));
+    assert!(
+        paths(&by_segment)
+            .iter()
+            .all(|path| *path == "lib/generic/b.dart")
+    );
 
     config.naming.ignored_path_prefixes.clear();
     config.exclude.path_prefixes = vec!["lib/gen".to_string()];
     let excluded = lint_project(&project, &config);
-    assert!(paths(&excluded).iter().all(|path| *path == "lib/generic/b.dart"));
+    assert!(
+        paths(&excluded)
+            .iter()
+            .all(|path| *path == "lib/generic/b.dart")
+    );
 }
 
 #[test]
@@ -121,7 +143,11 @@ fn segment_prefix_import_patterns_stop_at_the_package_name() {
     config.forbidden_imports[0].match_kind = DartImportPatternKind::SegmentPrefix;
     let analysis = lint_project(&project, &config);
     assert_eq!(analysis.diagnostics.len(), 1);
-    assert!(analysis.diagnostics[0].message.contains("package:flutter/material.dart"));
+    assert!(
+        analysis.diagnostics[0]
+            .message
+            .contains("package:flutter/material.dart")
+    );
 
     config.forbidden_imports[0].uri = "dart:io".to_string();
     assert_eq!(lint_project(&project, &config).diagnostics.len(), 1);
