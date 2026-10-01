@@ -9,16 +9,9 @@ use dartscope_index::{
 use dartscope_parse::{analyze_file_with_references, analyze_project_with_references};
 
 const A0: &str = "library lib_a;\n\npart 'b.dart';\n\nclass Owner {\n  void use() {\n    inPart();\n    FromPart().touch();\n  }\n}\n";
-<<<<<<< Updated upstream
-const A_NO_PART: &str = "library lib_a;\n\nclass Owner {\n  void use() {\n    inPart();\n    FromPart().touch();\n  }\n}\n";
-const B0: &str =
-    "part of 'a.dart';\n\nvoid inPart() {}\n\nclass FromPart {\n  void touch() {}\n}\n";
-const B_CUT: &str = "part of 'a.dart';\n\nvoid inPart() {}\n\nclass FromPart {";
-=======
 const B0: &str = "part of 'a.dart';\n\nvoid inPart() {}\n\nclass FromPart {\n  void touch() {}\n}\n";
 const B_LINUX: &str = "part of 'a.dart';\n\nvoid inPart() {}\n\nclass FromPart {";
 const B_MAC: &str = "part of 'a.dart';\n\nvoid inPart() {}\n\nclass FromPart )";
->>>>>>> Stashed changes
 
 fn project(a: &str, b: &str) -> DartProjectReferenceAnalysis {
     analyze_project_with_references(DartProjectInput::new(
@@ -51,25 +44,6 @@ fn fields(r: &DartIdentifierReferenceResolution) -> Vec<(String, String)> {
         out.push((
             format!("cand{i}"),
             format!(
-<<<<<<< Updated upstream
-                "{}:{} {} {:?} [{}]",
-                r.reference.source_path.trim_start_matches("lib/"),
-                r.reference.span.byte_start,
-                r.reference.name,
-                r.status,
-                r.candidates
-                    .iter()
-                    .map(|c| format!(
-                        "{}:{}",
-                        c.declaration_path.trim_start_matches("lib/"),
-                        c.name
-                    ))
-                    .collect::<Vec<_>>()
-                    .join(",")
-            )
-        })
-        .collect()
-=======
                 "{} {:?} {:?} {} {:?} {:?}",
                 c.name,
                 c.kind,
@@ -81,7 +55,6 @@ fn fields(r: &DartIdentifierReferenceResolution) -> Vec<(String, String)> {
         ));
     }
     out
->>>>>>> Stashed changes
 }
 
 fn probe(label: &str, from: (&str, &str), to: (&str, &str), a_first: bool, out: &mut Vec<String>) {
@@ -149,48 +122,10 @@ fn probe(label: &str, from: (&str, &str), to: (&str, &str), a_first: bool, out: 
 #[test]
 fn probe_part_divergence() {
     let mut out = Vec::new();
-<<<<<<< Updated upstream
-    probe(
-        "remove part directive",
-        (A0, B0),
-        (A_NO_PART, B0),
-        true,
-        &mut out,
-    );
-    probe(
-        "add part directive",
-        (A_NO_PART, B0),
-        (A0, B0),
-        true,
-        &mut out,
-    );
-    probe(
-        "a1=' FromPart()', b unchanged",
-        (A0, B0),
-        (" FromPart()", B0),
-        true,
-        &mut out,
-    );
-    probe(
-        "a1=' FromPart()', b cut, a first",
-        (A0, B0),
-        (" FromPart()", B_CUT),
-        true,
-        &mut out,
-    );
-    probe(
-        "a1=' FromPart()', b cut, b first",
-        (A0, B0),
-        (" FromPart()", B_CUT),
-        false,
-        &mut out,
-    );
-=======
     probe("a1 only", (A0, B0), (" FromPart()", B0), true, &mut out);
     probe("linux, a first", (A0, B0), (" FromPart()", B_LINUX), true, &mut out);
     probe("linux, b first", (A0, B0), (" FromPart()", B_LINUX), false, &mut out);
     probe("mac, a first", (A0, B0), (" FromPart()", B_MAC), true, &mut out);
     probe("mac, b first", (A0, B0), (" FromPart()", B_MAC), false, &mut out);
->>>>>>> Stashed changes
     assert!(out.is_empty(), "\n{}", out.join("\n"));
 }
