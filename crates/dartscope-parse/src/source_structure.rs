@@ -58,7 +58,12 @@ impl SourceStructure {
                     open_brackets.pop();
                 }
                 b',' => {
-                    let innermost = innermost_open(&open_parens, &open_brackets, &open_blocks, &structure.brace_opens);
+                    let innermost = innermost_open(
+                        &open_parens,
+                        &open_brackets,
+                        &open_blocks,
+                        &structure.brace_opens,
+                    );
                     structure.breaks.push((at, innermost));
                 }
                 b'<' => {
@@ -79,7 +84,12 @@ impl SourceStructure {
                     let key = if byte == b'}' {
                         brace_top
                     } else {
-                        innermost_open(&open_parens, &open_brackets, &open_blocks, &structure.brace_opens)
+                        innermost_open(
+                            &open_parens,
+                            &open_brackets,
+                            &open_blocks,
+                            &structure.brace_opens,
+                        )
                     };
                     structure.breaks.push((at, key));
                     if depth > 0 {
@@ -351,7 +361,8 @@ mod tests {
 
     fn random_source(rng: &mut Rng) -> String {
         const PIECES: &[&str] = &[
-            "<", ">", "<", ">", ";", "{", "}", "{", "}", "(", ")", "[", "]", "a", "bc", " ", "\n", "=>", ", ",
+            "<", ">", "<", ">", ";", "{", "}", "{", "}", "(", ")", "[", "]", "a", "bc", " ", "\n",
+            "=>", ", ",
         ];
         let count = rng.below(24);
         (0..count)

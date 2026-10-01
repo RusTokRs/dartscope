@@ -207,11 +207,9 @@ fn precedes_assignment_in_statement(
     start: usize,
 ) -> bool {
     let first = assignments.partition_point(|&at| at < start);
-    assignments.get(first).is_some_and(|&at| {
-        structure
-            .expression_end(start)
-            .is_none_or(|end| at < end)
-    })
+    assignments
+        .get(first)
+        .is_some_and(|&at| structure.expression_end(start).is_none_or(|end| at < end))
 }
 
 /// The position of every assignment operator in `bytes`, in increasing order.
@@ -220,7 +218,18 @@ fn assignment_positions(bytes: &[u8]) -> Vec<usize> {
         .filter(|&at| {
             matches!(
                 bytes[at],
-                b'>' | b'<' | b'?' | b'~' | b'+' | b'-' | b'*' | b'/' | b'%' | b'&' | b'|' | b'^' | b'='
+                b'>' | b'<'
+                    | b'?'
+                    | b'~'
+                    | b'+'
+                    | b'-'
+                    | b'*'
+                    | b'/'
+                    | b'%'
+                    | b'&'
+                    | b'|'
+                    | b'^'
+                    | b'='
             ) && assignment_operator_at(bytes, at)
         })
         .collect()
