@@ -367,7 +367,8 @@ fn dot_segment(segment: &str) -> Dot {
     while index < bytes.len() {
         if bytes[index] == b'.' {
             index += 1;
-        } else if bytes[index..].starts_with(b"%2") && matches!(bytes.get(index + 2), Some(b'e' | b'E'))
+        } else if bytes[index..].starts_with(b"%2")
+            && matches!(bytes.get(index + 2), Some(b'e' | b'E'))
         {
             index += 3;
         } else {
@@ -520,7 +521,11 @@ mod tests {
             ("g/%2e%2e", "file:///a/b/"),
             ("g/%2e", "file:///a/b/g/"),
         ] {
-            assert_eq!(resolved("file:///a/b/", reference), expected, "{reference:?}");
+            assert_eq!(
+                resolved("file:///a/b/", reference),
+                expected,
+                "{reference:?}"
+            );
         }
     }
 
@@ -548,7 +553,10 @@ mod tests {
         }
         // A reference that brings its own authority is unambiguous.
         let own_authority = UriReference::parse("//x/..//b").unwrap();
-        assert_eq!(urn.resolve(&own_authority).unwrap().to_string(), "urn://x//b");
+        assert_eq!(
+            urn.resolve(&own_authority).unwrap().to_string(),
+            "urn://x//b"
+        );
         // The same shape with a scheme of its own, as a package configuration could write it, must
         // not print as a URI inside the project root.
         let hostile = UriReference::parse("file:/a/..///__dartscope_project__/x").unwrap();
