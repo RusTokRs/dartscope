@@ -21,7 +21,7 @@ summary, then runs:
 1. `cargo +1.95.0 check --workspace --all-targets --locked`;
 2. `cargo +1.95.0 test --workspace --locked --quiet`;
 3. `cargo +1.95.0 package --workspace --locked --allow-dirty --no-verify`, followed by an exact
-   nine-archive count.
+   ten-archive count.
 
 The job has a 30-minute timeout, does not use `continue-on-error`, and is included in the aggregate
 `dartscope/ci` status together with the benchmark regression gate. A macOS failure therefore blocks

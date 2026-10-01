@@ -196,10 +196,14 @@ pub(super) fn is_control_header(source: &str, open: usize) -> bool {
     while start > 0 && is_identifier_continue(bytes[start - 1]) {
         start -= 1;
     }
-    matches!(
-        &source[start..previous + 1],
-        "if" | "for" | "while" | "switch" | "catch" | "assert"
-    )
+    // Code that is not valid Dart can put a non-ASCII character right before the parenthesis (an
+    // editor shows such text while it is being typed); its bytes are not on a character boundary.
+    source.get(start..previous + 1).is_some_and(|word| {
+        matches!(
+            word,
+            "if" | "for" | "while" | "switch" | "catch" | "assert"
+        )
+    })
 }
 
 pub(super) fn find_keyword(source: &str, keyword: &str, start: usize) -> Option<usize> {

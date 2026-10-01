@@ -6,6 +6,11 @@
 //! offsets inside the source and on character boundaries, ordered lines, and line and column numbers
 //! that agree with an independent count.
 
+use std::collections::BTreeMap;
+use std::panic::{self, AssertUnwindSafe, PanicHookInfo};
+use std::sync::{Mutex, PoisonError};
+use std::time::{Duration, Instant};
+
 use dartscope_core::{DartFileInput, DartFileReferenceAnalysis, SourceSpan};
 use dartscope_parse::analyze_file_with_references;
 
@@ -401,32 +406,157 @@ fn span_problems(source: &str, analysis: &DartFileReferenceAnalysis) -> Vec<Stri
     problems
 }
 
+/// Where and why the analysis panicked, recorded by the panic hook of this test binary.
+static PANICS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+
+fn record_panic(info: &PanicHookInfo<'_>) {
+    let place = info.location().map_or_else(
+        || "unknown location".to_string(),
+        |at| format!("{}:{}", at.file(), at.line()),
+    );
+    let payload = info.payload();
+    let message = payload
+        .downcast_ref::<&str>()
+        .map(|text| (*text).to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_default();
+    PANICS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .push((place, message));
+}
+
+/// Analyzes `source`, or returns where the analysis panicked and what it said.
+fn try_analyze(source: &str) -> Result<DartFileReferenceAnalysis, (String, String)> {
+    PANICS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clear();
+    panic::catch_unwind(AssertUnwindSafe(|| {
+        analyze_file_with_references(DartFileInput::new("lib/a.dart", source))
+    }))
+    .map_err(|_| {
+        PANICS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .first()
+            .cloned()
+            .unwrap_or_else(|| ("unknown location".to_string(), String::new()))
+    })
+}
+
+/// The kind of span a problem is about: the text of the problem up to its first colon.
+fn problem_kind(problem: &str) -> String {
+    problem.split(':').next().unwrap_or_default().to_string()
+}
+
+/// Removes characters from `source` for as long as `fails` stays true of the rest, so that a
+/// failure is reported with a source of a few characters instead of a whole mutated file.
+fn shrink(source: &str, fails: &dyn Fn(&str) -> bool) -> String {
+    let mut chars: Vec<char> = source.chars().collect();
+    let mut budget = 1500usize;
+    let mut chunk = chars.len().div_ceil(2).max(1);
+    loop {
+        let mut index = 0;
+        while index < chars.len() && budget > 0 {
+            let end = (index + chunk).min(chars.len());
+            let candidate: String = chars[..index].iter().chain(&chars[end..]).collect();
+            budget -= 1;
+            if fails(&candidate) {
+                let _ = chars.drain(index..end);
+            } else {
+                index += chunk;
+            }
+        }
+        if chunk == 1 || budget == 0 {
+            break;
+        }
+        chunk = chunk.div_ceil(2);
+    }
+    chars.into_iter().collect()
+}
+
+/// One kind of failure: how often it happened, what it said, and the smallest source seen.
+struct Found {
+    count: usize,
+    message: String,
+    source: String,
+}
+
+fn note(found: &mut BTreeMap<String, Found>, key: String, message: String, source: &str) {
+    let entry = found.entry(key).or_insert_with(|| Found {
+        count: 0,
+        message,
+        source: source.to_string(),
+    });
+    entry.count += 1;
+    if source.len() < entry.source.len() {
+        entry.source = source.to_string();
+    }
+}
+
 #[test]
 fn mutated_sources_never_panic_and_report_spans_that_describe_the_text() {
-    let mut failures = Vec::new();
+    panic::set_hook(Box::new(record_panic));
     let mut analyzed = 0usize;
+    let mut panics = BTreeMap::new();
+    let mut problems = BTreeMap::new();
     for (index, seed) in SEEDS.iter().enumerate() {
         let mut rng = Rng(0x9E37_79B9_7F4A_7C15 ^ ((index as u64 + 1) * 0x1000_0000_01B3));
         let mut candidates = vec![(*seed).to_string()];
         candidates.extend((0..200).map(|_| mutate(&mut rng, seed)));
         for source in candidates {
-            let analysis =
-                analyze_file_with_references(DartFileInput::new("lib/a.dart", source.clone()));
             analyzed += 1;
-            let problems = span_problems(&source, &analysis);
-            if !problems.is_empty() && failures.len() < 6 {
-                failures.push(format!(
-                    "{:?}\n    {}",
-                    source,
-                    problems[..problems.len().min(3)].join("\n    ")
-                ));
+            let started = Instant::now();
+            match try_analyze(&source) {
+                Err((place, message)) => note(&mut panics, place, message, &source),
+                Ok(analysis) => {
+                    for problem in span_problems(&source, &analysis) {
+                        note(&mut problems, problem_kind(&problem), problem, &source);
+                    }
+                }
+            }
+            if started.elapsed() > Duration::from_secs(2) {
+                let message = format!("{:?} for {} bytes", started.elapsed(), source.len());
+                note(&mut problems, "slow analysis".to_string(), message, &source);
             }
         }
     }
+    for (place, found) in &mut panics {
+        let place = place.clone();
+        found.source = shrink(&found.source, &|candidate| {
+            matches!(try_analyze(candidate), Err((at, _)) if at == place)
+        });
+    }
+    for (kind, found) in &mut problems {
+        let kind = kind.clone();
+        found.source = shrink(&found.source, &|candidate| {
+            try_analyze(candidate).is_ok_and(|analysis| {
+                span_problems(candidate, &analysis)
+                    .iter()
+                    .any(|problem| problem_kind(problem) == kind)
+            })
+        });
+    }
+    drop(panic::take_hook());
+
     assert!(analyzed >= 1600, "{analyzed} sources were analyzed");
-    assert!(
-        failures.is_empty(),
-        "spans that do not describe the text:\n{}",
-        failures.join("\n")
-    );
+    let mut report = Vec::new();
+    for (place, found) in &panics {
+        report.push(format!(
+            "panic at {place} x{}: {:.100} -- reproducer {:?}",
+            found.count,
+            found.message.replace('\n', " "),
+            found.source
+        ));
+    }
+    for (kind, found) in &problems {
+        report.push(format!(
+            "span problem `{kind}` x{}: {:.160} -- reproducer {:?}",
+            found.count,
+            found.message.replace('\n', " "),
+            found.source
+        ));
+    }
+    assert!(report.is_empty(), "\n{}", report.join("\n"));
 }

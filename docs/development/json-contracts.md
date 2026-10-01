@@ -94,6 +94,32 @@ empty or absent.
 Flutter catalog diagnostics use it to distinguish exact literal mismatches from partial-input or
 dynamic-use uncertainty. No existing field was removed, renamed, or assigned new span semantics.
 
+## v1 corrections from the 2026-09-30 audit
+
+The audit found values that the parser reported wrongly. They are corrected inside v1, without a
+schema-major bump, because no field was removed, renamed or retyped and no span semantics changed;
+a consumer that relied on an old value has to adapt:
+
+- `declarations[].extends` is the `extends` type of a class and nothing else. It used to hold the `on`
+  type of an extension.
+- `declarations[].mixes_in` holds the `with` types of classes and enums. It used to hold the `on`
+  constraints of a mixin.
+- New optional `declarations[].on_types` (omitted when empty; older payloads deserialize it as empty)
+  holds the `on` constraints of a mixin and the `on` type of an extension. It is empty for an extension
+  whose `on` type is one of its own type parameters (`extension X<T> on T`), which applies to every
+  receiver. The golden fixtures contain no `extension` or `mixin`, so they did not change.
+- Enum constants are reported as `field` declarations whose parent is the enum, and a top-level `get` or
+  `set` is reported as a `getter` or `setter`; both were missing before.
+- A leading UTF-8 byte-order mark is a preamble: lines and columns do not count it, byte offsets stay
+  absolute, and the first line of the file is scanned like any other.
+- `analyze-project` can report the new warning `input_file_not_utf8` (with the file path) for a `.dart`
+  file that is not valid UTF-8; the file is not part of `files`.
+- `uri-graph`: percent escapes in a relative `import`, `export` or `part` URI are decoded. A relative
+  URI that is empty or blank, contains an escaped path separator or climbs out of the project root, and
+  a `package:` URI that climbs out of its library directory, resolve to `invalid_uri` without a
+  `target_path`; they used to be `missing_target` with a path, or a path with the surplus `..` segments
+  dropped (a file inside the root that the URI does not mean).
+
 ## Opt-in reference analysis outside command v1 payloads
 
 Identifier-reference wrappers and batch namespace-resolution results are library APIs rather than new

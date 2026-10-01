@@ -96,7 +96,7 @@ cross-platform audit.
 
 | Area | Status | Evidence in repository |
 | --- | --- | --- |
-| Rust workspace and nine crates | verified | root `Cargo.toml`; exact Rust 1.95.0 Linux/Windows quality, test, edition, and feature matrix passed |
+| Rust workspace and ten crates | verified | root `Cargo.toml`; exact Rust 1.95.0 Linux/Windows quality, test, edition, and feature matrix passed |
 | Core normalized model | implemented | declarations, generic invocations, spans, diagnostics, and compatibility projections; pre-1.0 migration work remains |
 | File and pubspec analysis | in_progress | heuristic declarations and generic invocations plus marked `yaml-rust2` pubspec backend; unit and project fixtures |
 | Package config v2 and package URI resolution | in_progress | `dartscope-resolve`, resolver fixtures, and project URI integration tests |
@@ -107,7 +107,7 @@ cross-platform audit.
 | Hosted CI | verified | Rust 1.95.0 quality, Linux/Windows tests, edition-2024, and umbrella feature matrix publish granular and aggregate statuses |
 | Contributor and agent workflow | verified | `AGENTS.md`, `CONTRIBUTING.md`, Rust code standard |
 | Lint/rule engine | verified | optional `dartscope-lints`, five deterministic rules, stable IDs, severity overrides, and focused fixtures |
-| Release packaging | verified with audit corrections | nine `.crate` archives, publish topology, release policy, and protected manual publishing path |
+| Release packaging | verified with audit corrections | ten `.crate` archives, publish topology, release policy, and protected manual publishing path |
 | Parser backend port | verified | `DartParser` capability contract, default heuristic backend, injection path, and backend documentation |
 
 Current verified behaviors include:
