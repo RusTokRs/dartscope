@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
 use dartscope_core::{
-    Confidence, DartFileAnalysis, DartInvocation, DartInvocationArgument, DartProjectAnalysis,
-    FlutterAssetHint, FlutterAssetSource, FlutterFileHints, FlutterLocalizationHint,
-    FlutterLocalizationSource, FlutterRouteHint, FlutterRoutePathKind, FlutterWidgetHint,
+    Confidence, DartDeclarationKind, DartFileAnalysis, DartInvocation, DartInvocationArgument,
+    DartProjectAnalysis, FlutterAssetHint, FlutterAssetSource, FlutterFileHints,
+    FlutterLocalizationHint, FlutterLocalizationSource, FlutterRouteHint, FlutterRoutePathKind,
+    FlutterWidgetHint,
 };
 
 /// Derives Flutter conventions from generic Dart declarations, imports, and invocations.
@@ -25,6 +26,10 @@ pub fn derive_flutter_file_hints(file: &DartFileAnalysis) -> FlutterFileHints {
     };
 
     for declaration in &file.declarations {
+        // Only a class can be a widget: `extension X on Widget` extends a type, not a class.
+        if declaration.kind != DartDeclarationKind::Class {
+            continue;
+        }
         if let Some(base_class) = declaration
             .extends
             .as_deref()

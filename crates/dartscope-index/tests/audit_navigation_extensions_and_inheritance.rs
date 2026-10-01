@@ -129,7 +129,6 @@ fn class_member_wins_over_same_named_extension_member() {
 }
 
 #[test]
-#[ignore = "audit 2026-09-30 §4.5: `on` constraints leak into mixes_in/extends"]
 fn mixin_on_constraint_is_not_reported_as_mixed_in_type() {
     let file = dartscope_parse::analyze_file(DartFileInput::new(
         "lib/m.dart",

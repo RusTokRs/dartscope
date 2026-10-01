@@ -1,6 +1,7 @@
 use dartscope_core::pubspec::PubspecDependencySource;
 use dartscope_core::{
-    Confidence, DartFileAnalysis, DartProjectAnalysis, PubspecDependencySection, SourceSpan,
+    Confidence, DartDeclarationKind, DartFileAnalysis, DartProjectAnalysis,
+    PubspecDependencySection, SourceSpan,
 };
 use serde::{Deserialize, Serialize};
 
@@ -356,6 +357,9 @@ fn convention_findings(
             }
         }
         for declaration in &file.declarations {
+            if declaration.kind != DartDeclarationKind::Class {
+                continue;
+            }
             let Some(base_class) = declaration.extends.as_deref() else {
                 continue;
             };

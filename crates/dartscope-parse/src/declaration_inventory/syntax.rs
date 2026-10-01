@@ -181,15 +181,19 @@ pub(super) fn enum_constants(
     body_start: usize,
     body_end: usize,
 ) -> Vec<EnumConstant> {
-    let bytes = masked.as_bytes();
-    let end = body_end.min(bytes.len());
+    let end = body_end.min(masked.len());
+    let body = masked
+        .as_bytes()
+        .get(body_start + 1..end)
+        .unwrap_or_default();
     let mut constants = Vec::new();
     let mut nesting = 0usize;
     let mut angles = 0usize;
     let mut segment_start = body_start + 1;
-    for index in body_start + 1..=end {
-        // The closing brace ends the last constant exactly like a semicolon does.
-        let byte = if index < end { bytes[index] } else { b';' };
+    // The closing brace ends the last constant exactly like a semicolon does, so a terminating `;`
+    // stands in for it.
+    for (offset, &byte) in body.iter().chain(std::iter::once(&b';')).enumerate() {
+        let index = body_start + 1 + offset;
         match byte {
             b'(' | b'[' | b'{' => nesting += 1,
             b')' | b']' | b'}' => nesting = nesting.saturating_sub(1),

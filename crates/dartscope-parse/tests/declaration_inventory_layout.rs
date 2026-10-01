@@ -154,17 +154,33 @@ fn explicitly_typed_and_late_top_level_variables_are_collected() {
 }
 
 #[test]
-fn getter_and_setter_headers_are_not_reported_as_functions() {
+fn top_level_getter_and_setter_are_accessors_and_never_functions() {
     let analysis = declarations("String get label => 'x';\nset label(String value) {}\n");
 
-    assert!(
-        analysis.declarations.is_empty(),
-        "getter and setter headers must not fabricate top-level functions: {:?}",
-        analysis
-            .declarations
-            .iter()
-            .map(|declaration| (declaration.name.as_str(), declaration.kind))
-            .collect::<Vec<_>>()
+    let found: Vec<_> = analysis
+        .declarations
+        .iter()
+        .map(|declaration| (declaration.name.as_str(), declaration.kind))
+        .collect();
+    assert_eq!(
+        found,
+        vec![
+            ("label", DartDeclarationKind::Getter),
+            ("label", DartDeclarationKind::Setter),
+        ],
+        "accessor headers are reported as accessors, not as top-level functions"
+    );
+    assert_eq!(
+        named(&analysis, "label", DartDeclarationKind::Getter)
+            .symbol_id
+            .as_deref(),
+        Some("lib/sample.dart::getter:label")
+    );
+    assert_eq!(
+        named(&analysis, "label", DartDeclarationKind::Setter)
+            .symbol_id
+            .as_deref(),
+        Some("lib/sample.dart::setter:label")
     );
 }
 
