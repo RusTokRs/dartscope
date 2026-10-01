@@ -200,7 +200,7 @@ struct SarifLocation {
 impl SarifLocation {
     fn new(path: &str, span: Option<&SourceSpan>) -> Self {
         Self {
-            physical_location: SarifPhysicalLocation::new(path, span),
+            physical_location: SarifPhysicalLocation::file_start(path, span),
         }
     }
 }
@@ -222,14 +222,51 @@ struct SarifPhysicalLocation {
 }
 
 impl SarifPhysicalLocation {
+    /// A location of a finding. Findings about a whole file have no span; they are reported at
+    /// the first line, because consumers such as GitHub code scanning need a region to show them.
     fn new(path: &str, span: Option<&SourceSpan>) -> Self {
+        Self::with_region(path, span.map(SarifRegion::from))
+    }
+
+    fn file_start(path: &str, span: Option<&SourceSpan>) -> Self {
+        Self::with_region(
+            path,
+            Some(span.map_or_else(SarifRegion::first_line, SarifRegion::from)),
+        )
+    }
+
+    fn with_region(path: &str, region: Option<SarifRegion>) -> Self {
         Self {
             artifact_location: SarifArtifactLocation {
-                uri: path.replace('\\', "/"),
+                uri: uri_reference(path),
             },
-            region: span.map(SarifRegion::from),
+            region,
         }
     }
+}
+
+/// Encodes a project-relative path as an RFC 3986 URI reference.
+///
+/// Everything outside the unreserved characters and `/` is percent-encoded byte by byte, so a
+/// name such as `a#b.dart` or `файл имя.dart` is not read as a fragment, a scheme or a malformed
+/// reference by SARIF consumers.
+fn uri_reference(path: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let path = path.replace('\\', "/");
+    let mut uri = String::with_capacity(path.len());
+    for byte in path.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                uri.push(char::from(byte));
+            }
+            _ => {
+                uri.push('%');
+                uri.push(char::from(HEX[usize::from(byte >> 4)]));
+                uri.push(char::from(HEX[usize::from(byte & 0x0f)]));
+            }
+        }
+    }
+    uri
 }
 
 #[derive(Debug, Serialize)]
@@ -246,6 +283,17 @@ struct SarifRegion {
     end_column: usize,
 }
 
+impl SarifRegion {
+    fn first_line() -> Self {
+        Self {
+            start_line: 1,
+            start_column: 1,
+            end_line: 1,
+            end_column: 1,
+        }
+    }
+}
+
 impl From<&SourceSpan> for SarifRegion {
     fn from(span: &SourceSpan) -> Self {
         Self {
@@ -254,5 +302,33 @@ impl From<&SourceSpan> for SarifRegion {
             end_line: span.end_line,
             end_column: span.end_column,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uri_references_percent_encode_everything_but_unreserved_characters_and_slashes() {
+        assert_eq!(uri_reference("lib/main.dart"), "lib/main.dart");
+        assert_eq!(uri_reference("lib\\ui\\a_b-c~d.dart"), "lib/ui/a_b-c~d.dart");
+        assert_eq!(uri_reference("lib/a b.dart"), "lib/a%20b.dart");
+        assert_eq!(uri_reference("lib/a#b?c%d.dart"), "lib/a%23b%3Fc%25d.dart");
+        assert_eq!(
+            uri_reference("lib/файл.dart"),
+            "lib/%D1%84%D0%B0%D0%B9%D0%BB.dart"
+        );
+        assert_eq!(uri_reference("c:/a.dart"), "c%3A/a.dart");
+    }
+
+    #[test]
+    fn findings_without_a_span_are_reported_at_the_first_line() {
+        let location = SarifLocation::new("lib/a.dart", None);
+        let region = location.physical_location.region.expect("region");
+        assert_eq!((region.start_line, region.start_column), (1, 1));
+
+        let related = SarifPhysicalLocation::new("lib/b.dart", None);
+        assert!(related.region.is_none());
     }
 }

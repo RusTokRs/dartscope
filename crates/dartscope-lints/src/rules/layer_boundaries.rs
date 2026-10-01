@@ -20,8 +20,13 @@ pub(crate) fn run(
     let severity = config.severity(DartLintRuleId::LayerBoundary);
 
     for reference in &uri_graph.references {
+        // An `export` makes the target part of the layer's public surface, so it crosses the
+        // boundary exactly like an `import`. A `part` stays inside its own library.
         if !context.includes_path(&reference.source_path)
-            || reference.kind != DartUriReferenceKind::Import
+            || !matches!(
+                reference.kind,
+                DartUriReferenceKind::Import | DartUriReferenceKind::Export
+            )
             || reference.resolution != DartUriResolution::Resolved
         {
             continue;
@@ -41,8 +46,15 @@ pub(crate) fn run(
                     DartLintRuleId::LayerBoundary,
                     severity,
                     format!(
-                        "layer `{}` must not import target `{}` matched by `{}`",
-                        boundary.source_prefix, target_path, denied_prefix
+                        "layer `{}` must not {} target `{}` matched by `{}`",
+                        boundary.source_prefix,
+                        if reference.kind == DartUriReferenceKind::Export {
+                            "export"
+                        } else {
+                            "import"
+                        },
+                        target_path,
+                        denied_prefix
                     ),
                     reference.source_path.clone(),
                     Some(reference.source_span.clone()),

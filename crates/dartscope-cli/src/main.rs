@@ -3,13 +3,16 @@ mod lint_command;
 
 use std::collections::VecDeque;
 use std::env;
+use std::ffi::OsString;
 use std::fmt;
 use std::fs;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use dartscope::{
-    DartCompilationEnvironment, DartFileInput, DartIndexOptions, DartProjectInput, FlutterArbInput,
+    DartCompilationEnvironment, DartDiagnostic, DartFileInput, DartIndexOptions, DartProjectAnalysis,
+    DartProjectInput, FlutterArbInput,
     FlutterCatalogInput, FlutterL10nInput, JsonContract, PackageConfigInput, PubspecInput,
     analyze_file_with_flutter, analyze_graphql_contracts_with_options, analyze_project,
     analyze_project_with_flutter, build_uri_graph_with_options,
@@ -54,15 +57,44 @@ macro_rules! serialize_contract {
 }
 
 fn main() -> ExitCode {
-    match run(env::args().skip(1)) {
-        Ok(output) => {
-            println!("{}", output.text);
-            ExitCode::from(output.exit_code)
+    // `env::args()` panics on an argument that is not valid Unicode, but paths on Unix and Windows
+    // are not required to be Unicode, so report such an argument as a usage error instead.
+    let arguments = match env::args_os()
+        .skip(1)
+        .map(OsString::into_string)
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(arguments) => arguments,
+        Err(argument) => {
+            let error = CliError::usage(format!(
+                "argument is not valid Unicode: {}",
+                argument.to_string_lossy()
+            ));
+            return report_error(&error);
         }
-        Err(error) => {
-            eprintln!("error: {error}");
-            ExitCode::from(error.exit_code())
-        }
+    };
+    match run(arguments) {
+        Ok(output) => write_output(&output),
+        Err(error) => report_error(&error),
+    }
+}
+
+fn report_error(error: &CliError) -> ExitCode {
+    // A closed stderr leaves nowhere to report to, and `eprintln!` would panic on it.
+    let _ = writeln!(io::stderr(), "error: {error}");
+    ExitCode::from(error.exit_code())
+}
+
+fn write_output(output: &CliOutput) -> ExitCode {
+    let mut stdout = io::stdout().lock();
+    match writeln!(stdout, "{}", output.text).and_then(|()| stdout.flush()) {
+        Ok(()) => ExitCode::from(output.exit_code),
+        // The reader went away (`dartscope ... | head`). There is nobody left to inform, so keep
+        // the exit code of the command itself instead of panicking inside `println!`.
+        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => ExitCode::from(output.exit_code),
+        Err(error) => report_error(&CliError::internal(format!(
+            "failed to write output: {error}"
+        ))),
     }
 }
 
@@ -142,8 +174,11 @@ fn execute(command: CliCommand, path: &str, extra_args: &[String]) -> Result<Cli
         }
         CliCommand::AnalyzeProject => {
             reject_extra_args(extra_args, command)?;
-            let input = collect_project_input(path)?;
-            let analysis = analyze_project_with_flutter(input);
+            let sources = collect_project_sources_reporting_skips(path)?;
+            let analysis = with_input_diagnostics(
+                analyze_project_with_flutter(sources.dart),
+                sources.input_diagnostics,
+            );
             serialize_contract!(JsonContract::ProjectAnalysis, &analysis)
         }
         CliCommand::GraphqlContracts => {
@@ -250,6 +285,8 @@ fn read_source(path: &str) -> Result<String, CliError> {
 struct CollectedProjectSources {
     dart: DartProjectInput,
     flutter: FlutterCatalogInput,
+    /// Inputs that were deliberately left out of `dart`, such as a source that is not valid UTF-8.
+    input_diagnostics: Vec<DartDiagnostic>,
 }
 
 #[derive(Default)]
@@ -259,7 +296,11 @@ struct ProjectSourceAccumulator {
     package_configs: Vec<PackageConfigInput>,
     l10n_files: Vec<FlutterL10nInput>,
     arb_files: Vec<FlutterArbInput>,
+    input_diagnostics: Vec<DartDiagnostic>,
     collect_flutter_catalogs: bool,
+    /// Leave a source that is not valid UTF-8 out of the project and report it, instead of
+    /// failing. Only commands that can show the report ask for this.
+    skip_invalid_utf8: bool,
 }
 
 impl ProjectSourceAccumulator {
@@ -280,6 +321,8 @@ impl ProjectSourceAccumulator {
             .sort_by(|left, right| left.path.cmp(&right.path));
         self.arb_files
             .sort_by(|left, right| left.path.cmp(&right.path));
+        self.input_diagnostics
+            .sort_by(|left, right| left.path.cmp(&right.path));
 
         CollectedProjectSources {
             dart: DartProjectInput::new(
@@ -289,8 +332,29 @@ impl ProjectSourceAccumulator {
             )
             .with_package_configs(self.package_configs),
             flutter: FlutterCatalogInput::new(self.l10n_files, self.arb_files),
+            input_diagnostics: self.input_diagnostics,
         }
     }
+}
+
+/// Adds the diagnostics for inputs that were left out of the analysis to the project diagnostics.
+fn with_input_diagnostics(
+    mut analysis: DartProjectAnalysis,
+    input_diagnostics: Vec<DartDiagnostic>,
+) -> DartProjectAnalysis {
+    analysis.diagnostics.extend(input_diagnostics);
+    analysis.summary.diagnostics = analysis.diagnostics.len();
+    analysis
+}
+
+fn not_utf8_diagnostic(path: String) -> DartDiagnostic {
+    let mut diagnostic = DartDiagnostic::warning(
+        "input_file_not_utf8",
+        "the file is not valid UTF-8 text and was left out of the analysis",
+        None,
+    );
+    diagnostic.path = Some(path);
+    diagnostic
 }
 
 fn collect_project_input(root: &str) -> Result<DartProjectInput, CliError> {
@@ -317,8 +381,29 @@ fn collect_project_sources_with_limits(
     collect_flutter_catalogs: bool,
     limits: input_limits::InputLimits,
 ) -> Result<CollectedProjectSources, CliError> {
+    collect_into_accumulator(
+        root,
+        ProjectSourceAccumulator::new(collect_flutter_catalogs),
+        limits,
+    )
+}
+
+/// Collects a project like [`collect_project_sources`], but leaves sources that are not valid
+/// UTF-8 out and returns a diagnostic for each of them.
+fn collect_project_sources_reporting_skips(
+    root: &str,
+) -> Result<CollectedProjectSources, CliError> {
+    let mut sources = ProjectSourceAccumulator::new(false);
+    sources.skip_invalid_utf8 = true;
+    collect_into_accumulator(root, sources, input_limits::DEFAULT_INPUT_LIMITS)
+}
+
+fn collect_into_accumulator(
+    root: &str,
+    mut sources: ProjectSourceAccumulator,
+    limits: input_limits::InputLimits,
+) -> Result<CollectedProjectSources, CliError> {
     let root = resolve_project_root(root)?;
-    let mut sources = ProjectSourceAccumulator::new(collect_flutter_catalogs);
     let mut budget = input_limits::ProjectInputBudget::default();
     let mut traversal = input_limits::ProjectTraversalBudget::default();
     collect_sources(
@@ -416,7 +501,7 @@ fn collect_sources(
             })?;
 
             if file_type.is_dir() {
-                if !is_skipped_directory(&path) {
+                if !is_skipped_directory(&root.logical, &path) {
                     traversal.ensure_can_queue_directory(
                         &path,
                         pending_directories.len(),
@@ -471,11 +556,32 @@ fn collect_sources(
                     }
                 }
                 _ if path.extension().and_then(|extension| extension.to_str()) == Some("dart") => {
-                    let source =
-                        input_limits::read_project_path(&source_read_path, &path, limits, budget)?;
-                    sources
-                        .files
-                        .push(DartFileInput::new(source_relative_path, source));
+                    if sources.skip_invalid_utf8 {
+                        // One source in another encoding must not abort the analysis of the others.
+                        match input_limits::read_project_text_path(
+                            &source_read_path,
+                            &path,
+                            limits,
+                            budget,
+                        )? {
+                            Some(source) => sources
+                                .files
+                                .push(DartFileInput::new(source_relative_path, source)),
+                            None => sources
+                                .input_diagnostics
+                                .push(not_utf8_diagnostic(source_relative_path)),
+                        }
+                    } else {
+                        let source = input_limits::read_project_path(
+                            &source_read_path,
+                            &path,
+                            limits,
+                            budget,
+                        )?;
+                        sources
+                            .files
+                            .push(DartFileInput::new(source_relative_path, source));
+                    }
                 }
                 _ if sources.collect_flutter_catalogs
                     && path.extension().and_then(|extension| extension.to_str()) == Some("arb") =>
@@ -565,22 +671,44 @@ fn relative_path(root: &Path, path: &Path) -> Option<String> {
         .map(|path| path.to_string_lossy().replace('\\', "/"))
 }
 
-fn is_skipped_directory(path: &Path) -> bool {
-    matches!(
-        path.file_name().and_then(|name| name.to_str()),
-        Some(
-            ".dart_tool"
-                | ".git"
-                | ".idea"
-                | ".pub-cache"
-                | ".vscode"
-                | "build"
-                | "coverage"
-                | "node_modules"
-                | "Pods"
-                | "target"
-        )
-    )
+/// Directories that hold tool state, dependencies or generated output rather than project sources.
+///
+/// `.symlinks` and `.plugin_symlinks` are created by Flutter next to the platform projects and hold
+/// links into the pub cache, which the walker would otherwise reject.
+fn is_skipped_directory(root: &Path, path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    match name {
+        ".dart_tool" | ".git" | ".idea" | ".pub-cache" | ".vscode" | ".symlinks"
+        | ".plugin_symlinks" | "Pods" | "node_modules" => true,
+        // Build, coverage and cargo output directories sit next to a package, but the same names
+        // are ordinary folders inside the source roots, where skipping them would hide sources.
+        "build" | "coverage" | "target" => !is_inside_source_root(root, path),
+        _ => false,
+    }
+}
+
+fn is_inside_source_root(root: &Path, path: &Path) -> bool {
+    path.strip_prefix(root)
+        .ok()
+        .and_then(Path::parent)
+        .is_some_and(|parent| {
+            parent.components().any(|component| {
+                matches!(
+                    component.as_os_str().to_str(),
+                    Some(
+                        "lib"
+                            | "bin"
+                            | "test"
+                            | "test_driver"
+                            | "tool"
+                            | "integration_test"
+                            | "benchmark"
+                    )
+                )
+            })
+        })
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

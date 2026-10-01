@@ -24,13 +24,24 @@ pub(crate) fn run(
         .iter()
         .map(|file| file.path.clone())
         .collect();
-    let roots: Vec<_> = config
-        .orphan_files
-        .entry_points
-        .iter()
-        .map(|path| normalize_path(path.clone()))
-        .filter(|path| indexed.contains(path))
-        .collect();
+    let severity = config.severity(DartLintRuleId::OrphanFile);
+    let mut roots = Vec::new();
+    for entry_point in &config.orphan_files.entry_points {
+        let entry_point = normalize_path(entry_point.clone());
+        if indexed.contains(&entry_point) {
+            roots.push(entry_point);
+        } else {
+            // A misspelled or missing entry point must not silently turn the rule off.
+            diagnostics.push(diagnostic(
+                DartLintRuleId::OrphanFile,
+                severity,
+                "orphan-file entry point is not an analyzed Dart file, so it starts no reachability walk",
+                entry_point,
+                None,
+                Vec::new(),
+            ));
+        }
+    }
     if roots.is_empty() {
         return;
     }
@@ -52,7 +63,6 @@ pub(crate) fn run(
     }
 
     let reachable = reachable_paths(&roots, &adjacency);
-    let severity = config.severity(DartLintRuleId::OrphanFile);
     for path in indexed {
         if reachable.contains(&path)
             || config

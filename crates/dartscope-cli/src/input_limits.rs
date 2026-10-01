@@ -214,6 +214,25 @@ pub(super) fn read_project_path(
     Ok(source)
 }
 
+/// Reads a project source and reports `None` instead of failing when it is not valid UTF-8.
+///
+/// The size limits apply exactly as in [`read_project_path`]; only the encoding problem of one
+/// file is tolerated, so the caller can leave that file out and keep analyzing the others.
+pub(super) fn read_project_text_path(
+    read_path: &Path,
+    display_path: &Path,
+    limits: InputLimits,
+    budget: &mut ProjectInputBudget,
+) -> Result<Option<String>, CliError> {
+    let (file, declared_bytes) = open_regular_file(read_path, display_path, None)?;
+    ensure_file_limit(display_path, declared_bytes, limits.max_file_bytes)?;
+    budget.ensure_can_add(display_path, declared_bytes, limits)?;
+
+    let bytes = read_opened_bytes(file, display_path, limits.max_file_bytes, None)?;
+    budget.record(display_path, bytes.len() as u64, limits)?;
+    Ok(String::from_utf8(bytes).ok())
+}
+
 fn open_regular_file(
     read_path: &Path,
     display_path: &Path,
@@ -238,12 +257,31 @@ fn read_opened_file(
     max_bytes: u64,
     label: Option<&str>,
 ) -> Result<String, CliError> {
-    let mut source = String::new();
+    let bytes = read_opened_bytes(file, display_path, max_bytes, label)?;
+    String::from_utf8(bytes).map_err(|_| {
+        read_error(
+            display_path,
+            label,
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "stream did not contain valid UTF-8",
+            ),
+        )
+    })
+}
+
+fn read_opened_bytes(
+    file: File,
+    display_path: &Path,
+    max_bytes: u64,
+    label: Option<&str>,
+) -> Result<Vec<u8>, CliError> {
+    let mut bytes = Vec::new();
     file.take(max_bytes.saturating_add(1))
-        .read_to_string(&mut source)
+        .read_to_end(&mut bytes)
         .map_err(|error| read_error(display_path, label, error))?;
-    ensure_file_limit(display_path, source.len() as u64, max_bytes)?;
-    Ok(source)
+    ensure_file_limit(display_path, bytes.len() as u64, max_bytes)?;
+    Ok(bytes)
 }
 
 fn ensure_file_limit(display_path: &Path, bytes: u64, max_bytes: u64) -> Result<(), CliError> {

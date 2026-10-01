@@ -220,6 +220,56 @@ fn full_toml_surface_maps_to_the_existing_lint_engine() {
     assert!(json.contains("\"enabled_rules\": 5"), "stdout: {json}");
 }
 
+#[test]
+fn sarif_uris_are_percent_encoded_and_file_level_findings_get_a_region() {
+    let project = sample_project("sarif uri");
+    write_file(&project.path().join("lib/Bad Name#1.dart"), "class Fine {}\n");
+    let config = project.path().join("dartscope.toml");
+    write_file(
+        &config,
+        "version = 1\nenabled_rules = [\"dartscope.naming_convention\"]\n",
+    );
+
+    let output = run_os([
+        OsString::from("lint"),
+        project.path().as_os_str().to_owned(),
+        OsString::from("--config"),
+        config.into_os_string(),
+        OsString::from("--format"),
+        OsString::from("sarif"),
+    ]);
+
+    assert_output_code(&output, 0);
+    let sarif = stdout(&output);
+    assert!(
+        sarif.contains("\"uri\": \"lib/Bad%20Name%231.dart\""),
+        "stdout: {sarif}"
+    );
+    assert!(!sarif.contains("Bad Name#1"), "stdout: {sarif}");
+    assert!(sarif.contains("\"startLine\": 1"), "stdout: {sarif}");
+}
+
+#[test]
+fn orphan_rule_without_entry_points_is_a_configuration_error() {
+    let project = sample_project("orphan without entry points");
+    let config = project.path().join("dartscope.toml");
+    write_file(
+        &config,
+        "version = 1\nenabled_rules = [\"dartscope.orphan_file\"]\n",
+    );
+
+    assert_error(
+        run_os([
+            OsString::from("lint"),
+            project.path().as_os_str().to_owned(),
+            OsString::from("--config"),
+            config.into_os_string(),
+        ]),
+        5,
+        "entry_points is empty",
+    );
+}
+
 fn sample_project(label: &str) -> TempDirectory {
     let project = TempDirectory::new(label);
     write_file(&project.path().join("lib/main.dart"), "void main() {}\n");

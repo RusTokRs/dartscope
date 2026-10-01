@@ -222,6 +222,16 @@ impl LintFileConfig {
             "orphan ignored path prefix",
             path,
         )?;
+        if self.enabled_rules.contains(&DartLintRuleId::OrphanFile)
+            && self.orphan_files.entry_points.is_empty()
+        {
+            // Without entry points the rule has no roots and would report nothing, which is
+            // indistinguishable from a project that has no orphan files.
+            return Err(CliError::configuration(format!(
+                "dartscope.orphan_file is enabled but [orphan_files].entry_points is empty in {path}; \
+                 list at least one entry point such as lib/main.dart"
+            )));
+        }
         Ok(())
     }
 

@@ -197,3 +197,131 @@ fn naming_convention_still_reports_a_snake_case_declaration() {
         DartLintRuleId::NamingConvention
     );
 }
+
+#[test]
+fn naming_convention_skips_generated_names_that_contain_a_dollar_sign() {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        vec![DartFileInput::new(
+            "lib/user.g.dart",
+            "Object _$UserFromJson(Object json) => json;\nvoid jni$_init() {}\nclass $Foo_Bar {}\n",
+        )],
+        vec![],
+    ));
+    let config = DartLintConfig::new([DartLintRuleId::NamingConvention]);
+
+    let analysis = lint_project(&project, &config);
+
+    assert!(
+        analysis.diagnostics.is_empty(),
+        "generated names are not the author's: {:?}",
+        analysis
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.message.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn forbidden_import_also_checks_exports_and_conditional_alternatives() {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        vec![DartFileInput::new(
+            "lib/api.dart",
+            "import 'package:ok/ok.dart' if (dart.library.io) 'package:forbidden/io.dart';\n\
+             export 'package:forbidden/exported.dart';\n\
+             export 'package:ok/ok.dart' if (dart.library.html) 'package:forbidden/html.dart';\n\
+             import 'package:forbidden/imported.dart';\n\
+             import 'package:forbidden_but_not_really/x.dart';\n",
+        )],
+        vec![],
+    ));
+    let mut config = DartLintConfig::new([DartLintRuleId::ForbiddenImport]);
+    config.forbidden_imports.push(DartForbiddenImportPattern {
+        uri: "package:forbidden/".to_string(),
+        match_kind: DartImportPatternKind::Prefix,
+        source_prefix: None,
+    });
+
+    let analysis = lint_project(&project, &config);
+
+    assert_eq!(
+        analysis
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.message.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "import `package:forbidden/io.dart` is forbidden by pattern `package:forbidden/`",
+            "export `package:forbidden/exported.dart` is forbidden by pattern `package:forbidden/`",
+            "export `package:forbidden/html.dart` is forbidden by pattern `package:forbidden/`",
+            "import `package:forbidden/imported.dart` is forbidden by pattern `package:forbidden/`",
+        ]
+    );
+}
+
+#[test]
+fn layer_boundary_applies_to_exports() {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        vec![
+            DartFileInput::new("lib/data/repo.dart", "class Repo {}\n"),
+            DartFileInput::new("lib/ui/screen.dart", "export '../data/repo.dart';\n"),
+            DartFileInput::new("lib/ui/part_of_ui.dart", "part '../data/repo.dart';\n"),
+        ],
+        vec![],
+    ));
+    let mut config = DartLintConfig::new([DartLintRuleId::LayerBoundary]);
+    config.layer_boundaries.push(DartLayerBoundary {
+        source_prefix: "lib/ui/".to_string(),
+        denied_target_prefixes: vec!["lib/data/".to_string()],
+    });
+
+    let analysis = lint_project(&project, &config);
+
+    assert_eq!(analysis.diagnostics.len(), 1, "{:?}", analysis.diagnostics);
+    assert_eq!(analysis.diagnostics[0].path, "lib/ui/screen.dart");
+    assert!(
+        analysis.diagnostics[0]
+            .message
+            .contains("must not export target `lib/data/repo.dart`"),
+        "{}",
+        analysis.diagnostics[0].message
+    );
+}
+
+#[test]
+fn orphan_files_report_an_entry_point_that_is_not_an_analyzed_file() {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        vec![
+            DartFileInput::new("lib/main.dart", "import 'src/used.dart';\n"),
+            DartFileInput::new("lib/src/used.dart", "class Used {}\n"),
+            DartFileInput::new("lib/src/orphan.dart", "class Orphan {}\n"),
+        ],
+        vec![],
+    ));
+    let mut config = DartLintConfig::new([DartLintRuleId::OrphanFile]);
+    config.orphan_files = DartOrphanFileRuleConfig {
+        entry_points: vec!["lib/main.dart".to_string(), "lib/mian.dart".to_string()],
+        ignored_path_prefixes: vec![],
+    };
+
+    let analysis = lint_project(&project, &config);
+
+    assert_eq!(
+        analysis
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.path.as_str())
+            .collect::<Vec<_>>(),
+        ["lib/mian.dart", "lib/src/orphan.dart"]
+    );
+    assert!(analysis.diagnostics[0].message.contains("entry point"));
+
+    config.orphan_files.entry_points = vec!["lib/mian.dart".to_string()];
+    let only_missing = lint_project(&project, &config);
+    assert_eq!(only_missing.diagnostics.len(), 1);
+    assert_eq!(only_missing.diagnostics[0].path, "lib/mian.dart");
+}

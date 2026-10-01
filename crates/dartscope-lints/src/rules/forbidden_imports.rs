@@ -23,24 +23,40 @@ pub(crate) fn run(
         if !context.includes_path(&file.path) {
             continue;
         }
-        for import in &file.imports {
-            for pattern in &patterns {
-                if !source_matches(&file.path, pattern.source_prefix.as_deref())
-                    || !uri_matches(&import.uri, &pattern.uri, pattern.match_kind)
-                {
-                    continue;
+        // An `export` re-publishes a forbidden library as surely as an `import` uses it, and a
+        // conditional alternative (`if (dart.library.io) 'package:forbidden/io.dart'`) is a
+        // dependency in every build where its condition holds.
+        let directives = file
+            .imports
+            .iter()
+            .map(|import| ("import", &import.uri, &import.configurations, &import.span))
+            .chain(
+                file.exports
+                    .iter()
+                    .map(|export| ("export", &export.uri, &export.configurations, &export.span)),
+            );
+        for (keyword, uri, configurations, span) in directives {
+            let uris = std::iter::once(uri).chain(
+                configurations
+                    .iter()
+                    .map(|configuration| &configuration.uri),
+            );
+            for uri in uris {
+                for pattern in &patterns {
+                    if !source_matches(&file.path, pattern.source_prefix.as_deref())
+                        || !uri_matches(uri, &pattern.uri, pattern.match_kind)
+                    {
+                        continue;
+                    }
+                    diagnostics.push(diagnostic(
+                        DartLintRuleId::ForbiddenImport,
+                        severity,
+                        format!("{keyword} `{uri}` is forbidden by pattern `{}`", pattern.uri),
+                        file.path.clone(),
+                        Some(span.clone()),
+                        Vec::new(),
+                    ));
                 }
-                diagnostics.push(diagnostic(
-                    DartLintRuleId::ForbiddenImport,
-                    severity,
-                    format!(
-                        "import `{}` is forbidden by pattern `{}`",
-                        import.uri, pattern.uri
-                    ),
-                    file.path.clone(),
-                    Some(import.span.clone()),
-                    Vec::new(),
-                ));
             }
         }
     }

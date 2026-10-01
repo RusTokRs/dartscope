@@ -348,6 +348,156 @@ fn project_discovery_rejects_external_symlink_directories() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn flutter_generated_symlink_directories_do_not_abort_the_analysis() {
+    use std::os::unix::fs::symlink;
+
+    let project = TempDirectory::new("flutter generated symlinks");
+    write_package(project.path(), "root_package", "lib/root.dart");
+    let pub_cache = TempDirectory::new("flutter generated symlink target");
+    write_file(&pub_cache.path().join("plugin.dart"), "void plugin() {}\n");
+    for generated in [
+        "ios/.symlinks/plugins",
+        "linux/flutter/ephemeral/.plugin_symlinks",
+    ] {
+        let directory = project.path().join(generated);
+        fs::create_dir_all(&directory).expect("create generated directory");
+        symlink(pub_cache.path(), directory.join("some_plugin")).expect("create plugin symlink");
+    }
+
+    let output = run_os([
+        OsString::from("analyze-project"),
+        project.path().as_os_str().to_owned(),
+    ]);
+
+    assert_json_success(&output, "dartscope.project-analysis");
+    let json = stdout(&output);
+    assert!(json.contains("lib/root.dart"), "stdout: {json}");
+    assert!(!json.contains("plugin.dart"), "stdout: {json}");
+}
+
+#[test]
+fn build_target_and_coverage_folders_inside_source_roots_are_sources() {
+    let project = TempDirectory::new("source folders named like output");
+    write_package(project.path(), "root_package", "lib/root.dart");
+    for kept in [
+        "lib/src/build/kept_build.dart",
+        "lib/target/kept_target.dart",
+        "test/coverage/kept_coverage.dart",
+    ] {
+        write_file(&project.path().join(kept), "void kept() {}\n");
+    }
+    for ignored in [
+        "build/ignored_build.dart",
+        "android/app/build/ignored_android.dart",
+        "coverage/ignored_coverage.dart",
+        "rust/target/ignored_target.dart",
+    ] {
+        write_file(&project.path().join(ignored), "void ignored() {}\n");
+    }
+
+    let output = run_os([
+        OsString::from("analyze-project"),
+        project.path().as_os_str().to_owned(),
+    ]);
+
+    assert_json_success(&output, "dartscope.project-analysis");
+    let json = stdout(&output);
+    for kept in ["kept_build.dart", "kept_target.dart", "kept_coverage.dart"] {
+        assert!(json.contains(kept), "{kept} is a source: {json}");
+    }
+    assert!(!json.contains("ignored_"), "stdout: {json}");
+}
+
+#[test]
+fn a_source_that_is_not_utf8_is_reported_instead_of_aborting_analyze_project() {
+    let project = TempDirectory::new("source in another encoding");
+    write_package(project.path(), "root_package", "lib/root.dart");
+    let latin1 = project.path().join("lib/latin1.dart");
+    fs::write(&latin1, b"// caf\xe9\nvoid cafe() {}\n").expect("write latin-1 source");
+
+    let output = run_os([
+        OsString::from("analyze-project"),
+        project.path().as_os_str().to_owned(),
+    ]);
+
+    assert_json_success(&output, "dartscope.project-analysis");
+    let json = stdout(&output);
+    assert!(json.contains("lib/root.dart"), "stdout: {json}");
+    assert!(json.contains("\"code\": \"input_file_not_utf8\""), "stdout: {json}");
+    assert!(json.contains("\"path\": \"lib/latin1.dart\""), "stdout: {json}");
+    assert!(json.contains("\"dart_files\": 1"), "stdout: {json}");
+    assert!(json.contains("\"diagnostics\": 1"), "stdout: {json}");
+    assert!(!json.contains("cafe"), "stdout: {json}");
+
+    // Commands whose output cannot carry the report keep failing instead of dropping the file.
+    assert_error(
+        run_os([
+            OsString::from("uri-graph"),
+            project.path().as_os_str().to_owned(),
+        ]),
+        3,
+        "failed to read",
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_non_unicode_argument_is_a_usage_error_not_a_panic() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let output = run_os([
+        OsString::from("analyze-file"),
+        OsString::from_vec(b"bad-\xff.dart".to_vec()),
+    ]);
+
+    assert_error(output, 2, "argument is not valid Unicode");
+}
+
+#[cfg(windows)]
+#[test]
+fn a_non_unicode_argument_is_a_usage_error_not_a_panic() {
+    use std::os::windows::ffi::OsStringExt;
+
+    let output = run_os([
+        OsString::from("analyze-file"),
+        OsString::from_wide(&[0x62, 0xd800, 0x2e, 0x64]),
+    ]);
+
+    assert_error(output, 2, "argument is not valid Unicode");
+}
+
+#[test]
+fn a_closed_stdout_ends_the_command_quietly() {
+    use std::process::Stdio;
+
+    let project = TempDirectory::new("closed stdout");
+    let source = project.path().join("big.dart");
+    let classes: String = (0..3000)
+        .map(|index| format!("class C{index} {{\n  int f{index} = {index};\n}}\n"))
+        .collect();
+    write_file(&source, &classes);
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_dartscope"))
+        .arg("analyze-file")
+        .arg(&source)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("run dartscope");
+    // The output is far larger than a pipe buffer, so the write must hit the closed pipe.
+    drop(child.stdout.take());
+    let output = child.wait_with_output().expect("wait for dartscope");
+
+    assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+    assert!(
+        !stderr(&output).contains("panicked"),
+        "stderr: {}",
+        stderr(&output)
+    );
+}
+
 fn command_names() -> [&'static str; 7] {
     [
         "analyze-file",

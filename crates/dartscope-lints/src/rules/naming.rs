@@ -86,6 +86,11 @@ fn valid_declaration_name(kind: DartDeclarationKind, name: &str) -> bool {
         // An unnamed extension declares no name, so there is no case convention to violate.
         return true;
     }
+    if name.contains('$') {
+        // `$` marks a generated or mangled name (`_$UserFromJson`, `jni$_init`): the generator, not
+        // the author, chose its shape, and the Dart style guide gives such names no case.
+        return true;
+    }
     match kind {
         DartDeclarationKind::Class
         | DartDeclarationKind::Mixin
@@ -100,8 +105,8 @@ fn valid_declaration_name(kind: DartDeclarationKind, name: &str) -> bool {
 
 /// Returns whether `value` is an upper camel case Dart name.
 ///
-/// Leading underscores and dollars are decoration, and `$` is a Dart identifier character that
-/// generated names rely on, so it is accepted anywhere and never decides the case of the name.
+/// Leading underscores are decoration, and `$` is a Dart identifier character that generated names
+/// rely on, so it is accepted anywhere and never decides the case of the name.
 fn is_upper_camel_case(value: &str) -> bool {
     let Some(name) = case_checkable_name(value) else {
         return false;
