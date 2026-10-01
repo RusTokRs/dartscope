@@ -632,7 +632,8 @@ mod tests {
                 .map(|record| record.declaration)
                 .collect();
             let t = Instant::now();
-            let invocations = crate::invocations::collect_invocations(&source, &masked, &declarations);
+            let invocations =
+                crate::invocations::collect_invocations(&source, &masked, &declarations);
             let t_invocations = t.elapsed();
             let t = Instant::now();
             let graphql = crate::graphql::extract_graphql_operations(&source, &masked);
