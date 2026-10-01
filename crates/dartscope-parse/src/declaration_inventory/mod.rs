@@ -7,8 +7,8 @@ use dartscope_core::{DartDeclaration, DartDeclarationKind, DartDiagnostic, Sourc
 
 use self::scanner::{
     EndMode, STATEMENT_PROBE_BYTES, annotations_end, body_range, declaration_end,
-    declaration_header, declaration_header_within, depth_at, depth_within_line,
-    enum_member_start, first_code_byte, line_brace_depths, next_code_byte, source_line_text,
+    declaration_header, declaration_header_within, depth_at, depth_within_line, enum_member_start,
+    first_code_byte, line_brace_depths, next_code_byte, source_line_text,
 };
 use self::syntax::{
     SymbolIdAllocator, callable_end_mode, enum_constants, has_primary_constructor,

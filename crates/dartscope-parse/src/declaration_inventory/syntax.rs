@@ -315,7 +315,8 @@ fn declared_names(header: &str, require_type: bool) -> Vec<String> {
     let segments = split_top_level_commas(header);
     let mut names = Vec::new();
     for (index, segment) in segments.into_iter().enumerate() {
-        let declarator = declarator_name(assignment_left(segment).trim(), index == 0 && require_type);
+        let declarator =
+            declarator_name(assignment_left(segment).trim(), index == 0 && require_type);
         match declarator {
             Some(name) => names.push(name.to_string()),
             // The first declarator carries the keyword or the type. When it is neither, the text is
