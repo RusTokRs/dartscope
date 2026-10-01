@@ -401,7 +401,11 @@ mod tests {
         let source = "class A extends B { int f() { return 1; } }\nint x = 1;\nimport 'a'\n";
         let scans = Scans::new(source);
         for at in 0..=source.len() + 1 {
-            assert_eq!(scans.header(at), declaration_header(source, at), "header {at}");
+            assert_eq!(
+                scans.header(at),
+                declaration_header(source, at),
+                "header {at}"
+            );
             for mode in [EndMode::BodyOrSemicolon, EndMode::SemicolonOnly] {
                 assert_eq!(
                     scans.end(at, mode),
@@ -433,7 +437,10 @@ mod tests {
             }
         }
         assert!(scans.is_exhausted());
-        assert!((10..200).contains(&answered), "{answered} headers were answered");
+        assert!(
+            (10..200).contains(&answered),
+            "{answered} headers were answered"
+        );
         assert_eq!(scans.exhausted_at(), Some(answered * 16));
         assert_eq!(scans.end(0, EndMode::SemicolonOnly), None);
         assert_eq!(scans.body_range(0, source.len()), None);

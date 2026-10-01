@@ -353,8 +353,8 @@ mod tests {
     fn paired_delimiters_give_the_candidates_and_arguments_of_counting_forward() {
         const TOKENS: &[&str] = &[
             "a", "b", "f", "g", ".", ".", "(", "(", ")", ")", "<", ">", ",", " ", "!", "?.", "{",
-            "}", "[", "]", ";", "=>", "'x'", ":", "assert", "if", "key: ", "\n", "a(", "f(", "g.b(",
-            "<a>", "{k: ",
+            "}", "[", "]", ";", "=>", "'x'", ":", "assert", "if", "key: ", "\n", "a(", "f(",
+            "g.b(", "<a>", "{k: ",
         ];
         let mut rng = Rng(0x2545_F491_4F6C_DD1D);
         let mut candidates_seen = 0usize;

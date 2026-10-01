@@ -64,7 +64,14 @@ pub(crate) fn collect_declaration_inventory(
         .cloned()
         .collect();
     for callable in callable_records {
-        collect_locals(source, masked_source, &lines, &scans, &callable, &mut records);
+        collect_locals(
+            source,
+            masked_source,
+            &lines,
+            &scans,
+            &callable,
+            &mut records,
+        );
     }
     if let Some(at) = scans.exhausted_at() {
         diagnostics.push(DartDiagnostic::warning(
@@ -409,9 +416,7 @@ fn collect_members(
             let Some((_, _, mode)) = members.first() else {
                 break;
             };
-            let end = scans
-                .end(declaration_at, *mode)
-                .unwrap_or(line.byte_end());
+            let end = scans.end(declaration_at, *mode).unwrap_or(line.byte_end());
             let full_span = span_for_byte_range(source, declaration_at, end);
             let body = scans.body_range(declaration_at, end);
             for (name, kind, _) in members {
