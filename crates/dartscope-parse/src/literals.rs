@@ -299,48 +299,6 @@ pub(crate) fn single_string_literal_value(expression: &str) -> Option<String> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Numeric literals — predicates only (evaluation out of scope)
-// ---------------------------------------------------------------------------
-
-/// Returns whether `byte` may start a Dart numeric literal.
-///
-/// Covers decimal (`0`, `1_000`), hex (`0xFF`), binary (`0b101`) and
-/// the leading `.` of `.5` is *not* included — callers must handle that
-/// as part of a larger expression.
-#[allow(dead_code)]
-pub(crate) fn is_digit(byte: u8) -> bool {
-    byte.is_ascii_digit()
-}
-
-#[allow(dead_code)]
-pub(crate) fn is_hex_digit(byte: u8) -> bool {
-    byte.is_ascii_hexdigit()
-}
-
-/// Returns whether `byte` may continue a numeric literal after the first
-/// digit, including `_` separators and radix prefixes.
-#[allow(dead_code)]
-pub(crate) fn is_numeric_continue(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.')
-}
-
-/// Returns the exclusive end of the numeric literal starting at `from`.
-///
-/// This is a conservative scan: it consumes `[0-9a-zA-Z_\.]` and stops at the
-/// first byte that cannot be part of a number. It does not validate the
-/// literal (e.g. `1__2` or `0xG` are consumed as far as they go and left for
-/// the diagnostic layer). The purpose is to have a single predicate so
-/// future type-aware scans do not drift.
-#[allow(dead_code)]
-pub(crate) fn numeric_literal_end(bytes: &[u8], from: usize) -> usize {
-    let mut at = from;
-    while bytes.get(at).is_some_and(|b| is_numeric_continue(*b)) {
-        at += 1;
-    }
-    at
-}
-
 #[cfg(test)]
 mod tests {
     use super::{

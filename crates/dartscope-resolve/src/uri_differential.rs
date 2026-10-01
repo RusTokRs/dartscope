@@ -5,10 +5,24 @@
 //! differences that were reviewed and accepted. It is removed together with the dependency.
 
 use std::collections::BTreeMap;
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::Mutex;
 
 use uriparse::{URI, URIReference};
 
 use crate::uri::UriReference;
+
+static LAST_PANIC: Mutex<String> = Mutex::new(String::new());
+
+/// Runs `call` and turns a panic into an `Err` that carries the location and the message.
+fn guarded<T>(call: impl FnOnce() -> T) -> Result<T, String> {
+    catch_unwind(AssertUnwindSafe(call)).map_err(|_| {
+        LAST_PANIC
+            .lock()
+            .map(|text| text.replace('\n', " | "))
+            .unwrap_or_default()
+    })
+}
 
 struct Rng(u64);
 
@@ -23,84 +37,12 @@ impl Rng {
 }
 
 const PIECES: &[&str] = &[
-    "file:",
-    "http:",
-    "package:",
-    "FILE:",
-    "x:",
-    "1:",
-    ":",
-    "//",
-    "///",
-    "/",
-    "./",
-    "../",
-    ".",
-    "..",
-    "a",
-    "b",
-    "lib",
-    "A",
-    "Z",
-    "0",
-    "9",
-    "%20",
-    "%2e",
-    "%2E",
-    "%2f",
-    "%2F",
-    "%41",
-    "%7a",
-    "%",
-    "%4",
-    "%g0",
-    "%zz",
-    "?",
-    "#",
-    "?q",
-    "#f",
-    "=",
-    "&",
-    ";",
-    ",",
-    "@",
-    "u:p@",
-    "[",
-    "]",
-    "[::1]",
-    "[v1.x]",
-    "[::g]",
-    ":80",
-    ":99999",
-    "host",
-    "h.ost-1_x~",
-    " ",
-    "\t",
-    "\\",
-    "^",
-    "{",
-    "}",
-    "|",
-    "`",
-    "\"",
-    "<",
-    ">",
-    "\u{e9}",
-    "\u{0}",
-    "~",
-    "-",
-    "_",
-    "+",
-    "*",
-    "!",
-    "$",
-    "'",
-    "(",
-    ")",
-    "C:",
-    "C|",
-    "..%2f",
-    "%2e%2e/",
+    "file:", "http:", "package:", "FILE:", "x:", "1:", ":", "//", "///", "/", "./", "../", ".",
+    "..", "a", "b", "lib", "A", "Z", "0", "9", "%20", "%2e", "%2E", "%2f", "%2F", "%41", "%7a",
+    "%", "%4", "%g0", "%zz", "?", "#", "?q", "#f", "=", "&", ";", ",", "@", "u:p@", "[", "]",
+    "[::1]", "[v1.x]", "[::g]", ":80", ":99999", "host", "h.ost-1_x~", " ", "\t", "\\", "^", "{",
+    "}", "|", "`", "\"", "<", ">", "\u{e9}", "\u{0}", "~", "-", "_", "+", "*", "!", "$", "'", "(",
+    ")", "C:", "C|", "..%2f", "%2e%2e/",
 ];
 
 const BASES: &[&str] = &[
@@ -132,7 +74,7 @@ impl Report {
     fn note(&mut self, kind: &'static str, example: String) {
         *self.counts.entry(kind).or_default() += 1;
         let list = self.examples.entry(kind).or_default();
-        if list.len() < 8 {
+        if list.len() < 6 {
             list.push(example);
         }
     }
@@ -140,7 +82,13 @@ impl Report {
 
 fn compare_parse(report: &mut Report, input: &str) {
     let mine = UriReference::parse(input);
-    let theirs = URIReference::try_from(input);
+    let theirs = match guarded(|| URIReference::try_from(input)) {
+        Ok(theirs) => theirs,
+        Err(panic) => {
+            report.note("uriparse panics: URIReference::try_from", format!("{input:?}: {panic}"));
+            return;
+        }
+    };
     match (&mine, &theirs) {
         (Ok(_), Err(error)) => report.note(
             "parse: accepted here, rejected by uriparse",
@@ -189,10 +137,7 @@ fn compare_parse(report: &mut Report, input: &str) {
                         format!("{input:?}: {mine:?} / {theirs:?}"),
                     );
                 } else {
-                    report.note(
-                        "print: differs",
-                        format!("{input:?}: {mine:?} / {theirs:?}"),
-                    );
+                    report.note("print: differs", format!("{input:?}: {mine:?} / {theirs:?}"));
                 }
             }
         }
@@ -201,18 +146,42 @@ fn compare_parse(report: &mut Report, input: &str) {
 }
 
 fn compare_resolve(report: &mut Report, base: &str, reference: &str) {
-    let (Ok(my_base), Ok(their_base)) = (UriReference::parse_absolute(base), URI::try_from(base))
+    let their_base = match guarded(|| URI::try_from(base)) {
+        Ok(result) => result,
+        Err(panic) => {
+            report.note("uriparse panics: URI::try_from", format!("{base:?}: {panic}"));
+            return;
+        }
+    };
+    let their_reference = match guarded(|| URIReference::try_from(reference)) {
+        Ok(result) => result,
+        Err(panic) => {
+            report.note(
+                "uriparse panics: URIReference::try_from",
+                format!("{reference:?}: {panic}"),
+            );
+            return;
+        }
+    };
+    let (Ok(my_base), Ok(their_base)) = (UriReference::parse_absolute(base), their_base) else {
+        return;
+    };
+    let (Ok(my_reference), Ok(their_reference)) =
+        (UriReference::parse(reference), their_reference)
     else {
         return;
     };
-    let (Ok(my_reference), Ok(their_reference)) = (
-        UriReference::parse(reference),
-        URIReference::try_from(reference),
-    ) else {
-        return;
-    };
     let mine = my_base.resolve(&my_reference).to_string();
-    let theirs = their_base.resolve(&their_reference).to_string();
+    let theirs = match guarded(|| their_base.resolve(&their_reference).to_string()) {
+        Ok(theirs) => theirs,
+        Err(panic) => {
+            report.note(
+                "uriparse panics: resolve",
+                format!("{base:?} + {reference:?}: {panic}"),
+            );
+            return;
+        }
+    };
     if mine != theirs {
         if mine.eq_ignore_ascii_case(&theirs) {
             report.note(
@@ -231,6 +200,11 @@ fn compare_resolve(report: &mut Report, base: &str, reference: &str) {
 #[test]
 #[ignore = "a one-off comparison with the crate that this module replaces"]
 fn differential_against_uriparse() {
+    std::panic::set_hook(Box::new(|info| {
+        if let Ok(mut last) = LAST_PANIC.lock() {
+            *last = info.to_string();
+        }
+    }));
     let mut rng = Rng(0x00C0_FFEE_D00D_F00D);
     let mut report = Report::default();
     let mut compared = 0usize;
@@ -247,52 +221,11 @@ fn differential_against_uriparse() {
     }
     // The examples of RFC 3986 section 5.4 and the references of the package-configuration tests.
     for reference in [
-        "g:h",
-        "g",
-        "./g",
-        "g/",
-        "/g",
-        "//g",
-        "?y",
-        "g?y",
-        "#s",
-        "g#s",
-        "g?y#s",
-        ";x",
-        "g;x",
-        "g;x?y#s",
-        "",
-        ".",
-        "./",
-        "..",
-        "../",
-        "../g",
-        "../..",
-        "../../",
-        "../../g",
-        "../../../g",
-        "/./g",
-        "/../g",
-        "g.",
-        ".g",
-        "g..",
-        "..g",
-        "./../g",
-        "./g/.",
-        "g/./h",
-        "g/../h",
-        "g;x=1/./y",
-        "g;x=1/../y",
-        "g?y/./x",
-        "g?y/../x",
-        "g#s/./x",
-        "g#s/../x",
-        "http:g",
-        "lib/",
-        "lib",
-        "../../../packages/shared",
-        "%2e%2e/outside/",
-        "lib%20src/",
+        "g:h", "g", "./g", "g/", "/g", "//g", "?y", "g?y", "#s", "g#s", "g?y#s", ";x", "g;x",
+        "g;x?y#s", "", ".", "./", "..", "../", "../g", "../..", "../../", "../../g", "../../../g",
+        "/./g", "/../g", "g.", ".g", "g..", "..g", "./../g", "./g/.", "g/./h", "g/../h",
+        "g;x=1/./y", "g;x=1/../y", "g?y/./x", "g?y/../x", "g#s/./x", "g#s/../x", "http:g",
+        "lib/", "lib", "../../../packages/shared", "%2e%2e/outside/", "lib%20src/",
         "file:///cache/%70kg/",
     ] {
         compare_parse(&mut report, reference);

@@ -117,6 +117,26 @@ The lint baseline prints initial-build and single-library update timings for 1k 
 informational; correctness gates assert deterministic cache shapes, counters, and full-result equivalence
 rather than host-dependent duration thresholds.
 
+## Source Layout
+
+The implementation lives in `crates/dartscope-index/src/incremental/`; `mod.rs` holds the public types
+and nothing else is part of the API.
+
+| Module | Responsibility |
+| --- | --- |
+| `mutations.rs` | `upsert_*`, `remove_*`, `update_options`, `update_root`: normalize the input, compare it with the stored one, choose a `RebuildPlan` |
+| `plan.rs` | `RebuildPlan`, the plan of a file replacement, declaration and GraphQL-name deltas, affected paths and reverse dependencies |
+| `rebuild.rs` | One rebuild, phase by phase: project, URI graph, part links, library caches, affected paths, GraphQL contracts, reference resolutions |
+| `project.rs` | The project analysis of a snapshot, input normalization, aggregation of references and bindings |
+| `caches.rs` | Per-file URI-reference and reference-resolution caches and the paths they refresh |
+| `libraries.rs` | Library path caches, dependency fingerprints, affected library owners |
+| `graphql_cache.rs` | Per-library GraphQL contract cache and the libraries an update invalidates |
+| `metrics.rs` | `retained_metrics` |
+
+Each phase of `rebuild.rs` either recomputes its product from the caches the index owns or shares the
+`Arc` of the previous snapshot, as the plan says; the order of the phases is the dependency order of the
+products. A new product therefore needs a plan flag, one `refresh_*` phase, and a row in the table above.
+
 ## Equivalence Contract
 
 After every mutation, the snapshot project and derived outputs must equal a clean stateless rebuild over
