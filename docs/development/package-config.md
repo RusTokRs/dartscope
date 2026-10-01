@@ -32,6 +32,18 @@ Nested roots remain valid when the outer package URI directory and nested root a
 Absolute external and Windows file URIs are preserved, while only URIs under DartScope's
 synthetic project root receive a normalized `project_path`.
 
+URIs are read and resolved by the RFC 3986 module of `dartscope-resolve` (`uri.rs`): the syntax check,
+the reference resolution of section 5.2, printing. Three rules make the result safe to use as a path:
+
+- An escaped dot (`%2e`, `%2E`) is a dot, so `%2e%2e/` climbs exactly like `../` (RFC 3986, section 2.3).
+- A resolution whose path would start with `//` although the URI has no authority is an error
+  (`InvalidConfiguredUri` for a `rootUri` or `packageUri`, `InvalidPackageUri` for the `package:` path):
+  printed, such a URI would name a host, not a path.
+- `project_path` is a plain relative path or `None`. An escaped separator (`%2f`, `%5c`) in a `rootUri`
+  decodes after the dot segments have been removed, so the decoded path is checked again: a `.` or `..`
+  segment, a leading `/` or an empty segment (a trailing `/` is allowed), a drive (`C:`) and a control
+  character all make it `None`. `resolved_uri` is still returned.
+
 ## Diagnostic codes
 
 - `package_config_duplicate_root`

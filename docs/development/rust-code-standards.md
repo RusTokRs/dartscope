@@ -119,6 +119,11 @@ independent test value.
 
 Function rules:
 
+- When a scan needs more inputs than the table allows, bundle the ones that stay fixed while it runs into a
+  small context struct and destructure it at the top of the function: `TypeScan`, `ParameterScan` and
+  `TopLevelScan` are `Copy` bundles of references, `RebuildTrigger` owns the sets that describe one index
+  update. The repository has no `#[allow(clippy::too_many_arguments)]` and no `#[allow(dead_code)]`; do not
+  add one.
 - Put validation and early exits first; keep the main path visually direct.
 - Prefer `match` when all states matter and `if let`/`let else` for one relevant branch.
 - Return a value or result instead of mutating an out-parameter, except when reusing a
@@ -213,9 +218,12 @@ confidence, paths, ordering, or fixtures.
 | `dartscope-index` | `parts` | part ownership validation |
 | `dartscope-index` | `graphql` | cross-file GraphQL visibility and contract linking |
 | `dartscope-index` | `paths` | private path normalization primitives |
+| `dartscope-index` | `incremental/` (`mutations`, `plan`, `rebuild`, `project`, `caches`, `libraries`, `graphql_cache`, `metrics`) | the stateful index: mutation API, rebuild plans, one rebuild phase per method, per-source and per-library caches |
+| `dartscope-core` | `input`, `analysis`, `references`, `directives`, `declarations`, `uri_graph`, `graphql`, `symbols`, `flutter`, `diagnostic`, `package`, `span`, `error`, `path` | the normalized model by domain, re-exported from the crate root |
 
-Both `lib.rs` files are intentionally thin: module declarations, public re-exports, and
-crate documentation only. Tests are split by behavior under `src/tests/`. Treat this as
+The `lib.rs` files of `dartscope-parse`, `dartscope-index`, and `dartscope-core` are intentionally thin:
+module declarations, public re-exports, and crate documentation only. Tests are split by behavior under
+`src/tests/`. Treat this as
 a pattern for future capability splits, not a requirement to copy these exact names.
 
 ## Public API Design

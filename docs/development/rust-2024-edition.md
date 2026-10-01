@@ -12,7 +12,7 @@ Migration date: 2026-07-15.
 ## Scope
 
 The complete DartScope workspace now declares Rust edition 2024 through the root
-`Cargo.toml`. All eight crates inherit the edition with `edition.workspace = true`.
+`Cargo.toml`. All ten crates (the migration covered eight; `dartscope-lints` and `dartscope-lsp` joined later) inherit the edition with `edition.workspace = true`.
 The compiler policy remains Rust 1.95 with the exact Rust 1.95.0 toolchain pinned in
 `rust-toolchain.toml`.
 

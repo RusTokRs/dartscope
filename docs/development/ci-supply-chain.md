@@ -69,6 +69,122 @@ the failure report. The helper performs fetch, hard reset, and `git clean -fdx`;
 guards all three commands. This rule was added after the first DS-INDEX-005 failure accidentally
 retained untracked foundation files even though its report claimed that no implementation was committed.
 
+## Branch Protection
+
+Nothing in the repository makes the checks of `ci.yml` a condition of a merge. On 2026-10-02 `main` has no
+protection rule and the repository has no ruleset (`gh api repos/RusTokRs/dartscope/rulesets` answers `[]`).
+The token that did the audit work cannot change repository settings (the settings endpoints answer HTTP 403
+for it), so enabling the rule is an action for a repository administrator.
+
+The recommended ruleset for the default branch: require a pull request, forbid force pushes and deletion, and
+require the checks below. The names are the job names as GitHub shows them. The aggregate status
+`dartscope/ci` is published only for pushes, not for pull requests, so it cannot be the required check there.
+A check name is selectable in the settings only after the job has run once on a pull request.
+
+| Job in `ci.yml` | Required check |
+| --- | --- |
+| `workflow_policy` | `Workflow policy` |
+| `dependency_quality` | `Dependency security and hygiene` |
+| `quality` | `Quality gates` |
+| `test` | `Tests (ubuntu-latest)`, `Tests (windows-latest)` |
+| `macos_portability` | `macOS 15 arm64 portability` |
+| `benchmark_report` | `Benchmark regression report` |
+| `fuzz` | `Bounded fuzz corpus` |
+| `edition_2024` | `Edition 2024 (<os> / <check>)` for `ubuntu-latest` and `windows-latest` with `workspace-all-targets`, `umbrella-minimal`, `umbrella-all-features` |
+
+The same ruleset as a request (an administrator runs it once; `~DEFAULT_BRANCH` follows a rename of the default
+branch):
+
+```sh
+gh api repos/RusTokRs/dartscope/rulesets --method POST --input - <<'JSON'
+{
+  "name": "main requires CI",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "~DEFAULT_BRANCH"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": false,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": false
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "required_status_checks": [
+          {
+            "context": "Workflow policy"
+          },
+          {
+            "context": "Dependency security and hygiene"
+          },
+          {
+            "context": "Quality gates"
+          },
+          {
+            "context": "Tests (ubuntu-latest)"
+          },
+          {
+            "context": "Tests (windows-latest)"
+          },
+          {
+            "context": "macOS 15 arm64 portability"
+          },
+          {
+            "context": "Benchmark regression report"
+          },
+          {
+            "context": "Bounded fuzz corpus"
+          },
+          {
+            "context": "Edition 2024 (ubuntu-latest / workspace-all-targets)"
+          },
+          {
+            "context": "Edition 2024 (ubuntu-latest / umbrella-minimal)"
+          },
+          {
+            "context": "Edition 2024 (ubuntu-latest / umbrella-all-features)"
+          },
+          {
+            "context": "Edition 2024 (windows-latest / workspace-all-targets)"
+          },
+          {
+            "context": "Edition 2024 (windows-latest / umbrella-minimal)"
+          },
+          {
+            "context": "Edition 2024 (windows-latest / umbrella-all-features)"
+          }
+        ]
+      }
+    }
+  ]
+}
+JSON
+```
+
+Requiring zero approving reviews keeps a single maintainer able to merge a green pull request; raise
+`required_approving_review_count` when there is a second reviewer. Adding or renaming a job in `ci.yml` means
+changing this list in the same change.
+
 ## Maintenance Limits
 
 Action release reviews and SHA updates are currently manual. Mutable major tags and automated

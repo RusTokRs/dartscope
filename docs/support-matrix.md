@@ -18,7 +18,7 @@ claim.
 | Minimum Rust | Rust 1.95 |
 | Pinned release toolchain | Rust 1.95.0 with rustfmt and Clippy |
 | Edition | Rust 2024, Cargo resolver 3 |
-| Hosted CI | Blocking workspace tests on `ubuntu-latest` and `windows-latest`, plus blocking macOS 15 arm64 portability and package-archive validation |
+| Hosted CI | Blocking workspace tests on `ubuntu-latest` and `windows-latest`, plus blocking macOS 15 arm64 portability and package-archive validation. "Blocking" means that the workflow fails; a merge is gated by it only when the repository requires the checks (`docs/development/ci-supply-chain.md`, "Branch Protection") |
 | CI Action runtime | Reviewed immutable Node 24 Action SHAs on GitHub-hosted runners compatible with Actions Runner 2.327.1 or newer |
 | Release packaging | `ubuntu-latest` on exact Rust 1.95.0, with an independent macOS 15 arm64 archive build in the blocking CI matrix |
 | macOS | Blocking hosted portability coverage on macOS 15 arm64, including workspace checks/tests and release package archives |

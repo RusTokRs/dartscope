@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::diagnostic::DartDiagnostic;
 use crate::span::SourceSpan;
+use crate::pubspec::{PubspecConfiguration, PubspecDependencySource};
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PackageConfigAnalysis {
@@ -40,7 +41,7 @@ pub struct PubspecAnalysis {
     pub package_name: Option<String>,
     pub dependencies: Vec<PubspecDependency>,
     #[serde(default)]
-    pub configuration: pubspec::PubspecConfiguration,
+    pub configuration: PubspecConfiguration,
     pub diagnostics: Vec<DartDiagnostic>,
 }
 
@@ -49,7 +50,7 @@ pub struct PubspecDependency {
     pub name: String,
     pub section: PubspecDependencySection,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<pubspec::PubspecDependencySource>,
+    pub source: Option<PubspecDependencySource>,
     pub version_or_source: Option<String>,
     pub span: SourceSpan,
 }

@@ -236,17 +236,44 @@ fn directory_uri(
 
 /// The project-relative path a resolved URI names, or `None` when it names nothing inside the project.
 ///
-/// A path that still holds a `.` or `..` segment once it is decoded (an escaped separator, `%2f` or
-/// `%5c`, written in a `rootUri` or `packageUri`) would climb when a caller joins it to a directory,
-/// so it is not a project path.
+/// Callers join the path to a directory, so it has to be a plain relative path once it is decoded:
+/// an escaped separator (`%2f`, `%5c`) in a `rootUri` or `packageUri` must not bring back a `..`
+/// segment, a leading `/` (which `Path::join` takes for a new root), or a drive such as `C:`.
 fn project_path_from_uri(uri: &str) -> Option<String> {
     let encoded = uri.strip_prefix(PROJECT_URI_ROOT)?;
     let decoded = percent_decode_str(encoded).decode_utf8().ok()?;
     let path = normalize_path(decoded.into_owned());
-    if path.split('/').any(|segment| matches!(segment, "." | "..")) {
-        return None;
+    is_plain_relative_path(&path).then_some(path)
+}
+
+/// Whether `path` is empty (the project root) or relative, without `.` and `..` segments, without
+/// empty segments (a trailing `/` is the one exception), without a drive in front and without
+/// control characters.
+fn is_plain_relative_path(path: &str) -> bool {
+    if path.chars().any(char::is_control) {
+        return false;
     }
-    Some(path)
+    let mut segments = path.split('/').peekable();
+    let mut first = true;
+    while let Some(segment) = segments.next() {
+        let last = segments.peek().is_none();
+        let rejected = match segment {
+            "." | ".." => true,
+            "" => !last,
+            _ => first && has_drive_prefix(segment),
+        };
+        if rejected {
+            return false;
+        }
+        first = false;
+    }
+    true
+}
+
+/// `C:` and `C:name`, which a Windows `Path::join` reads as a path on another drive.
+fn has_drive_prefix(segment: &str) -> bool {
+    let bytes = segment.as_bytes();
+    bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
 }
 
 fn parse_optional_metadata(
@@ -962,6 +989,34 @@ mod tests {
         let resolved = resolve_package_uri(&config, "package:app/main.dart").unwrap();
         assert_eq!(resolved.project_path, None);
         assert!(resolved.resolved_uri.contains("%2f"));
+    }
+
+    #[test]
+    fn a_project_path_is_relative_and_plain() {
+        for (root_uri, reason) in [
+            ("../tool%2f..%2fsecret/", "decodes to a climb"),
+            ("..//etc/", "decodes to an absolute path"),
+            ("..%2f/etc/", "decodes to a climb and an empty segment"),
+            ("../C%3A/x/", "starts with a drive"),
+            ("../a%00b/", "holds a control character"),
+        ] {
+            let config = parse_package_config(PackageConfigInput::new(
+                ".dart_tool/package_config.json",
+                format!(
+                    r#"{{"configVersion":2,"packages":[{{"name":"app","rootUri":"{root_uri}","packageUri":"lib/"}}]}}"#
+                ),
+            ));
+            let resolved = resolve_package_uri(&config, "package:app/a.dart").unwrap();
+            assert_eq!(resolved.project_path, None, "{root_uri}: {reason}");
+        }
+        for plain in ["", "a", "a/b.dart", "a/", "a/b/", "a b/c", "x_y/z", "lib/C:/x"] {
+            assert!(is_plain_relative_path(plain), "{plain:?}");
+        }
+        for rejected in [
+            "/", "/a", "a//b", "//a", "a/./b", "a/..", "../a", "C:/x", "C:", "c:x/y", "x:y/z",
+        ] {
+            assert!(!is_plain_relative_path(rejected), "{rejected:?}");
+        }
     }
 
     #[test]

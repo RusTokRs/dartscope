@@ -21,7 +21,10 @@ The checked-in targets cover:
 - import/export directives and conditional/combinator forms;
 - pubspec YAML and package-config JSON parsing;
 - GraphQL operation declarations and client uses;
-- path normalization plus package URI validation and resolution;
+- path normalization plus package URI validation and resolution (`uri_normalization`): the bytes are tried as a
+  `package:` URI against a fixed configuration and as the `rootUri` and `packageUri` of a hostile one, and
+  whatever resolves to a project path must be relative, without `.` or `..` segments, without a drive and
+  without control characters;
 - the whole file analysis, `analyze_file_with_references` (`file_analysis`).
 
 Every target accepts arbitrary bytes through UTF-8 lossy conversion because the production APIs accept

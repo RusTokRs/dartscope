@@ -119,9 +119,28 @@ of `interval_index.rs`. Keep it that way: a pass must not walk `analysis.declara
 references found so far, or rescan the text around a token, from inside a per-token loop. When a pass needs
 a new question answered, add it to one of those structures together with a test that compares it with the
 scan it replaces (the `linear` modules next to the existing ones), and check a restructuring with the
-differential run described in `docs/development/fuzzing.md`; do not assert wall-clock time. Next in line:
-an end-to-end fuzz target for `analyze_file_with_references`, splitting `incremental.rs`, and `lint`
-configuration for generated-file exclusions.
+differential run described in `docs/development/fuzzing.md`; do not assert wall-clock time.
+
+A single file analysis is also bounded in memory and in the work of its unbounded scans: invocation facts copy
+source text under a `CopyBudget`, and the declaration inventory charges its header, end and body scans to
+`Scans` (32 times the file plus 1 MiB each, with the warnings `invocation_facts_truncated` and
+`declaration_scan_truncated` when a budget ends the analysis early; `docs/development/json-contracts.md`,
+"Analysis budgets"). A new scan over source text must charge its work to one of them, and a new hostile shape
+belongs in the sweep of `crates/dartscope-parse/tests/adversarial_shapes.rs` (run by hand; the commands are in
+`docs/development/cli-input-limits.md`).
+
+The code keeps the layout that `docs/development/rust-code-standards.md` asks for: `lib.rs` files only declare
+modules and re-export (`dartscope-core` by domain, `dartscope-index` with `incremental/` split by concern),
+a function that needs more than a handful of inputs takes a context struct (`TypeScan`, `ParameterScan`,
+`RebuildTrigger`) instead of `allow(clippy::too_many_arguments)`, and there is no `allow(dead_code)`. Keep it
+that way: delete code that is not used and bundle the inputs that stay fixed during a scan.
+
+The URI handling of `dartscope-resolve` is its own module (`uri.rs`), not a dependency, because it decides which
+paths a project may name. Change it only together with a test from RFC 3986 section 5.4 or from the cases in
+its module, and keep the `uri_normalization` fuzz target meaningful: a `project_path` is a plain relative path or
+`None`.
+
+What the 2026-09-30 audit left open is listed in section 16.5 of its report.
 
 Separately, the 2026-09-25 review consolidated Dart identifier scanning into
 `crates/dartscope-parse/src/identifiers.rs` after finding that thirteen local character classes had
