@@ -59,7 +59,10 @@ impl UriReference {
         // The first segment of a relative path would read as a scheme if it held a `:`.
         if scheme.is_none()
             && authority.is_none()
-            && path.split('/').next().is_some_and(|segment| segment.contains(':'))
+            && path
+                .split('/')
+                .next()
+                .is_some_and(|segment| segment.contains(':'))
         {
             return Err(UriError::Character);
         }
@@ -67,7 +70,9 @@ impl UriReference {
             validate(query, |byte| is_pchar(byte) || matches!(byte, b'/' | b'?'))?;
         }
         if let Some(fragment) = fragment {
-            validate(fragment, |byte| is_pchar(byte) || matches!(byte, b'/' | b'?'))?;
+            validate(fragment, |byte| {
+                is_pchar(byte) || matches!(byte, b'/' | b'?')
+            })?;
         }
         Ok(Self {
             scheme: scheme.map(str::to_string),
@@ -126,10 +131,7 @@ impl UriReference {
             } else {
                 if reference.path.is_empty() {
                     target.path.clone_from(&self.path);
-                    target.query = reference
-                        .query
-                        .clone()
-                        .or_else(|| self.query.clone());
+                    target.query = reference.query.clone().or_else(|| self.query.clone());
                 } else {
                     if reference.path.starts_with('/') {
                         target.path = remove_dot_segments(&reference.path);
@@ -197,7 +199,9 @@ fn split_scheme(text: &str) -> (Option<&str>, &str) {
 /// `scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`
 fn is_scheme(text: &str) -> bool {
     let mut bytes = text.bytes();
-    bytes.next().is_some_and(|first| first.is_ascii_alphabetic())
+    bytes
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic())
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'))
 }
 
@@ -290,7 +294,11 @@ fn validate_ip_literal(inside: &str) -> Result<(), UriError> {
             && rest
                 .bytes()
                 .all(|byte| is_unreserved(byte) || is_sub_delim(byte) || byte == b':');
-        return if valid { Ok(()) } else { Err(UriError::Authority) };
+        return if valid {
+            Ok(())
+        } else {
+            Err(UriError::Authority)
+        };
     }
     Ipv6Addr::from_str(inside)
         .map(|_| ())
@@ -376,7 +384,11 @@ mod tests {
             ("../../", "http://a/"),
             ("../../g", "http://a/g"),
         ] {
-            assert_eq!(resolved(base, reference), expected, "reference {reference:?}");
+            assert_eq!(
+                resolved(base, reference),
+                expected,
+                "reference {reference:?}"
+            );
         }
     }
 
@@ -404,7 +416,11 @@ mod tests {
             ("g#s/../x", "http://a/b/c/g#s/../x"),
             ("http:g", "http:g"),
         ] {
-            assert_eq!(resolved(base, reference), expected, "reference {reference:?}");
+            assert_eq!(
+                resolved(base, reference),
+                expected,
+                "reference {reference:?}"
+            );
         }
     }
 
@@ -414,7 +430,10 @@ mod tests {
         assert_eq!(resolved("http://a", "?q"), "http://a?q");
         assert_eq!(resolved("file:///x/y.json", "../z/"), "file:///z/");
         assert_eq!(
-            resolved("file:///__dartscope_project__/a/.dart_tool/package_config.json", "../"),
+            resolved(
+                "file:///__dartscope_project__/a/.dart_tool/package_config.json",
+                "../"
+            ),
             "file:///__dartscope_project__/a/"
         );
     }
@@ -426,10 +445,7 @@ mod tests {
             "file:///cache/my%20package/lib%20src/Api%2fX.dart"
         );
         // An escaped dot is not a dot segment; callers that care decode it.
-        assert_eq!(
-            resolved("file:///a/b/", "%2e%2e/c"),
-            "file:///a/b/%2e%2e/c"
-        );
+        assert_eq!(resolved("file:///a/b/", "%2e%2e/c"), "file:///a/b/%2e%2e/c");
         let reference = UriReference::parse("FILE://Host/A").unwrap();
         assert_eq!(reference.scheme(), Some("FILE"));
         assert_eq!(reference.authority(), Some("Host"));
@@ -438,7 +454,8 @@ mod tests {
 
     #[test]
     fn splits_the_components() {
-        let reference = UriReference::parse("https://user:pw@example.com:8080/a/b?x=1&y=2#frag").unwrap();
+        let reference =
+            UriReference::parse("https://user:pw@example.com:8080/a/b?x=1&y=2#frag").unwrap();
         assert_eq!(reference.scheme(), Some("https"));
         assert_eq!(reference.authority(), Some("user:pw@example.com:8080"));
         assert_eq!(reference.path, "/a/b");
@@ -486,7 +503,10 @@ mod tests {
             "%41%7a",
             "a;b=c,d",
         ] {
-            assert!(UriReference::parse(valid).is_ok(), "{valid:?} should be accepted");
+            assert!(
+                UriReference::parse(valid).is_ok(),
+                "{valid:?} should be accepted"
+            );
         }
     }
 
@@ -526,7 +546,10 @@ mod tests {
             "a?b c",
             "a#b c",
         ] {
-            assert!(UriReference::parse(invalid).is_err(), "{invalid:?} should be rejected");
+            assert!(
+                UriReference::parse(invalid).is_err(),
+                "{invalid:?} should be rejected"
+            );
         }
         assert_eq!(
             UriReference::parse_absolute("../a"),
