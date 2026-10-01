@@ -91,8 +91,7 @@ pub(super) fn collect_block_regions(
             open += 1;
             continue;
         }
-        let Some(body_close) = structure.closing_brace(body_open)
-        else {
+        let Some(body_close) = structure.closing_brace(body_open) else {
             result.deferred_regions.push((open, bytes.len()));
             open += 1;
             continue;

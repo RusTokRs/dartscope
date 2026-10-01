@@ -33,7 +33,9 @@ pub(super) fn collect_for_regions(
             result.deferred_regions.push((found, bytes.len()));
             continue;
         };
-        let Some((scope_start, scope_end, region_end)) = for_body_region(source, structure, body_start) else {
+        let Some((scope_start, scope_end, region_end)) =
+            for_body_region(source, structure, body_start)
+        else {
             result.deferred_regions.push((
                 found,
                 statement_end(source, structure, body_start).unwrap_or(bytes.len()),
@@ -150,7 +152,11 @@ fn statement_end(source: &str, structure: &SourceStructure, start: usize) -> Opt
     }
 }
 
-fn if_statement_end(source: &str, structure: &SourceStructure, keyword_end: usize) -> Option<usize> {
+fn if_statement_end(
+    source: &str,
+    structure: &SourceStructure,
+    keyword_end: usize,
+) -> Option<usize> {
     let then_end = header_statement_end(source, structure, keyword_end)?;
     let Some(else_start) = next_non_trivia(source, then_end) else {
         return Some(then_end);
@@ -164,7 +170,11 @@ fn if_statement_end(source: &str, structure: &SourceStructure, keyword_end: usiz
     statement_end(source, structure, else_token.end)
 }
 
-fn header_statement_end(source: &str, structure: &SourceStructure, keyword_end: usize) -> Option<usize> {
+fn header_statement_end(
+    source: &str,
+    structure: &SourceStructure,
+    keyword_end: usize,
+) -> Option<usize> {
     let bytes = source.as_bytes();
     let open = next_non_trivia(source, keyword_end)?;
     if bytes.get(open) != Some(&b'(') {
@@ -174,7 +184,11 @@ fn header_statement_end(source: &str, structure: &SourceStructure, keyword_end: 
     statement_end(source, structure, close + 1)
 }
 
-fn do_statement_end(source: &str, structure: &SourceStructure, keyword_end: usize) -> Option<usize> {
+fn do_statement_end(
+    source: &str,
+    structure: &SourceStructure,
+    keyword_end: usize,
+) -> Option<usize> {
     let bytes = source.as_bytes();
     let body_end = statement_end(source, structure, keyword_end)?;
     let while_start = next_non_trivia(source, body_end)?;
@@ -188,7 +202,11 @@ fn do_statement_end(source: &str, structure: &SourceStructure, keyword_end: usiz
     (bytes.get(semicolon) == Some(&b';')).then_some(semicolon + 1)
 }
 
-fn try_statement_end(source: &str, structure: &SourceStructure, keyword_end: usize) -> Option<usize> {
+fn try_statement_end(
+    source: &str,
+    structure: &SourceStructure,
+    keyword_end: usize,
+) -> Option<usize> {
     let mut end = braced_statement_end(source, structure, keyword_end)?;
     let mut saw_handler = false;
     loop {
@@ -248,7 +266,11 @@ fn on_clause_end(source: &str, structure: &SourceStructure, keyword_end: usize) 
     None
 }
 
-fn catch_clause_end(source: &str, structure: &SourceStructure, keyword_end: usize) -> Option<usize> {
+fn catch_clause_end(
+    source: &str,
+    structure: &SourceStructure,
+    keyword_end: usize,
+) -> Option<usize> {
     let bytes = source.as_bytes();
     let open = next_non_trivia(source, keyword_end)?;
     if bytes.get(open) != Some(&b'(') {
@@ -529,8 +551,7 @@ pub(super) fn collect_catch_regions(
             ));
             continue;
         }
-        let Some(body_close) = structure.closing_brace(body_open)
-        else {
+        let Some(body_close) = structure.closing_brace(body_open) else {
             result.deferred_regions.push((found, bytes.len()));
             continue;
         };

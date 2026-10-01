@@ -66,7 +66,9 @@ impl SourceStructure {
                 b')' => {
                     if let Some(index) = open_parens.pop() {
                         structure.paren_closes[index] = Some(at);
-                        structure.paren_pairs.push((at, structure.paren_opens[index]));
+                        structure
+                            .paren_pairs
+                            .push((at, structure.paren_opens[index]));
                     }
                 }
                 b'[' => open_brackets.push(at),
@@ -74,7 +76,8 @@ impl SourceStructure {
                     open_brackets.pop();
                 }
                 b',' => {
-                    let innermost = innermost_open(&structure, &open_parens, &open_brackets, &open_blocks);
+                    let innermost =
+                        innermost_open(&structure, &open_parens, &open_brackets, &open_blocks);
                     structure.breaks.push((at, innermost));
                 }
                 b'<' => {
@@ -430,7 +433,8 @@ mod tests {
 
     fn random_source(rng: &mut Rng) -> String {
         const PIECES: &[&str] = &[
-            "<", ">", "<", ">", ";", "{", "}", "{", "}", "(", ")", "[", "]", "a", "bc", " ", "\n", "=>", ", ",
+            "<", ">", "<", ">", ";", "{", "}", "{", "}", "(", ")", "[", "]", "a", "bc", " ", "\n",
+            "=>", ", ",
         ];
         let count = rng.below(24);
         (0..count)
