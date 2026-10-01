@@ -1,0 +1,64 @@
+name: Dev loop
+
+# TEMPORARY: verification loop for the audit fixes (format, clippy, tests); removed before hand-off.
+on:
+  push:
+    branches: ['arena/01a0f406-dartscope']
+    paths:
+      - 'loop/trigger'
+      - '.github/workflows/dev-loop.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-loop
+  cancel-in-progress: true
+
+jobs:
+  mac:
+    name: loop (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Run loop
+        shell: bash
+        env:
+          LOOP_PUSH: '1'
+          LOOP_FULL: ${{ contains(github.event.head_commit.message, '[full]') && '1' || '0' }}
+        run: bash loop/check.sh
+
+  ubuntu:
+    name: loop (ubuntu-24.04)
+    if: contains(github.event.head_commit.message, '[all-os]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Run loop
+        shell: bash
+        run: bash loop/check.sh
+
+  windows:
+    name: loop (windows-2025)
+    if: contains(github.event.head_commit.message, '[all-os]')
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - name: Run loop
+        shell: bash
+        run: bash loop/check.sh
