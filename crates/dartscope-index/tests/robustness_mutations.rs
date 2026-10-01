@@ -15,7 +15,8 @@ use std::sync::{Mutex, PoisonError};
 use dartscope_core::{DartFileInput, DartProjectInput, DartProjectReferenceAnalysis};
 use dartscope_index::{
     DartDefinitionQuery, DartIndexOptions, DartWorkspaceIndex, DartWorkspaceResolutionContext,
-    analyze_part_links, build_uri_graph_with_options, resolve_project_identifier_references_with_options,
+    analyze_part_links, build_uri_graph_with_options,
+    resolve_project_identifier_references_with_options,
 };
 use dartscope_parse::{analyze_file_with_references, analyze_project_with_references};
 
@@ -410,11 +411,9 @@ fn an_updated_index_equals_a_fresh_one_and_never_panics_on_broken_code() {
     let mut runs = 0usize;
     let mut found: BTreeMap<String, Found> = BTreeMap::new();
     for (pair, (a0, b0)) in PAIRS.iter().enumerate() {
-        let mut rng = Rng(
-            0x9E37_79B9_7F4A_7C15
-                ^ ((pair as u64 + 1) * 0x1000_0000_01B3)
-                ^ salt.wrapping_mul(0xD6E8_FEB8_6659_FD93),
-        );
+        let mut rng = Rng(0x9E37_79B9_7F4A_7C15
+            ^ ((pair as u64 + 1) * 0x1000_0000_01B3)
+            ^ salt.wrapping_mul(0xD6E8_FEB8_6659_FD93));
         for _ in 0..rounds {
             let a1 = mutate(&mut rng, a0);
             let b1 = if rng.below(3) == 0 {
