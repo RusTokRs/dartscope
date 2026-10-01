@@ -215,10 +215,7 @@ impl BraceDepths {
     /// The depth at `at`: the braces before it, with a closing brace never taking the depth below
     /// zero. The brace at `at` itself is not counted.
     pub(super) fn at(&self, at: usize) -> usize {
-        match self
-            .after_brace
-            .partition_point(|&(offset, _)| offset < at)
-        {
+        match self.after_brace.partition_point(|&(offset, _)| offset < at) {
             0 => 0,
             count => self.after_brace[count - 1].1,
         }
