@@ -862,7 +862,8 @@ fn analyzing_a_file_builds_its_line_index_once() {
     assert!(builds <= 4, "{builds} line indexes were built for one file");
 
     let before = crate::source_lines::line_table_builds();
-    let with_references = crate::analyze_file_with_references(DartFileInput::new("lib/many.dart", source));
+    let with_references =
+        crate::analyze_file_with_references(DartFileInput::new("lib/many.dart", source));
     let builds = crate::source_lines::line_table_builds() - before;
 
     assert!(!with_references.file.declarations.is_empty());

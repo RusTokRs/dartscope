@@ -18,12 +18,20 @@ pub(crate) fn declaration_name_range(
         DartDeclarationKind::Setter => {
             name_after_keyword(masked_source, span.byte_start, header_end, "set")
         }
-        DartDeclarationKind::Field => {
-            leading_name_range(masked_source, span.byte_start, header_end, &declaration.name)
-                .or_else(|| {
-                    field_name_range(masked_source, span.byte_start, header_end, &declaration.name)
-                })
-        }
+        DartDeclarationKind::Field => leading_name_range(
+            masked_source,
+            span.byte_start,
+            header_end,
+            &declaration.name,
+        )
+        .or_else(|| {
+            field_name_range(
+                masked_source,
+                span.byte_start,
+                header_end,
+                &declaration.name,
+            )
+        }),
         DartDeclarationKind::Operator => operator_name_range(
             masked_source,
             span.byte_start,

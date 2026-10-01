@@ -160,7 +160,13 @@ pub(crate) fn span_for_byte_range(source: &str, byte_start: usize, byte_end: usi
         let end_index = table.first_line_ending_at_or_after(byte_end);
         let end = table
             .line_at(end_index)
-            .or_else(|| table.bounds.len().checked_sub(1).and_then(|last| table.line_at(last)))
+            .or_else(|| {
+                table
+                    .bounds
+                    .len()
+                    .checked_sub(1)
+                    .and_then(|last| table.line_at(last))
+            })
             .unwrap_or(start);
         SourceSpan {
             byte_start,

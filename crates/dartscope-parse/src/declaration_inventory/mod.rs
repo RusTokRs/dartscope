@@ -261,8 +261,7 @@ fn top_level_records(
     let (name, kind) = top_level_function(header.trim(), indent)
         .map(|name| (name, DartDeclarationKind::Function))
         .or_else(|| top_level_accessor(header.trim(), indent))?;
-    let end =
-        declaration_end(masked, at, callable_end_mode(header)).unwrap_or(line.byte_end());
+    let end = declaration_end(masked, at, callable_end_mode(header)).unwrap_or(line.byte_end());
     let symbol_id = ids.allocate(format!("{path}::{}:{name}", kind_label(kind)));
     let declaration = DartDeclaration {
         name,

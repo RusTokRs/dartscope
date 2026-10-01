@@ -75,7 +75,11 @@ fn interpolation_with_inner_quotes_does_not_report_an_unterminated_string() {
     // From riverpod: the inner `"'"` used to end the outer literal and corrupt everything after it.
     let source = "String clean(String x) => '${x.replaceAll(\"'\", '')}';\nclass After {}\n";
     let analysis = analyze_file(DartFileInput::new("lib/a.dart", source));
-    let codes: Vec<_> = analysis.diagnostics.iter().map(|d| d.code.as_str()).collect();
+    let codes: Vec<_> = analysis
+        .diagnostics
+        .iter()
+        .map(|d| d.code.as_str())
+        .collect();
     println!("spec P3b interpolation with inner quotes -> {codes:?}");
     assert!(!codes.contains(&"unterminated_string"), "{codes:?}");
     assert!(

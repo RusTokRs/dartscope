@@ -68,7 +68,10 @@ fn a_populated_flutter_section_is_still_parsed() {
         "name: demo\nflutter:\n  uses-material-design: true\n  assets:\n    - assets/a.png\n",
     ));
 
-    assert_eq!(analysis.configuration.flutter.uses_material_design, Some(true));
+    assert_eq!(
+        analysis.configuration.flutter.uses_material_design,
+        Some(true)
+    );
     assert_eq!(analysis.configuration.flutter.assets.len(), 1);
     assert!(errors(&analysis).is_empty(), "{:?}", analysis.diagnostics);
 }
@@ -79,8 +82,16 @@ fn a_byte_order_mark_does_not_hide_the_first_key() {
     let analysis = parse_pubspec(PubspecInput::new("pubspec.yaml", source));
 
     assert_eq!(analysis.package_name.as_deref(), Some("demo"));
-    assert_eq!(analysis.configuration.flutter.uses_material_design, Some(true));
-    assert_eq!(analysis.dependencies.len(), 1, "{:?}", analysis.dependencies);
+    assert_eq!(
+        analysis.configuration.flutter.uses_material_design,
+        Some(true)
+    );
+    assert_eq!(
+        analysis.dependencies.len(),
+        1,
+        "{:?}",
+        analysis.dependencies
+    );
     let dependency = &analysis.dependencies[0];
     assert_eq!(dependency.name, "http");
     assert_eq!(dependency.span.start_line, 5);

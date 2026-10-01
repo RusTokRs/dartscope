@@ -139,7 +139,9 @@ fn consume_interpolation(
     if depth >= MAX_INTERPOLATION_DEPTH {
         return None;
     }
-    let limit = bytes.len().min(index.saturating_add(MAX_INTERPOLATION_BYTES));
+    let limit = bytes
+        .len()
+        .min(index.saturating_add(MAX_INTERPOLATION_BYTES));
     let window = &bytes[..limit];
     let mut braces = 0usize;
     while index < limit {

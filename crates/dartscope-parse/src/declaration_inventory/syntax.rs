@@ -50,10 +50,18 @@ pub(super) fn member_headers(
     }
 
     if let Some(name) = name_after_token(cleaned, "get") {
-        return vec![(name, DartDeclarationKind::Getter, callable_end_mode(cleaned))];
+        return vec![(
+            name,
+            DartDeclarationKind::Getter,
+            callable_end_mode(cleaned),
+        )];
     }
     if let Some(name) = name_after_token(cleaned, "set") {
-        return vec![(name, DartDeclarationKind::Setter, callable_end_mode(cleaned))];
+        return vec![(
+            name,
+            DartDeclarationKind::Setter,
+            callable_end_mode(cleaned),
+        )];
     }
     if let Some(name) = operator_name(cleaned) {
         return vec![(
@@ -68,7 +76,11 @@ pub(super) fn member_headers(
             return Vec::new();
         }
         if let Some(name) = callable_name(cleaned) {
-            return vec![(name, DartDeclarationKind::Method, callable_end_mode(cleaned))];
+            return vec![(
+                name,
+                DartDeclarationKind::Method,
+                callable_end_mode(cleaned),
+            )];
         }
     }
 

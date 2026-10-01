@@ -58,7 +58,10 @@ fn an_arrow_body_that_starts_with_a_brace_ends_at_the_semicolon() {
 
     let counts = find(&analysis, DartDeclarationKind::Getter, "counts");
     let span = counts.declaration_span.as_ref().expect("declaration span");
-    assert_eq!(&source[span.byte_start..span.byte_end], &source[..source.find('\n').unwrap()]);
+    assert_eq!(
+        &source[span.byte_start..span.byte_end],
+        &source[..source.find('\n').unwrap()]
+    );
     find(&analysis, DartDeclarationKind::Function, "other");
 }
 
@@ -162,7 +165,10 @@ fn enum_constants_are_inventoried_as_fields_of_the_enum() {
         venus.symbol_id.as_deref(),
         Some("lib/sample.dart::enum:Planet/field:venus")
     );
-    assert_eq!(venus.span.start_line, 5, "the line of the constant, not of its annotation");
+    assert_eq!(
+        venus.span.start_line, 5,
+        "the line of the constant, not of its annotation"
+    );
     let full = venus.declaration_span.as_ref().expect("declaration span");
     assert_eq!((full.start_line, full.end_line), (5, 5));
 }
