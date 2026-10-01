@@ -98,10 +98,10 @@ impl Url {
         }
     }
 
-    pub fn to_file_path(&self) -> Result<PathBuf, ()> {
+    pub fn to_file_path(&self) -> Result<PathBuf, Url> {
         // Only for file://
         if !self.0.starts_with("file://") {
-            return Err(());
+            return Err(self.clone());
         }
         let raw = self.path();
         let decoded = percent_decode(raw);
@@ -121,11 +121,11 @@ fn percent_decode(input: &str) -> String {
             let lo = bytes.next();
             if let (Some(hi), Some(lo)) = (hi, lo) {
                 let hex = [hi, lo];
-                if let Ok(hex_str) = std::str::from_utf8(&hex) {
-                    if let Ok(byte) = u8::from_str_radix(hex_str, 16) {
-                        out.push(byte as char);
-                        continue;
-                    }
+                if let Ok(hex_str) = std::str::from_utf8(&hex)
+                    && let Ok(byte) = u8::from_str_radix(hex_str, 16)
+                {
+                    out.push(byte as char);
+                    continue;
                 }
                 // Invalid encoding, keep literally
                 out.push('%');

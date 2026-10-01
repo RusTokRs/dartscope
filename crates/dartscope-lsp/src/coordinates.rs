@@ -199,9 +199,12 @@ mod tests {
         // "a" + "\r\n" = 3 bytes, line 0 content "a", line 1 content "b"
         assert_eq!(byte_offset_to_lsp_position(source, 0), Position { line: 0, character: 0 });
         assert_eq!(byte_offset_to_lsp_position(source, 1), Position { line: 0, character: 1 });
-        // offset 1 is 'a' end, offset 2 is '\r', offset 3 is '\n' — both should map to line 0 end
-        assert_eq!(byte_offset_to_lsp_position(source, 3), Position { line: 0, character: 1 });
-        assert_eq!(byte_offset_to_lsp_position(source, 4), Position { line: 1, character: 0 });
+        // bytes: 0 'a', 1 '\r', 2 '\n', 3 'b', 4 '\r', 5 '\n', 6 'c'
+        // offset 2 is the '\n' of the first CRLF: it still belongs to the end of line 0
+        assert_eq!(byte_offset_to_lsp_position(source, 2), Position { line: 0, character: 1 });
+        // offset 3 is 'b', the first character of line 1
+        assert_eq!(byte_offset_to_lsp_position(source, 3), Position { line: 1, character: 0 });
+        assert_eq!(byte_offset_to_lsp_position(source, 4), Position { line: 1, character: 1 });
         assert_eq!(lsp_position_to_byte_offset(source, Position { line: 1, character: 0 }), Some(3));
         // byte 3 is after "\r\n"?
         // Our line_content_by_index: line 0 start 0, content "a" (0..1), line 1 start 3, content "b" (3..4)

@@ -30,7 +30,7 @@ fn main() -> io::Result<()> {
             if n == 0 {
                 return Ok(());
             }
-            let trimmed = line.trim_end_matches(|c| c == '\r' || c == '\n');
+            let trimmed = line.trim_end_matches(['\r', '\n']);
             if trimmed.is_empty() {
                 break;
             }
@@ -147,7 +147,7 @@ fn handle_message(server: &mut DartLspServer, msg: &Value) -> Option<Value> {
             let params: DocumentSymbolParams =
                 serde_json::from_value(msg.get("params").cloned().unwrap_or(Value::Null)).ok()?;
             let result = server
-                .document_symbols(&params.text_document.uri, params)
+                .document_symbols(&params.text_document.uri.clone(), params)
                 .ok()
                 .flatten()
                 .unwrap_or_default();

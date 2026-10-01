@@ -214,7 +214,15 @@ impl<'a> Receiver<'a> {
                     seen_keys,
                     ..
                 } => {
-                    if pending_key.is_none() {
+                    if let Some(key_node) = pending_key.take() {
+                        if let NodeKind::Scalar(key) = key_node.kind {
+                            entries.push(Entry {
+                                key,
+                                key_span: key_node.span,
+                                value: node,
+                            });
+                        }
+                    } else {
                         if let NodeKind::Scalar(key) = &node.kind {
                             node.span = mapping_key_span(self.source, &node.span);
                             if key == "<<" {
@@ -239,22 +247,6 @@ impl<'a> Receiver<'a> {
                             ));
                         }
                         *pending_key = Some(node);
-                    } else {
-                        let Some(key_node) = pending_key.take() else {
-                            new_diagnostics.push(DartDiagnostic::error(
-                                \"pubspec_invalid_yaml\",
-                                \"pubspec YAML mapping is malformed: missing key for value\",
-                                Some(node.span.clone()),
-                            ));
-                            continue;
-                        };
-                        if let NodeKind::Scalar(key) = key_node.kind {
-                            entries.push(Entry {
-                                key,
-                                key_span: key_node.span,
-                                value: node,
-                            });
-                        }
                     }
                 }
             }

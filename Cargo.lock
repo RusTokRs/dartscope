@@ -17,6 +17,7 @@ dependencies = [
  "dartscope-index",
  "dartscope-json",
  "dartscope-lints",
+ "dartscope-lsp",
  "dartscope-parse",
  "dartscope-resolve",
 ]
@@ -78,6 +79,18 @@ dependencies = [
  "dartscope-parse",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "dartscope-lsp"
+version = "0.1.0"
+dependencies = [
+ "dartscope-core",
+ "dartscope-index",
+ "dartscope-parse",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

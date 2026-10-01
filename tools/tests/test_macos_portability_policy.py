@@ -23,7 +23,7 @@ class MacosPortabilityPolicyTests(unittest.TestCase):
         self.assertIn("cargo +1.95.0 check --workspace --all-targets --locked", body)
         self.assertIn("cargo +1.95.0 test --workspace --locked --quiet", body)
         self.assertIn("cargo +1.95.0 package --workspace", body)
-        self.assertIn('test "$archive_count" = "9"', body)
+        self.assertIn('test "$archive_count" = "10"', body)
 
     def test_signal_is_included_in_aggregate_status(self) -> None:
         text = CI.read_text(encoding="utf-8")

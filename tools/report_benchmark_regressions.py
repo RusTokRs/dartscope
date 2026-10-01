@@ -189,9 +189,9 @@ def run_package_workload(root: Path) -> Sample:
     )
     elapsed = time.perf_counter_ns() - started
     archives = sorted(package_dir.glob("dartscope-*.crate"))
-    if len(archives) != 9:
+    if len(archives) != 10:
         raise BenchmarkError(
-            f"cargo package created {len(archives)} DartScope archives instead of 9 in {package_dir}"
+            f"cargo package created {len(archives)} DartScope archives instead of 10 in {package_dir}"
         )
     size = sum(archive.stat().st_size for archive in archives)
     return Sample(elapsed_ns=elapsed, units=size, digest=size)

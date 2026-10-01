@@ -261,8 +261,10 @@ mod tests {
 
     #[test]
     fn dollar_in_identifier_does_not_break_raw_detection() {
-        // `foo$r'bar'` should NOT be a raw string because `$` is identifier continue
-        assert!(find_string_literal_start("foo$r'bar'", 0).is_none());
+        // `foo$r'bar'`: `$` continues the identifier `foo$r`, so `r'` is not a raw prefix; the plain
+        // literal `'bar'` that follows still starts at byte 5.
+        assert_eq!(find_string_literal_start("foo$r'bar'", 0), Some(5));
+        assert!(super::string_start("foo$r'bar'".as_bytes(), 4).is_none());
         // `foo r'bar'` after space IS a raw string
         assert_eq!(find_string_literal_start("foo r'bar'", 3), Some(4));
     }

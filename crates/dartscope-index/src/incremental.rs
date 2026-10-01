@@ -1046,6 +1046,7 @@ fn top_level_declaration_facts(
     &str,
     dartscope_core::DartDeclarationKind,
     Option<&str>,
+    &dartscope_core::SourceSpan,
 )> {
     file.declarations
         .iter()
@@ -1055,6 +1056,7 @@ fn top_level_declaration_facts(
                 declaration.name.as_str(),
                 declaration.kind,
                 declaration.symbol_id.as_deref(),
+                &declaration.span,
             )
         })
         .collect()

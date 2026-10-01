@@ -8,14 +8,12 @@ use dartscope_index::{
 };
 use thiserror::Error;
 
-use crate::coordinates::{byte_offset_to_lsp_position, lsp_position_to_byte_offset};
+use crate::coordinates::lsp_position_to_byte_offset;
 use crate::types::{
     Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams, Hover, HoverContents,
     InitializeParams, InitializeResult, Location, MarkedString, NumberOrString, Position, Range,
-    ServerCapabilities, SymbolKind, TextDocumentContentChangeEvent, TextDocumentItem,
-    TextDocumentSyncCapability, TextDocumentSyncKind, Url, VersionedTextDocumentIdentifier,
-    WorkDoneProgressOptions,
+    ServerCapabilities, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 
 #[derive(Debug, Error)]
@@ -74,7 +72,6 @@ impl DartLspServer {
                 references_provider: Some(crate::types::OneOf::Left(true)),
                 hover_provider: Some(crate::types::HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(crate::types::OneOf::Left(true)),
-                ..Default::default()
             },
             server_info: Some(crate::types::ServerInfo {
                 name: "dartscope-lsp".to_string(),
@@ -110,11 +107,11 @@ impl DartLspServer {
         for change in params.content_changes {
             if let Some(range) = change.range {
                 // Incremental change
-                if let Some(start) = lsp_position_to_byte_offset(&new_text, range.start) {
-                    if let Some(end) = lsp_position_to_byte_offset(&new_text, range.end) {
-                        new_text.replace_range(start..end, &change.text);
-                        continue;
-                    }
+                if let Some(start) = lsp_position_to_byte_offset(&new_text, range.start)
+                    && let Some(end) = lsp_position_to_byte_offset(&new_text, range.end)
+                {
+                    new_text.replace_range(start..end, &change.text);
+                    continue;
                 }
                 // Fallback to full replace if range invalid
                 new_text = change.text;
@@ -148,7 +145,7 @@ impl DartLspServer {
         };
         let path = uri_to_path(uri).unwrap_or_else(|_| uri.path().trim_start_matches('/').to_string());
         let query = DartDefinitionQuery::new(path, offset);
-        let ctx = DartWorkspaceResolutionContext::from_snapshot(index.snapshot());
+        let ctx = DartWorkspaceResolutionContext::from_snapshot(&index.snapshot());
         let batch = ctx.find_definitions(&[query]);
         let Some(resolution) = batch.resolutions.first() else {
             return Ok(None);
@@ -199,7 +196,7 @@ impl DartLspServer {
         };
         let path = uri_to_path(uri).unwrap_or_else(|_| uri.path().trim_start_matches('/').to_string());
         let query = DartDefinitionQuery::new(path, offset);
-        let ctx = DartWorkspaceResolutionContext::from_snapshot(index.snapshot());
+        let ctx = DartWorkspaceResolutionContext::from_snapshot(&index.snapshot());
         let batch = ctx.find_definitions(&[query]);
         let Some(resolution) = batch.resolutions.first() else {
             return Ok(None);
@@ -247,7 +244,7 @@ impl DartLspServer {
         };
         let path = uri_to_path(uri).unwrap_or_else(|_| uri.path().trim_start_matches('/').to_string());
         let query = DartDefinitionQuery::new(path, offset);
-        let ctx = DartWorkspaceResolutionContext::from_snapshot(index.snapshot());
+        let ctx = DartWorkspaceResolutionContext::from_snapshot(&index.snapshot());
         let batch = ctx.find_definitions(&[query]);
         let Some(resolution) = batch.resolutions.first() else {
             return Ok(None);
@@ -392,7 +389,6 @@ impl DartLspServer {
                     code: Some(NumberOrString::String(diag.code.clone())),
                     source: Some("dartscope".to_string()),
                     message: diag.message.clone(),
-                    ..Default::default()
                 }
             })
             .collect()
@@ -423,7 +419,6 @@ fn uri_to_path(uri: &Url) -> Result<String, Url> {
     // Url::to_file_path is platform-specific; we normalize to `/`-separated
     uri.to_file_path()
         .map(|path| path.to_string_lossy().replace('\\', "/").trim_start_matches('/').to_string())
-        .map_err(|_| uri.clone())
 }
 
 fn path_to_uri(path: &str) -> Url {
@@ -439,6 +434,7 @@ fn path_to_uri(path: &str) -> Url {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::coordinates::byte_offset_to_lsp_position;
     use crate::types::{Position, Url};
 
     #[test]
@@ -463,8 +459,10 @@ mod tests {
                 text: content.to_string(),
             },
         });
-        // Position of `bar` in `Foo().bar()` — find byte offset
-        let offset = content.find("Foo().bar").unwrap() + "Foo().".len();
+        // Position of the `Foo` constructor call in `Foo().bar()`: it resolves to the class.
+        // A member access on an expression receiver (`Foo().bar`) needs receiver inference, which
+        // DartScope does not perform (docs/development/audit-findings-2026-09-30.md, section 14.1).
+        let offset = content.find("Foo().bar").unwrap();
         let pos = byte_offset_to_lsp_position(content, offset);
         let locs = server.definition(&uri, pos).unwrap();
         assert!(locs.is_some());
@@ -477,8 +475,9 @@ mod tests {
         let mut server = DartLspServer::new(".");
         server.initialize(InitializeParams::default()).unwrap();
         let uri = Url::parse("file:///lib/main.dart").unwrap();
-        // Dart 3.13 concise constructor triggers diagnostic
-        let content = "class Foo { Foo.new(); }";
+        // The Dart 3.13 concise constructor form is a leading `new`; `Foo.new();` is an ordinary
+        // unnamed constructor and is supported.
+        let content = "class Foo { new(); }";
         server.did_open(DidOpenTextDocumentParams {
             text_document: crate::types::TextDocumentItem {
                 uri: uri.clone(),
@@ -537,7 +536,7 @@ mod tests {
                     text_document: crate::types::TextDocumentItem {
                         uri: uri.clone(),
                         language_id: "dart".to_string(),
-                        version: i as i32,
+                        version: i,
                         text: content.clone(),
                     },
                 });
@@ -545,7 +544,7 @@ mod tests {
                 server.did_change(DidChangeTextDocumentParams {
                     text_document: crate::types::VersionedTextDocumentIdentifier {
                         uri: uri.clone(),
-                        version: i as i32,
+                        version: i,
                     },
                     content_changes: vec![crate::types::TextDocumentContentChangeEvent {
                         range: None,

@@ -246,21 +246,20 @@ fn resolve_instance_reference(
             )
         })
         .collect::<Vec<_>>();
-    if refinements.is_empty()
+    if (refinements.is_empty()
         || refinements
             .iter()
-            .all(|refinement| refinement.status == DartDefinitionResolutionStatus::Missing)
-    {
-        if let Some(extension) = refine_extension_member(
+            .all(|refinement| refinement.status == DartDefinitionResolutionStatus::Missing))
+        && let Some(extension) = refine_extension_member(
             analysis,
             member_index,
             namespace,
             &reference.source_path,
             &reference.name,
             member_use,
-        ) {
-            refinements.push(extension);
-        }
+        )
+    {
+        refinements.push(extension);
     }
     finish_resolution(reference, refinements, Vec::new())
 }
