@@ -75,10 +75,28 @@ const SHAPES: &[Shape] = &[
     shape("nested_block_comments", "", "/* ", "*/ ", ""),
     shape("unclosed_annotations", "", "@A(", "", " class C {}"),
     shape("nested_annotations", "", "@A(", ")", " class C {}"),
-    shape("unclosed_generic_params", "class A<", "T extends B<", "", ""),
-    shape("unclosed_function_types", "typedef F = ", "void Function(", "", ""),
+    shape(
+        "unclosed_generic_params",
+        "class A<",
+        "T extends B<",
+        "",
+        "",
+    ),
+    shape(
+        "unclosed_function_types",
+        "typedef F = ",
+        "void Function(",
+        "",
+        "",
+    ),
     shape("nested_records", "var x = ", "(1, ", ")", ";"),
-    shape("unclosed_patterns", "void f() { switch (x) { case ", "[", "", " }"),
+    shape(
+        "unclosed_patterns",
+        "void f() { switch (x) { case ",
+        "[",
+        "",
+        " }",
+    ),
     // Long chains and expressions without any delimiter to stop at.
     shape("long_member_chain", "void f() { a", ".b", "", "(); }"),
     shape("long_call_chain", "void f() { a", "().b", "", "(); }"),
@@ -89,7 +107,13 @@ const SHAPES: &[Shape] = &[
     shape("long_identifier", "class A", "a", "", " {}"),
     shape("long_string_literal", "var s = '", "a", "", "';"),
     shape("long_comment_line", "// ", "a", "", "\nclass A {}"),
-    shape("long_generic_arguments", "var x = <", "int, ", "", "int>[];"),
+    shape(
+        "long_generic_arguments",
+        "var x = <",
+        "int, ",
+        "",
+        "int>[];",
+    ),
     // Nested statements.
     shape("unclosed_closures", "void f() { ", "g((x) { ", "", ""),
     shape("nested_closures", "void f() { ", "g((x) { ", "}); ", "}"),
@@ -100,8 +124,20 @@ const SHAPES: &[Shape] = &[
         "",
         "{} }",
     ),
-    shape("else_if_chain", "void f() { ", "if (a) {} else ", "", "{} }"),
-    shape("nested_if_statements", "void f() { ", "if (a) ", "", "g(); }"),
+    shape(
+        "else_if_chain",
+        "void f() { ",
+        "if (a) {} else ",
+        "",
+        "{} }",
+    ),
+    shape(
+        "nested_if_statements",
+        "void f() { ",
+        "if (a) ",
+        "",
+        "g(); }",
+    ),
     // Line-oriented shapes.
     shape(
         "nested_class_headers",
@@ -111,12 +147,24 @@ const SHAPES: &[Shape] = &[
         "",
     ),
     shape("unclosed_classes", "", "class A {\n  void m() {\n", "", ""),
-    shape("unclosed_methods", "class A {\n", "  void m() {\n    g(\n", "", ""),
+    shape(
+        "unclosed_methods",
+        "class A {\n",
+        "  void m() {\n    g(\n",
+        "",
+        "",
+    ),
     shape("unterminated_imports", "", "import 'a.dart'\n", "", ""),
     shape("many_annotation_lines", "", "@A\n", "", "class C {}"),
     shape("many_doc_comment_lines", "", "/// doc\n", "", "class C {}"),
     shape("many_blank_lines", "", "\n", "", "class C {}"),
-    shape("many_enum_constants", "enum E {\n", "  a(1),\n", "", "  z;\n}"),
+    shape(
+        "many_enum_constants",
+        "enum E {\n",
+        "  a(1),\n",
+        "",
+        "  z;\n}",
+    ),
     shape(
         "many_switch_cases",
         "void f() { switch (x) {\n",
@@ -152,7 +200,13 @@ const SHAPES: &[Shape] = &[
         "",
         "}",
     ),
-    shape("many_typedefs", "", "typedef F = void Function(int);\n", "", ""),
+    shape(
+        "many_typedefs",
+        "",
+        "typedef F = void Function(int);\n",
+        "",
+        "",
+    ),
     shape(
         "many_extensions",
         "",
@@ -309,9 +363,12 @@ fn sizes() -> Vec<usize> {
 #[test]
 #[ignore = "informational timing; run with --ignored --nocapture"]
 fn print_growth_of_hostile_shapes_per_doubling() {
-    let only: Option<Vec<String>> = env::var("ADVERSARIAL_ONLY")
-        .ok()
-        .map(|names| names.split(',').map(|name| name.trim().to_string()).collect());
+    let only: Option<Vec<String>> = env::var("ADVERSARIAL_ONLY").ok().map(|names| {
+        names
+            .split(',')
+            .map(|name| name.trim().to_string())
+            .collect()
+    });
     let timeout = Duration::from_secs(
         env::var("ADVERSARIAL_TIMEOUT_SECS")
             .ok()
@@ -340,9 +397,8 @@ fn print_growth_of_hostile_shapes_per_doubling() {
             let label = bytes >> 10;
             match measure(shape.name, bytes, timeout) {
                 Outcome::Done { base, full, counts } => {
-                    let growth = previous.map(|before| {
-                        full.as_secs_f64() / before.as_secs_f64().max(1e-9)
-                    });
+                    let growth =
+                        previous.map(|before| full.as_secs_f64() / before.as_secs_f64().max(1e-9));
                     let note = growth.map_or_else(String::new, |growth| {
                         if full > Duration::from_millis(40) {
                             last_growth = growth;
