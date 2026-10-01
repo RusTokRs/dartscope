@@ -36,10 +36,18 @@ fn argument_text(analysis: &DartFileAnalysis) -> usize {
 fn calls_nested_thousands_of_levels_deep_are_cut_instead_of_copied_quadratically() {
     // 30,000 levels: the arguments of the outer calls alone would hold about 1.3 GB.
     let depth = 30_000;
-    let source = format!("void f() {{ {}{}; }}\n", "a(".repeat(depth), ")".repeat(depth));
+    let source = format!(
+        "void f() {{ {}{}; }}\n",
+        "a(".repeat(depth),
+        ")".repeat(depth)
+    );
     let analysis = analyze(source.clone());
 
-    assert!(analysis.invocations.len() < depth, "{}", analysis.invocations.len());
+    assert!(
+        analysis.invocations.len() < depth,
+        "{}",
+        analysis.invocations.len()
+    );
     assert!(!analysis.invocations.is_empty());
     // The outermost call comes first and carries the whole nest.
     let outermost = &analysis.invocations[0];
@@ -68,7 +76,11 @@ fn a_chain_of_thousands_of_calls_is_cut_instead_of_copied_quadratically() {
     let analysis = analyze(source.clone());
 
     assert!(!analysis.invocations.is_empty());
-    assert!(analysis.invocations.len() < 30_000, "{}", analysis.invocations.len());
+    assert!(
+        analysis.invocations.len() < 30_000,
+        "{}",
+        analysis.invocations.len()
+    );
     assert_eq!(analysis.invocations[0].target, "a");
     assert_eq!(analysis.invocations[1].target, "a.b");
     let targets: usize = analysis
@@ -76,7 +88,10 @@ fn a_chain_of_thousands_of_calls_is_cut_instead_of_copied_quadratically() {
         .iter()
         .map(|invocation| invocation.target.len())
         .sum();
-    assert!(targets <= 32 * source.len() + (1 << 20), "{targets} bytes of targets");
+    assert!(
+        targets <= 32 * source.len() + (1 << 20),
+        "{targets} bytes of targets"
+    );
     assert_eq!(truncation_warnings(&analysis).len(), 1);
 }
 
@@ -97,7 +112,11 @@ fn nesting_like_a_deep_widget_tree_keeps_every_invocation_and_warns_about_nothin
     }
     let analysis = analyze(source);
 
-    assert!(truncation_warnings(&analysis).is_empty(), "{:?}", analysis.diagnostics);
+    assert!(
+        truncation_warnings(&analysis).is_empty(),
+        "{:?}",
+        analysis.diagnostics
+    );
     assert_eq!(analysis.invocations.len(), expected_calls);
     let screen_calls = analysis
         .invocations
@@ -111,7 +130,9 @@ fn nesting_like_a_deep_widget_tree_keeps_every_invocation_and_warns_about_nothin
 fn the_budget_is_per_file_and_leaves_ordinary_files_alone() {
     let mut source = String::new();
     for index in 0..2000 {
-        source.push_str(&format!("void f{index}() {{ g(h({index}), i(j(k(1)))); }}\n"));
+        source.push_str(&format!(
+            "void f{index}() {{ g(h({index}), i(j(k(1)))); }}\n"
+        ));
     }
     let analysis = analyze(source);
     assert!(truncation_warnings(&analysis).is_empty());

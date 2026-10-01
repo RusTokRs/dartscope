@@ -372,8 +372,13 @@ mod tests {
                 "round {round}: candidates of `{text}`"
             );
             for candidate in &from_pairs {
-                let with_pairs =
-                    invocation_arguments(&text, &text, candidate.open + 1, candidate.close, &paired);
+                let with_pairs = invocation_arguments(
+                    &text,
+                    &text,
+                    candidate.open + 1,
+                    candidate.close,
+                    &paired,
+                );
                 let with_counting = invocation_arguments(
                     &text,
                     &text,
@@ -419,7 +424,10 @@ mod tests {
     #[test]
     fn the_budget_takes_what_fits_and_refuses_the_rest() {
         let mut budget = CopyBudget::for_source(0);
-        assert!(budget.spend(1 << 20), "the base amount is available to an empty file");
+        assert!(
+            budget.spend(1 << 20),
+            "the base amount is available to an empty file"
+        );
         assert!(!budget.spend(1), "nothing is left");
         let mut budget = CopyBudget::for_source(10);
         assert!(budget.spend(320 + (1 << 20)));
@@ -446,7 +454,10 @@ mod tests {
             scan.candidates.len()
         );
         let copied: usize = scan.candidates.iter().map(|call| call.target.len()).sum();
-        assert!(copied <= 32 * source.len() + (1 << 20), "{copied} bytes of targets");
+        assert!(
+            copied <= 32 * source.len() + (1 << 20),
+            "{copied} bytes of targets"
+        );
         assert_eq!(scan.candidates[0].target, "a");
         assert_eq!(scan.candidates[1].target, "a.b");
     }

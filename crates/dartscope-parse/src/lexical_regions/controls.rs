@@ -695,7 +695,11 @@ mod tests {
     use super::*;
 
     // The recursive measurement that `StatementEnds` replaces, kept as the specification.
-    fn oracle_statement_end(source: &str, structure: &SourceStructure, start: usize) -> Option<usize> {
+    fn oracle_statement_end(
+        source: &str,
+        structure: &SourceStructure,
+        start: usize,
+    ) -> Option<usize> {
         let bytes = source.as_bytes();
         let start = next_non_trivia(source, start)?;
         if bytes.get(start) == Some(&b'{') {

@@ -45,7 +45,13 @@ fn invocation_argument(
     Some(DartInvocationArgument {
         name,
         string_value: string_literal_value(&expression),
-        map_entries: map_entries(source, masked_source, expression_start, expression_end, closers),
+        map_entries: map_entries(
+            source,
+            masked_source,
+            expression_start,
+            expression_end,
+            closers,
+        ),
         expression,
         span: span_for_byte_range(source, start, end),
     })
@@ -199,8 +205,7 @@ mod tests {
     #[test]
     fn captures_named_arguments_and_map_entries() {
         let source = "path: '/home', routes: <String, WidgetBuilder>{'/': home, '/x': other}";
-        let args =
-            invocation_arguments(source, source, 0, source.len(), &Delimiters::new(source));
+        let args = invocation_arguments(source, source, 0, source.len(), &Delimiters::new(source));
         assert_eq!(args[0].name.as_deref(), Some("path"));
         assert_eq!(args[0].string_value.as_deref(), Some("/home"));
         assert_eq!(args[1].map_entries.len(), 2);
