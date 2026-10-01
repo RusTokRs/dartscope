@@ -504,7 +504,7 @@ fn mutated_sources_never_panic_and_report_spans_that_describe_the_text() {
     for (index, seed) in SEEDS.iter().enumerate() {
         let mut rng = Rng(0x9E37_79B9_7F4A_7C15 ^ ((index as u64 + 1) * 0x1000_0000_01B3));
         let mut candidates = vec![(*seed).to_string()];
-        candidates.extend((0..200).map(|_| mutate(&mut rng, seed)));
+        candidates.extend((0..500).map(|_| mutate(&mut rng, seed)));
         for source in candidates {
             analyzed += 1;
             let started = Instant::now();
@@ -541,7 +541,6 @@ fn mutated_sources_never_panic_and_report_spans_that_describe_the_text() {
     }
     drop(panic::take_hook());
 
-    assert!(analyzed >= 1600, "{analyzed} sources were analyzed");
     let mut report = Vec::new();
     for (place, found) in &panics {
         report.push(format!(
@@ -560,4 +559,5 @@ fn mutated_sources_never_panic_and_report_spans_that_describe_the_text() {
         ));
     }
     assert!(report.is_empty(), "\n{}", report.join("\n"));
+    assert!(analyzed >= 3000, "only {analyzed} sources were analyzed");
 }
