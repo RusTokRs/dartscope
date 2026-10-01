@@ -14,7 +14,7 @@ if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[perf\]'; th
   emit perf_index "$OUT/perf_index.sum" --chunk 3900 --max 2
 fi
 if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[perf\]'; then
-  run perf_phase cargo test --release -p dartscope-parse --lib zz_phase_timing --locked -- --ignored --nocapture --test-threads=1
+  run perf_phase cargo test --release -p dartscope-parse --lib zz_ --locked -- --ignored --nocapture --test-threads=1
   grep -E '^(phase|test result|error)' "$OUT/perf_phase.log" > "$OUT/perf_phase.sum"
   emit perf_phase "$OUT/perf_phase.sum" --chunk 3900 --max 2
 fi
