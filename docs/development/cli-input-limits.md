@@ -40,6 +40,18 @@ third-party files as `input_directory_skipped` (severity `info`).
 A `.dart` file that is not valid UTF-8 is skipped with the warning `input_file_not_utf8` by
 `analyze-project` and rejected by every other command; it still counts toward the project budgets.
 
+## Analysis budgets
+
+The byte limits above bound what the CLI reads. Inside one file, the analysis has budgets of its own
+that bound how much it copies and scans (they apply to the library as well). A file of nested calls
+or of lines without a terminator is cut off with the warning `invocation_facts_truncated` or
+`declaration_scan_truncated` instead of taking time and memory that grow with the square of its size;
+see "Analysis budgets" in `json-contracts.md` for the numbers. Both are counted in bytes, so a run
+over the same input gives the same result on every machine. The hostile-input sweep
+(`crates/dartscope-parse/tests/adversarial_shapes.rs`, run by hand: 62 shapes of unclosed and nested
+delimiters, long chains, huge tokens and runs of lines without terminators) shows linear growth for
+every shape up to 1 MiB; a shape that is found to grow faster belongs in that list.
+
 ## Large repositories
 
 The CLI budgets intentionally bound peak retained source text; they are not library API limits.

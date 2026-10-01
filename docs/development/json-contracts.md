@@ -120,6 +120,45 @@ a consumer that relied on an old value has to adapt:
   `target_path`; they used to be `missing_target` with a path, or a path with the surplus `..` segments
   dropped (a file inside the root that the URI does not mean).
 
+## Additive v1 changes from the audit fixes
+
+Each item is an optional field or a new diagnostic code, so it stays inside v1 under the
+compatibility policy above. No existing field changed its type or meaning and the golden fixtures
+did not change.
+
+- `FlutterWidgetEntry.inherited_via` (the widget entries of `flutter-inventory`, and
+  `FlutterWidgetHint.inherited_via` in the library): the project class named in `extends` when the
+  widget reaches its Flutter base through other classes. It is omitted for a direct subclass, whose
+  confidence stays `high`; a widget found through a project superclass has confidence `medium` and
+  `base_class` is the Flutter base it reaches.
+- `analyze-project` diagnostics `input_directory_skipped` (severity `info`, one per directory of the
+  skip list that the walk did not enter) and `input_symlink_skipped` (with `--skip-symlinks`); both
+  count in `summary.diagnostics`.
+- `analyze-project --relative-root` reports `data.root` as `.`; the default is the absolute root
+  without `.` components.
+- Two warnings tell that the analysis of a file was cut at a per-file budget (below).
+
+### Analysis budgets
+
+Two stages of `analyze_file` can read or copy a file many times over when its text is built to
+make them: a call chain copies the dotted prefix into the target of every call in it, a call nested
+in other calls is copied into the arguments of each of them, and a line without a terminator is
+scanned to the end of the file. Each file therefore has a budget, and the analysis stops at the first
+fact that would exceed it instead of using time or memory that grows with the square of the file.
+The budgets are counted in bytes, never in time, so the result is deterministic.
+
+| Warning | Stage | Budget | What is kept |
+|---|---|---|---|
+| `invocation_facts_truncated` | invocation facts | 32 times the file size plus 1 MiB for call targets, and the same for argument text | the invocations in source order up to the first one that does not fit; the span is the line of the first invocation that was left out |
+| `declaration_scan_truncated` | declaration inventory | 32 times the file size plus 1 MiB of bytes read by the scans of headers, declaration ends and bodies | the declarations found before the budget ran out; the span is the line where it did |
+
+Ordinary code stays far below both: a widget tree 40 levels deep copies each byte about 19 times
+(the regression test `tests/invocation_budget.rs` keeps a file of such trees complete), and the
+declaration scans read each byte of ordinary code a handful of times. Only input that is broken or
+hostile reaches a budget. A file of 64 KiB made of nested calls (`a(a(a(...)))`) would produce about
+700 MB of invocation facts; it now produces 48 invocations and the warning. The reference passes
+(`analyze_file_with_references`) work on the facts that were kept.
+
 ## Opt-in reference analysis outside command v1 payloads
 
 Identifier-reference wrappers and batch namespace-resolution results are library APIs rather than new

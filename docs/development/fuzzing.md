@@ -21,11 +21,25 @@ The checked-in targets cover:
 - import/export directives and conditional/combinator forms;
 - pubspec YAML and package-config JSON parsing;
 - GraphQL operation declarations and client uses;
-- path normalization plus package URI validation and resolution.
+- path normalization plus package URI validation and resolution;
+- the whole file analysis, `analyze_file_with_references` (`file_analysis`).
 
 Every target accepts arbitrary bytes through UTF-8 lossy conversion because the production APIs accept
 Rust strings. Inputs are bounded by CI to 4096 bytes. The lexical bridge also checks byte-length and
 newline preservation, and all private-stage bridges validate returned source spans.
+
+The `file_analysis` target runs the complete pipeline (masking, declarations, invocations, namespace
+directives, GraphQL, and every reference pass) through `dartscope_parse::fuzzing::exercise_file_analysis`.
+It requires that nothing panics, that two runs over the same text give equal results, and that every
+span the analysis reports (declarations, invocations and arguments, directives, string constants,
+diagnostics, references, lexical bindings) lies inside the text on character boundaries. This is the
+check that the stable-Rust mutation tests below make on damaged realistic files, applied to arbitrary
+bytes with coverage guidance. Its seeds are a widget file, a file with every kind of type and member, a
+broken file with unclosed delimiters, non-ASCII text and deeply nested calls.
+
+A 4096-byte input cannot show a superlinear cost; that is the job of the hostile-input sweep
+(`crates/dartscope-parse/tests/adversarial_shapes.rs`, run by hand, see
+`docs/development/cli-input-limits.md`).
 
 ## Deterministic Property Suite
 
@@ -118,6 +132,7 @@ cargo +1.95.0 test -p dartscope-parse --test deterministic_properties --locked
 cargo +1.95.0 install cargo-fuzz --version 0.13.2 --locked
 rustup toolchain install nightly-2026-07-01 --profile minimal
 cargo +nightly-2026-07-01 fuzz build lexical_masking
+cargo +nightly-2026-07-01 fuzz build file_analysis
 cargo +nightly-2026-07-01 fuzz run lexical_masking -- -runs=256 -max_len=4096 -timeout=5
 ```
 

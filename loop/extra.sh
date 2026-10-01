@@ -5,6 +5,26 @@ if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[scale\]'; t
   grep -E '^\[|^suspects|^cell|^error|panicked' "$OUT/scale.log" | cut -c1-1500 >"$OUT/scale.sum"
   emit scale "$OUT/scale.sum" --chunk 3900 --max 8
 fi
+if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[fuzz\]'; then
+  # The nightly job of ci.yml, step by step (the loop is the only place it can run before hand-off).
+  run f_toolchains bash -c 'rustup toolchain install 1.95.0 --profile minimal && rustup toolchain install nightly-2026-07-01 --profile minimal --component rustfmt'
+  run f_bridge bash -c 'cargo +1.95.0 test -p dartscope-parse --features fuzzing --locked --quiet && cargo +nightly-2026-07-01 fmt --manifest-path fuzz/Cargo.toml -- --check'
+  run f_install cargo +1.95.0 install cargo-fuzz --version 0.13.2 --locked
+  run f_targets bash -c 'targets=(lexical_masking directives pubspec_package_config graphql uri_normalization file_analysis); for target in "${targets[@]}"; do echo "### $target"; cargo +nightly-2026-07-01 fuzz build "$target" && cargo +nightly-2026-07-01 fuzz run "$target" -- -runs=256 -max_len=4096 -timeout=5 -rss_limit_mb=2048 || exit 1; done'
+  {
+    for step in toolchains bridge install targets; do
+      echo "== $step: $(tail -n 1 "$OUT/f_$step.log")"
+    done
+    for step in toolchains bridge install targets; do
+      if ! tail -n 1 "$OUT/f_$step.log" | grep -q 'exit=0'; then
+        echo "### $step"; grep -vE '^\s*(Compiling|Checking|Downloaded|Downloading|Fresh|Installing|Installed|Updating)' "$OUT/f_$step.log" | tail -n 40 | cut -c1-300
+      fi
+    done
+    echo "--- runs ---"
+    grep -E '^### |Done [0-9]+ runs|ERROR|panicked|SUMMARY' "$OUT/f_targets.log" | cut -c1-200
+  } >"$OUT/fuzz.sum"
+  emit fuzz "$OUT/fuzz.sum" --chunk 3900 --max 4
+fi
 if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[gates\]'; then
   # Emulate the final tree: the loop and its workflow are not part of it.
   cp -r loop "$RUNNER_TEMP/loop-copy"

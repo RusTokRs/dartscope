@@ -84,7 +84,7 @@ jobs:
       - name: Build and run bounded fuzz corpus
         shell: bash
         run: |
-          targets=(lexical_masking directives pubspec_package_config graphql uri_normalization)
+          targets=(lexical_masking directives pubspec_package_config graphql uri_normalization file_analysis)
           for target in "${targets[@]}"; do
             cargo +nightly-2026-07-01 fuzz build "$target"
             cargo +nightly-2026-07-01 fuzz run "$target" -- \

@@ -52,3 +52,10 @@ path = "fuzz_targets/uri_normalization.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "file_analysis"
+path = "fuzz_targets/file_analysis.rs"
+test = false
+doc = false
+bench = false

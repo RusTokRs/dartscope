@@ -233,7 +233,7 @@ impl BraceDepths {
 /// prose, a truncated paste) is read thousands of times over. Real code reads every byte a handful
 /// of times: the scan of a type, of each member inside it and of each statement inside that. A file
 /// that exceeds the factor stops being scanned and its inventory ends there, with a warning.
-const SCAN_BUDGET_PER_BYTE: usize = 64;
+const SCAN_BUDGET_PER_BYTE: usize = 32;
 
 /// The part of the scan budget that does not depend on the size of the file.
 const SCAN_BUDGET_BASE_BYTES: usize = 1 << 20;
