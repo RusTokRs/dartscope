@@ -76,6 +76,10 @@ $env:RUSTDOCFLAGS = "-D warnings"
 cargo doc --workspace --no-deps --locked
 ```
 
+For a change to the parser, the declaration inventory or the incremental index, also run the mutation
+hunt described in `docs/development/fuzzing.md` (`DARTSCOPE_MUTATION_ROUNDS`, release build): the
+end-to-end mutation tests in `cargo test` use small defaults.
+
 For CLI changes, also run the affected command against a repository fixture or a small
 temporary project. For feature changes, check the relevant umbrella feature combination.
 
