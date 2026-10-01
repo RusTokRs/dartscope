@@ -39,6 +39,17 @@ crate-local use. It and the stale package-level lock edge were removed instead o
 are reserved for reviewed false positives. Generated policy code is tested with Python syntax warnings
 promoted to errors so regex escapes cannot regress silently.
 
+## Security-Relevant Dependencies
+
+`uriparse 0.6.4` resolves `package:` URIs and the `rootUri` and `packageUri` values of
+`package_config.json` in `dartscope-resolve`, so it takes part in deciding which paths a project may
+name. Its last release on crates.io is dated 2022-03-18, which means that an advisory filed against it
+would probably not be fixed upstream. It is pinned by `Cargo.lock` and covered by fixtures for roots
+that leave the project, `..` segments, percent-encoded roots and escaped separators. If an advisory
+is ever filed against it, the response is to replace it (the `url` crate, or a small RFC 3986 module
+inside `dartscope-resolve`), not to add an exception: this is the case the expiring-exception policy
+above does not cover. The `cargo-audit` job is the detector.
+
 Tool versions are duplicated deliberately in CI and the policy file; `check-dependency-policy.py` rejects
 pin drift. Updating either tool requires reviewing its release, Rust 1.95 compatibility, output behavior,
 and the complete exception list. Network or registry bootstrap failures are infrastructure failures and

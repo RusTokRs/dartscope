@@ -1105,6 +1105,39 @@ Implemented (2026-09-25):
 
 Remaining (follow-up): workspace symbols, lint-diagnostic integration, stale-snapshot surfacing and full editor smoke. Foundation slice is `implemented`; full `verified` requires the remaining acceptance items.
 
+Remediation (2026-10-01, audit `docs/development/audit-findings-2026-09-30.md` section 3): the slice above
+compiled only after the audit's minimal fixes and did not work against a real editor. It now does:
+
+1. Wire names: capabilities, `InitializeResult` and `initialize` params use the protocol's camelCase
+   names; `textDocumentSync` is `{ openClose: true, change: 2 }`; `SymbolTag` is numeric.
+2. Lifecycle (`rpc` module, transport independent, `serve` over any `BufRead`/`Write`): every request is
+   answered, with `-32601` for an unknown method, `-32602` for invalid params, `-32002` before
+   `initialize` and `-32600` after `shutdown`; invalid JSON is `-32700` with a `null` id; `exit` ends the
+   session with 0 after `shutdown` and 1 without it; `Content-Length` is bounded (64 MiB) and header lines
+   too, and a frame that cannot be read ends the session with an error response.
+3. Documents: the server keeps the URI the client sent for each open document and echoes it in every
+   result; paths are percent-decoded as UTF-8 (`file:///C%3A/…`, non-ASCII and spaces); `didChange`
+   applies its changes in order against the text they follow, clamps a position past the end of its
+   line or of the text, reads a reversed range in order and never replaces the whole text on a bad range.
+4. Coordinates: `LineIndex` converts with a binary search and knows `\n`, `\r\n` and `\r`; a result in
+   another document is converted against that document, not against the requester.
+5. Features: `publishDiagnostics` after open, change and close; `references` honors
+   `includeDeclaration` (the declaration of a member, which the index reports as a reference, is only
+   returned when asked for); `documentSymbol` nests members under their type, leaves locals out,
+   uses `EnumMember` and `Property` where they apply and selects the declared name inside the range.
+6. Cost: one document is re-analyzed per change and the incremental index updated in place; the
+   resolution context is built once per index generation. A document over 256 KiB keeps outline and
+   diagnostics but is left out of navigation (information diagnostic `navigation_disabled_large_file`),
+   because reference analysis is superlinear in the size of one file.
+7. Tests: unit tests for coordinates, server and `rpc`, and process tests that drive the real binary
+   over pipes (`crates/dartscope-lsp/tests/stdio.rs`).
+
+Limits that remain: the workspace is the open documents only (no filesystem scan and no
+`pubspec.yaml`, so `package:` imports do not resolve and a symbol declared in a file that is not open is
+not found); requests are handled one at a time, so `$/cancelRequest` has no effect; a request for a
+document that was never opened answers `null`; a query on the name in a type or top-level function
+declaration may answer `null`, because the index reports declarations as references only for members.
+
 Acceptance:
 
 - the server remains responsive under cancellation and rapid file replacement;

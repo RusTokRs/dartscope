@@ -104,6 +104,17 @@ with nearby-shadowing fixtures, exact spans, an explicit compatibility note, and
 immutable-snapshot parity. Keep arbitrary receiver inference, cascades, null-aware access, dynamic
 dispatch, patterns, and flow-sensitive behavior behind later focused slices.
 
+The 2026-09-30 engineering audit (`docs/development/audit-findings-2026-09-30.md`) was worked off on the
+audit branch; section 16 of that report is the status of every finding. The highest-value open item is the
+reference passes of `dartscope-parse` (`lexical_reads`, `lexical_writes`, `identifier_references`,
+`member_references`, `property_references`, `operator_references`, `lexical_regions`): they scan all
+bindings, references or declarations for every identifier token, so `analyze_file_with_references` is
+quadratic in the size of one file (the LSP protects itself with a 256 KiB navigation limit). Replace the
+scans with per-file lookup tables built once, the way `invocations` and `LineTable` do, and keep the
+counter-based scaling tests (never wall-clock assertions). Next in line: an end-to-end fuzz target for
+`analyze_file_with_references`, splitting `incremental.rs`, and `lint` configuration for generated-file
+exclusions.
+
 Separately, the 2026-09-25 review consolidated Dart identifier scanning into
 `crates/dartscope-parse/src/identifiers.rs` after finding that thirteen local character classes had
 truncated every name containing `$`. The same consolidation for numeric literals, string escapes, and
