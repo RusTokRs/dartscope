@@ -6,9 +6,9 @@ mod syntax;
 use dartscope_core::{DartDeclaration, DartDeclarationKind, DartDiagnostic};
 
 use self::scanner::{
-    EndMode, STATEMENT_PROBE_BYTES, annotations_end, body_range, declaration_end,
-    declaration_header, declaration_header_within, depth_at, depth_within_line, enum_member_start,
-    first_code_byte, line_brace_depths, next_code_byte,
+    BraceDepths, EndMode, STATEMENT_PROBE_BYTES, annotations_end, body_range, declaration_end,
+    declaration_header, declaration_header_within, enum_member_start, first_code_byte,
+    next_code_byte,
 };
 use self::syntax::{
     SymbolIdAllocator, callable_end_mode, enum_constants, has_primary_constructor,
@@ -31,14 +31,14 @@ pub(crate) fn collect_declaration_inventory(
     masked_source: &str,
 ) -> (Vec<DartDeclaration>, Vec<DartDiagnostic>) {
     let lines = source_lines(masked_source);
-    let line_depths = line_brace_depths(masked_source, &lines);
+    let depths = BraceDepths::new(masked_source);
     let mut diagnostics = Vec::new();
     let mut records = collect_top_level(
         path,
         source,
         masked_source,
         &lines,
-        &line_depths,
+        &depths,
         &mut diagnostics,
     );
 
@@ -52,7 +52,7 @@ pub(crate) fn collect_declaration_inventory(
             source,
             masked_source,
             &lines,
-            &line_depths,
+            &depths,
             &type_record,
             &mut records,
             &mut diagnostics,
@@ -98,14 +98,14 @@ fn collect_top_level(
     source: &str,
     masked: &str,
     lines: &[crate::source_lines::SourceLine<'_>],
-    line_depths: &[usize],
+    depths: &BraceDepths,
     diagnostics: &mut Vec<DartDiagnostic>,
 ) -> Vec<DeclarationRecord> {
     let mut records = Vec::new();
     let mut cursor = 0usize;
     let mut ids = SymbolIdAllocator::default();
 
-    for (index, line) in lines.iter().copied().enumerate() {
+    for line in lines.iter().copied() {
         if line.byte_end() <= cursor {
             continue;
         }
@@ -121,7 +121,7 @@ fn collect_top_level(
             .count();
         let mut at = line_start;
         while at < line.byte_end() {
-            if depth_within_line(masked, line, line_depths[index], at) != 0 {
+            if depths.at(at) != 0 {
                 break;
             }
             // An annotation tail can share the declaration's line, and a declaration may be indented
@@ -288,7 +288,7 @@ fn collect_members(
     source: &str,
     masked: &str,
     lines: &[crate::source_lines::SourceLine<'_>],
-    line_depths: &[usize],
+    depths: &BraceDepths,
     owner: &DeclarationRecord,
     records: &mut Vec<DeclarationRecord>,
     diagnostics: &mut Vec<DartDiagnostic>,
@@ -297,7 +297,7 @@ fn collect_members(
         return;
     };
     let owner_id = owner.declaration.symbol_id.as_deref().unwrap_or_default();
-    let owner_depth = depth_at(masked, lines, line_depths, body_start) + 1;
+    let owner_depth = depths.at(body_start) + 1;
     let member_start = if owner.declaration.kind == DartDeclarationKind::Enum {
         enum_member_start(masked, body_start, body_end, owner_depth).unwrap_or(body_end)
     } else {
@@ -333,8 +333,12 @@ fn collect_members(
     // Lines that end before the first member cannot contain one; skipping them with a binary
     // search keeps the total work linear when a file declares many types.
     let first_line = lines.partition_point(|line| line.byte_end() <= cursor);
-    for (index, line) in lines.iter().copied().enumerate().skip(first_line) {
-        if cursor >= body_end {
+    for line in lines.iter().copied().skip(first_line) {
+        #[cfg(test)]
+        note_visited_line();
+        // Lines are in order, so once one starts at the end of the body no later line can hold a
+        // member; without this check the scan of every type walks on through the rest of the file.
+        if cursor >= body_end || line.byte_start >= body_end {
             break;
         }
         if line.byte_end() <= cursor {
@@ -342,7 +346,7 @@ fn collect_members(
         }
         let mut at = first_code_byte(line, masked).max(cursor);
         while at < body_end && at < line.byte_end() {
-            if depth_within_line(masked, line, line_depths[index], at) != owner_depth {
+            if depths.at(at) != owner_depth {
                 break;
             }
             if masked.as_bytes()[at] == b'}' {
@@ -429,7 +433,10 @@ fn collect_locals(
 
     let first_line = lines.partition_point(|line| line.byte_end() <= cursor);
     for line in lines.iter().copied().skip(first_line) {
-        if cursor >= body_end {
+        #[cfg(test)]
+        note_visited_line();
+        // See `collect_members`: a line that starts at the end of the body ends the scan.
+        if cursor >= body_end || line.byte_start >= body_end {
             break;
         }
         if line.byte_end() <= cursor {
@@ -503,9 +510,51 @@ fn collect_locals(
 }
 
 #[cfg(test)]
+thread_local! {
+    static VISITED_LINES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Counts one line examined by a member or local scan (test builds only).
+#[cfg(test)]
+fn note_visited_line() {
+    VISITED_LINES.with(|visited| visited.set(visited.get() + 1));
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::lexical::mask_non_code;
+
+    #[test]
+    fn member_and_local_scans_stop_at_the_end_of_their_body() {
+        let count = 1500;
+        let mut source = String::new();
+        for index in 0..count {
+            source.push_str(&format!(
+                "void f{index}() {{\n  var x = {index};\n}}\nclass C{index} {{\n  int m() {{\n    var y = 1;\n  }}\n}}\n"
+            ));
+        }
+        let masked = mask_non_code(&source).code;
+        let lines = source_lines(&masked).len();
+        // Without a line table for the text every span would rebuild it.
+        let _scope = crate::source_lines::LineIndexScope::enter(&source);
+
+        let before = VISITED_LINES.with(std::cell::Cell::get);
+        let (declarations, _) = collect_declaration_inventory("lib/a.dart", &source, &masked);
+        let visited = VISITED_LINES.with(std::cell::Cell::get) - before;
+
+        let locals = declarations
+            .iter()
+            .filter(|declaration| declaration.kind == DartDeclarationKind::LocalVariable)
+            .count();
+        assert_eq!(locals, 2 * count);
+        // Every scan reads the lines of its own body and one more. Scanning on to the end of the
+        // file from each body would visit about lines^2 / 2 of them.
+        assert!(
+            visited <= 3 * lines,
+            "{visited} lines were visited for a file of {lines} lines"
+        );
+    }
 
     #[test]
     fn a_statement_with_thousands_of_argument_lines_is_not_rescanned_from_every_line() {
@@ -568,7 +617,7 @@ mod tests {
             let lines = source_lines(&masked);
             let t_lines = t.elapsed();
             let t = Instant::now();
-            let line_depths = line_brace_depths(&masked, &lines);
+            let depths = BraceDepths::new(&masked);
             let t_depths = t.elapsed();
             let mut diagnostics = Vec::new();
             let t = Instant::now();
@@ -577,7 +626,7 @@ mod tests {
                 &source,
                 &masked,
                 &lines,
-                &line_depths,
+                &depths,
                 &mut diagnostics,
             );
             let t_top = t.elapsed();
@@ -592,7 +641,7 @@ mod tests {
                     &source,
                     &masked,
                     &lines,
-                    &line_depths,
+                    &depths,
                     &type_record,
                     &mut records,
                     &mut diagnostics,

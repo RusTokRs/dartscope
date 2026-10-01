@@ -182,58 +182,46 @@ pub(super) fn enum_member_start(
     None
 }
 
-pub(super) fn line_brace_depths(source: &str, lines: &[SourceLine<'_>]) -> Vec<usize> {
-    let mut depths = Vec::with_capacity(lines.len());
-    let mut depth = 0usize;
-    let mut cursor = 0usize;
-    for line in lines {
-        while cursor < line.byte_start {
-            match source.as_bytes()[cursor] {
-                b'{' => depth += 1,
-                b'}' => depth = depth.saturating_sub(1),
-                _ => {}
-            }
-            cursor += 1;
-        }
-        depths.push(depth);
-        while cursor <= line.byte_end() && cursor < source.len() {
-            match source.as_bytes()[cursor] {
-                b'{' => depth += 1,
-                b'}' => depth = depth.saturating_sub(1),
-                _ => {}
-            }
-            cursor += 1;
-        }
-    }
-    depths
-}
-
-pub(super) fn brace_depth_at(source: &str, at: usize) -> usize {
-    source.as_bytes()[..at.min(source.len())]
-        .iter()
-        .fold(0usize, |depth, byte| match byte {
-            b'{' => depth + 1,
-            b'}' => depth.saturating_sub(1),
-            _ => depth,
-        })
-}
-
-/// Returns the brace depth at `at` from the per-line depths instead of rescanning from the file start.
+/// Brace depth at every byte offset of one text.
 ///
-/// `line_depths[i]` is the depth at the start of `lines[i]`. An offset that is not inside any line
-/// (inside a line terminator or past the last line) falls back to a scan from the file start.
-pub(super) fn depth_at(
-    source: &str,
-    lines: &[SourceLine<'_>],
-    line_depths: &[usize],
-    at: usize,
-) -> usize {
-    let index = lines.partition_point(|line| line.byte_end() < at);
-    match (lines.get(index), line_depths.get(index)) {
-        (Some(line), Some(depth)) if line.byte_start <= at => {
-            depth_within_line(source, *line, *depth, at)
+/// The depth is kept as its value after each brace, so the depth at any offset is a binary search.
+/// Measuring it from the start of the offset's line instead costs the length of that line for every
+/// declaration, which is quadratic for a file that declares many things on one line.
+pub(super) struct BraceDepths {
+    /// `(offset of a brace, depth after it)`, ordered by offset.
+    after_brace: Vec<(usize, usize)>,
+}
+
+impl BraceDepths {
+    pub(super) fn new(source: &str) -> Self {
+        let mut after_brace = Vec::new();
+        let mut depth = 0usize;
+        for (offset, byte) in source.bytes().enumerate() {
+            match byte {
+                b'{' => {
+                    depth += 1;
+                    after_brace.push((offset, depth));
+                }
+                b'}' => {
+                    depth = depth.saturating_sub(1);
+                    after_brace.push((offset, depth));
+                }
+                _ => {}
+            }
         }
-        _ => brace_depth_at(source, at),
+        Self { after_brace }
+    }
+
+    /// The depth at `at`: the braces before it, with a closing brace never taking the depth below
+    /// zero. The brace at `at` itself is not counted.
+    pub(super) fn at(&self, at: usize) -> usize {
+        match self
+            .after_brace
+            .partition_point(|&(offset, _)| offset < at)
+        {
+            0 => 0,
+            count => self.after_brace[count - 1].1,
+        }
     }
 }
 
@@ -258,25 +246,42 @@ pub(super) fn next_code_byte(source: &str, start: usize, end: usize) -> Option<u
     None
 }
 
-/// Returns the brace depth at `at` given the depth measured at the start of `line`.
-///
-/// The position may be anywhere inside the line, so declarations that do not start a source line are
-/// measured exactly like line-leading declarations.
-pub(super) fn depth_within_line(
-    source: &str,
-    line: SourceLine<'_>,
-    line_depth: usize,
-    at: usize,
-) -> usize {
-    let start = line.byte_start.min(source.len());
-    let end = at.clamp(line.byte_start, line.byte_end().min(source.len()));
-    source.as_bytes()[start..end]
-        .iter()
-        .fold(line_depth, |depth, byte| match byte {
-            b'{' => depth + 1,
-            b'}' => depth.saturating_sub(1),
-            _ => depth,
-        })
-}
-
 pub(super) use crate::metadata::annotations_end;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The scan from the start of the text that `BraceDepths` replaces.
+    fn scanned_depth(source: &str, at: usize) -> usize {
+        source.as_bytes()[..at.min(source.len())]
+            .iter()
+            .fold(0usize, |depth, byte| match byte {
+                b'{' => depth + 1,
+                b'}' => depth.saturating_sub(1),
+                _ => depth,
+            })
+    }
+
+    #[test]
+    fn the_depth_at_every_offset_matches_a_scan_from_the_start() {
+        for source in [
+            "",
+            "{",
+            "}",
+            "}{",
+            "a { b { c } d } e",
+            "}}{{{}}}{\n{{\r\n}",
+            "x{y}z}{",
+        ] {
+            let depths = BraceDepths::new(source);
+            for at in 0..=source.len() + 2 {
+                assert_eq!(
+                    depths.at(at),
+                    scanned_depth(source, at),
+                    "{source:?} at {at}"
+                );
+            }
+        }
+    }
+}

@@ -121,9 +121,20 @@ def long_line_unicode(n):
     return "// \U0001F600 \u043f\u0440\u0438\u0432\u0435\u0442\nvoid f() { var s = '\u043c\u0438\u0440'; " + "g();" * n + "}\n"
 
 
+def functions_with_bodies(n):
+    return "".join(f"void f{i}() {{\n  var x = {i};\n  g(x);\n}}\n" for i in range(n))
+
+
+def methods_with_bodies(n):
+    body = "".join(f"  int m{i}(int a) {{\n    var b = a + {i};\n    return b;\n  }}\n" for i in range(n))
+    return "class A {\n" + body + "}\n"
+
+
 SCENARIOS = [
     ("classes", classes, (2000, 8000, 16000)),
     ("functions", functions, (20000, 80000)),
+    ("functions_with_bodies", functions_with_bodies, (5000, 20000)),
+    ("methods_with_bodies", methods_with_bodies, (5000, 20000)),
     ("list_literal_lines", list_literal, (50000, 200000)),
     ("map_literal_lines", map_literal, (50000, 200000)),
     ("enum_constants", enum_constants, (20000, 80000)),
