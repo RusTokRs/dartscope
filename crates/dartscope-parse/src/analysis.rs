@@ -322,14 +322,32 @@ fn collect_file_references(
     let bindings = collect_lexical_bindings(source, masked_source, file, &facts);
     let mut references =
         collect_identifier_references(source, masked_source, file, &facts, &bindings);
-    let reads =
-        collect_lexical_read_references(source, masked_source, file, &facts, &bindings, &references);
+    let reads = collect_lexical_read_references(
+        source,
+        masked_source,
+        file,
+        &facts,
+        &bindings,
+        &references,
+    );
     references.extend(reads);
-    let writes =
-        collect_lexical_write_references(source, masked_source, file, &facts, &bindings, &references);
+    let writes = collect_lexical_write_references(
+        source,
+        masked_source,
+        file,
+        &facts,
+        &bindings,
+        &references,
+    );
     references.extend(writes);
-    let updates =
-        collect_lexical_update_references(source, masked_source, file, &facts, &bindings, &references);
+    let updates = collect_lexical_update_references(
+        source,
+        masked_source,
+        file,
+        &facts,
+        &bindings,
+        &references,
+    );
     references.extend(updates);
     references.extend(collect_method_references(
         source,

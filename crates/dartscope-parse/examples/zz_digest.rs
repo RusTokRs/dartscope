@@ -341,7 +341,6 @@ fn mutate(rng: &mut Rng, source: &str) -> String {
     chars.into_iter().collect()
 }
 
-
 fn fnv(text: &str) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325u64;
     for byte in text.bytes() {
@@ -354,7 +353,11 @@ fn fnv(text: &str) -> u64 {
 fn classes(n: usize) -> String {
     let mut source = String::new();
     for class in 0..n {
-        let base = if class > 0 { format!("C{}", class - 1) } else { "Object".to_string() };
+        let base = if class > 0 {
+            format!("C{}", class - 1)
+        } else {
+            "Object".to_string()
+        };
         source.push_str(&format!(
             "class C{class} extends {base} {{\n  int a{class} = 0;\n  int m{class}(int x) {{\n    this.a{class} = x;\n    return this.m0(x) + this.a{class};\n  }}\n  void run{class}() {{\n    this.run0();\n    this.m{class}(1);\n    this.missing();\n    helper();\n  }}\n}}\n"
         ));
@@ -425,7 +428,10 @@ fn analyze(source: &str) -> Result<String, ()> {
 }
 
 fn number(name: &str, default: usize) -> usize {
-    std::env::var(name).ok().and_then(|value| value.parse().ok()).unwrap_or(default)
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
 }
 
 fn main() {
@@ -435,7 +441,10 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let seeds = all_seeds();
     if let Some(position) = args.iter().position(|arg| arg == "--dump") {
-        let id: Vec<usize> = args[position + 1].split(':').map(|part| part.parse().unwrap()).collect();
+        let id: Vec<usize> = args[position + 1]
+            .split(':')
+            .map(|part| part.parse().unwrap())
+            .collect();
         let source = candidates(id[0], id[1], &seeds[id[1]], rounds).swap_remove(id[2]);
         println!("=== source ===\n{source}\n=== analysis ===");
         match analyze(&source) {

@@ -1,6 +1,6 @@
 use std::cmp::Reverse;
 
-use dartscope_core::{DartLexicalBinding, DartLexicalBindingKind, DartFileInput};
+use dartscope_core::{DartFileInput, DartLexicalBinding, DartLexicalBindingKind};
 
 use super::{BindingIndex, declarator_segment_start};
 use crate::identifiers::{is_identifier_continue, is_identifier_start};
@@ -107,8 +107,11 @@ mod linear {
                 return false;
             }
             let statement_start = statement_start(source, binding.declaration_span.byte_start);
-            let segment_start =
-                declarator_segment_start(source, statement_start, binding.declaration_span.byte_start);
+            let segment_start = declarator_segment_start(
+                source,
+                statement_start,
+                binding.declaration_span.byte_start,
+            );
             segment_start <= at
         })
     }
@@ -145,7 +148,10 @@ fn token_positions(masked: &str) -> Vec<(usize, usize)> {
             continue;
         }
         let start = at;
-        while bytes.get(at).is_some_and(|byte| is_identifier_continue(*byte)) {
+        while bytes
+            .get(at)
+            .is_some_and(|byte| is_identifier_continue(*byte))
+        {
             at += 1;
         }
         tokens.push((start, at));
@@ -232,10 +238,8 @@ fn queries_agree_with_scans_over_every_token() {
 fn equal_ranks_are_ambiguous() {
     // Two bindings of one name with the same scope and declaration offset compete; neither wins.
     let source = "void f(int a) { print(a); }";
-    let analysis = crate::analyze_file_with_references(DartFileInput::new(
-        "lib/a.dart",
-        source.to_string(),
-    ));
+    let analysis =
+        crate::analyze_file_with_references(DartFileInput::new("lib/a.dart", source.to_string()));
     let first = analysis
         .bindings
         .iter()

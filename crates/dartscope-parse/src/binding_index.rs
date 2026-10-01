@@ -37,11 +37,12 @@ impl<'a> BindingIndex<'a> {
         structure: &SourceStructure,
         bindings: &'a [DartLexicalBinding],
     ) -> Self {
-        let declarations = IntervalSet::new(
-            bindings
-                .iter()
-                .map(|binding| (binding.declaration_span.byte_start, binding.declaration_span.byte_end)),
-        );
+        let declarations = IntervalSet::new(bindings.iter().map(|binding| {
+            (
+                binding.declaration_span.byte_start,
+                binding.declaration_span.byte_end,
+            )
+        }));
         let mut initializer_prefixes: HashMap<&'a str, Vec<(usize, usize)>> = HashMap::new();
         let mut declaration_prefixes = Vec::new();
         let mut visible: HashMap<&'a str, Vec<(usize, usize, BindingRank, usize)>> = HashMap::new();

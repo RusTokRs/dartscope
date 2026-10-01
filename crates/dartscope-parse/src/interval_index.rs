@@ -231,11 +231,7 @@ mod tests {
                             .count()
                             > 1,
                     });
-                assert_eq!(
-                    index.best_at(point),
-                    expected,
-                    "point {point} in {items:?}"
-                );
+                assert_eq!(index.best_at(point), expected, "point {point} in {items:?}");
             }
         }
     }

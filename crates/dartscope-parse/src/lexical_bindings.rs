@@ -251,8 +251,7 @@ fn collect_local_binding(
     else {
         return;
     };
-    let Some(scope_end) =
-        local_scope_end(masked_source, &facts.structure, span.byte_start, owner)
+    let Some(scope_end) = local_scope_end(masked_source, &facts.structure, span.byte_start, owner)
     else {
         return;
     };
@@ -299,9 +298,7 @@ fn local_scope_end(
     owner: &DartDeclaration,
 ) -> Option<usize> {
     let owner_span = owner.declaration_span.as_ref()?;
-    let limit = declaration_start
-        .min(owner_span.byte_end)
-        .min(source.len());
+    let limit = declaration_start.min(owner_span.byte_end).min(source.len());
     let open = structure.innermost_open_brace(owner_span.byte_start, limit)?;
     structure
         .closing_brace(open)
