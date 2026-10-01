@@ -9,7 +9,9 @@ use dartscope_resolve::{
     PackageUriResolutionError, resolve_package_uri as resolve_configured_package_uri,
 };
 
-use crate::paths::{has_uri_scheme, normalize_joined_path, parent_path};
+use crate::paths::{
+    climbs_out_of_root, has_uri_scheme, normalize_joined_path, parent_path, percent_decode_relative,
+};
 
 struct UriResolutionContext<'a> {
     known_files: HashSet<&'a str>,
@@ -254,7 +256,10 @@ fn resolve_uri_reference(
     let (resolution, target_path, target_uri, candidate_paths) = if uri.starts_with("dart:") {
         (DartUriResolution::External, None, None, Vec::new())
     } else if let Some(package_uri) = uri.strip_prefix("package:") {
-        if let Some(config) = nearest_package_config(source_path, context.package_configs) {
+        if package_library_path(package_uri).is_some_and(|path| climbs_out_of_root("", path)) {
+            // `package:app/../secret.dart` would leave the package's library directory.
+            invalid_uri()
+        } else if let Some(config) = nearest_package_config(source_path, context.package_configs) {
             resolve_package_uri_from_config(config, uri, &context.known_files)
         } else {
             resolve_package_uri_from_pubspecs(
@@ -266,8 +271,7 @@ fn resolve_uri_reference(
     } else if has_uri_scheme(uri) {
         (DartUriResolution::UnsupportedScheme, None, None, Vec::new())
     } else {
-        let target = normalize_joined_path(&parent_path(source_path), uri);
-        resolution_for_target(target, &context.known_files)
+        resolve_relative_reference(source_path, uri, &context.known_files)
     };
 
     DartUriReference {
@@ -281,6 +285,46 @@ fn resolve_uri_reference(
         target_uri,
         candidate_paths,
     }
+}
+
+/// The path after `package:<name>/`.
+fn package_library_path(package_uri: &str) -> Option<&str> {
+    package_uri.split_once('/').map(|(_, path)| path)
+}
+
+type UriTarget = (
+    DartUriResolution,
+    Option<String>,
+    Option<String>,
+    Vec<String>,
+);
+
+fn invalid_uri() -> UriTarget {
+    (DartUriResolution::InvalidUri, None, None, Vec::new())
+}
+
+/// Resolves a relative reference (`b.dart`, `../c/d.dart`, `b%20c.dart`) against the directory of
+/// the file that contains it.
+///
+/// An empty reference, an escape that cannot be part of a file name, and a path that climbs out of
+/// the project root name no analyzed file, and are reported as invalid instead of as a missing file
+/// of the project.
+fn resolve_relative_reference(
+    source_path: &str,
+    uri: &str,
+    known_files: &HashSet<&str>,
+) -> UriTarget {
+    if uri.trim().is_empty() {
+        return invalid_uri();
+    }
+    let Some(relative) = percent_decode_relative(uri) else {
+        return invalid_uri();
+    };
+    let directory = parent_path(source_path);
+    if climbs_out_of_root(&directory, &relative) {
+        return invalid_uri();
+    }
+    resolution_for_target(normalize_joined_path(&directory, &relative), known_files)
 }
 
 fn resolve_package_uri_from_pubspecs(

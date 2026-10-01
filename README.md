@@ -152,7 +152,8 @@ cargo run -p dartscope-cli -- lint path\to\project --config dartscope.toml --for
 
 `analyze-project` recursively scans regular `.dart` files and `pubspec.yaml` files plus
 validated file symlinks whose targets remain inside the project root. It rejects escaping or
-directory symlinks, skips the documented generated/tool directory list, and returns a
+directory symlinks, skips the documented generated/tool directory list (including the `.symlinks` and
+`.plugin_symlinks` folders that Flutter creates), and returns a
 deterministic JSON summary plus per-file analysis output. The CLI rejects any loaded input over
 8 MiB and stops project collection above 20,000 loaded inputs or 256 MiB of aggregate source.
 The same per-file bound applies to direct file commands, while lint configuration is limited to

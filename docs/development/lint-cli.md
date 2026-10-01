@@ -20,7 +20,10 @@ dartscope lint <project> [--config <path>] [--format <json|sarif>] [--deny-warni
 ```
 
 - No configuration path means `DartLintConfig::default()`: no rules are enabled and the command is
-  inert.
+  inert, so a project is only linted against what its configuration names.
+- `dartscope.orphan_file` needs at least one `[orphan_files].entry_points` entry. Enabling it with an
+  empty list is a configuration error (exit code `5`), and a listed entry point that is not an
+  analyzed Dart file is reported as a finding instead of silently disabling the rule.
 - `--format json` is the default and emits `dartscope.lint-analysis` v1.
 - `--format sarif` emits SARIF 2.1.0 with rule metadata, normalized artifact paths, exact available
   source regions, severities, and related-path evidence.
@@ -67,7 +70,9 @@ ignored_path_prefixes = ["test/fixtures/"]
 ```
 
 Configuration path prefixes accept `/` or `\`; the CLI normalizes them to `/` before invoking the
-engine. Configuration order does not change rule execution or diagnostic ordering.
+engine. A prefix is matched as a plain string prefix of the normalized path, so `lib/ui` also covers
+`lib/ui_kit/`; write `lib/ui/` to name the directory. Configuration order does not change rule
+execution or diagnostic ordering.
 
 ## Exit Codes
 
@@ -118,8 +123,10 @@ and internal failures stop the job before upload instead of publishing incomplet
 ## Current Limits
 
 - TOML configuration version updates are manual and require a documented migration.
-- SARIF artifact URIs are normalized project-relative paths; DartScope does not guess repository URI
-  bases or checkout roots.
+- SARIF artifact URIs are normalized project-relative paths, percent-encoded as URIs (a path with a
+  space or a non-ASCII letter stays a valid URI reference); DartScope does not guess repository URI
+  bases or checkout roots. A finding without a source span gets a region on line 1, because code
+  scanning needs a location for every result.
 - Project error diagnostics stop lint execution at the first deterministic error message. Existing
   analysis commands retain their diagnostic-bearing success behavior.
 - SARIF columns use `unicodeCodePoints`, matching DartScope's public source-span column semantics.

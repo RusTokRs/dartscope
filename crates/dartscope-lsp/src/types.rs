@@ -205,7 +205,7 @@ impl<'de> Deserialize<'de> for DiagnosticSeverity {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum NumberOrString {
     Number(i32),

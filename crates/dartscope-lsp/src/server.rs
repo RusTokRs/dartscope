@@ -6,7 +6,8 @@ use std::collections::{HashMap, HashSet};
 
 use dartscope_core::{
     DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartFileInput,
-    DartIdentifierReferenceKind, DartProjectInput, SourceSpan, normalize_path,
+    DartFileReferenceAnalysis, DartIdentifierReferenceKind, DartProjectInput, SourceSpan,
+    normalize_path,
 };
 use dartscope_index::{
     DartDefinitionQuery, DartDefinitionResolution, DartDefinitionTarget, DartWorkspaceIndex,
@@ -23,6 +24,17 @@ use crate::types::{
     TextDocumentContentChangeEvent, TextDocumentSyncCapability, TextDocumentSyncKind,
     TextDocumentSyncOptions, Url,
 };
+
+/// The largest document, in bytes, that is analyzed for navigation.
+///
+/// Reference analysis grows faster than linearly with the size of one file (a file of 330 KB takes
+/// about 0.8 s, one of 1.3 MB about 25 s), and it runs again after every edit. A larger document
+/// keeps its outline and diagnostics, which are linear, but is not part of navigation, and says so
+/// with a diagnostic instead of freezing the editor.
+pub const MAX_NAVIGATION_BYTES: usize = 256 * 1024;
+
+/// Code of the diagnostic that reports a document left out of navigation by its size.
+pub const NAVIGATION_DISABLED_CODE: &str = "navigation_disabled_large_file";
 
 /// How deep a document outline nests; declarations only nest two levels (type, member), so this
 /// only bounds a malformed parent chain.
@@ -314,7 +326,8 @@ impl DartLspServer {
             return Vec::new();
         };
         let lines = LineIndex::new(&document.text);
-        file.diagnostics
+        let mut diagnostics: Vec<Diagnostic> = file
+            .diagnostics
             .iter()
             .map(|diagnostic| {
                 let range = diagnostic.span.as_ref().map_or(
@@ -346,7 +359,29 @@ impl DartLspServer {
                     message: diagnostic.message.clone(),
                 }
             })
-            .collect()
+            .collect();
+        if document.text.len() > MAX_NAVIGATION_BYTES {
+            diagnostics.push(Diagnostic {
+                range: Range {
+                    start: Position {
+                        line: 0,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: 0,
+                        character: 0,
+                    },
+                },
+                severity: Some(DiagnosticSeverity::INFORMATION),
+                code: Some(NumberOrString::String(NAVIGATION_DISABLED_CODE.to_string())),
+                source: Some("dartscope".to_string()),
+                message: format!(
+                    "navigation is off for this file because it is larger than {} KiB; the outline and diagnostics still work",
+                    MAX_NAVIGATION_BYTES / 1024
+                ),
+            });
+        }
+        diagnostics
     }
 
     /// Re-analyzes one open document and updates the index in place.
@@ -354,10 +389,16 @@ impl DartLspServer {
         let Some(document) = self.documents.get(path) else {
             return;
         };
-        let analysis = dartscope_parse::analyze_file_with_references(DartFileInput::new(
-            path,
-            document.text.clone(),
-        ));
+        let input = DartFileInput::new(path, document.text.clone());
+        let analysis = if document.text.len() > MAX_NAVIGATION_BYTES {
+            DartFileReferenceAnalysis {
+                file: dartscope_parse::analyze_file(input),
+                references: Vec::new(),
+                bindings: Vec::new(),
+            }
+        } else {
+            dartscope_parse::analyze_file_with_references(input)
+        };
         let _ = self.index.upsert_file_with_references(analysis);
         self.context = OnceCell::new();
     }
@@ -982,6 +1023,51 @@ mod tests {
             .count();
         assert_eq!(declarations, 1, "{with:?}");
         assert_eq!(with.len(), 3, "{with:?}");
+    }
+
+    #[test]
+    fn a_document_over_the_size_limit_keeps_its_outline_but_not_navigation() {
+        let mut server = started();
+        let uri = url("file:///lib/generated.dart");
+        let mut text = String::new();
+        let mut index = 0;
+        while text.len() <= MAX_NAVIGATION_BYTES {
+            text.push_str(&format!("class Generated{index} {{}}\n"));
+            index += 1;
+        }
+        let call = text.len();
+        text.push_str("void use() { Generated0(); }\n");
+        open(&mut server, &uri, &text);
+
+        let at = byte_offset_to_lsp_position(&text, call + "void use() { ".len());
+        assert!(server.definition(&uri, at).unwrap().is_none());
+        let symbols = server
+            .document_symbols(&uri, symbols_params(&uri))
+            .unwrap()
+            .unwrap();
+        assert_eq!(symbols.len(), index + 1);
+        let notice = server
+            .diagnostics(&uri)
+            .into_iter()
+            .find(|diagnostic| {
+                diagnostic.code == Some(NumberOrString::String(NAVIGATION_DISABLED_CODE.into()))
+            })
+            .expect("a diagnostic that says why navigation is off");
+        assert_eq!(notice.severity, Some(DiagnosticSeverity::INFORMATION));
+
+        // The same call in a document under the limit resolves.
+        let small = url("file:///lib/small.dart");
+        let small_text = "class Generated0 {}\nvoid use() { Generated0(); }\n";
+        open(&mut server, &small, small_text);
+        let at = byte_offset_to_lsp_position(small_text, small_text.rfind("Generated0").unwrap());
+        assert!(server.definition(&small, at).unwrap().is_some());
+        assert!(
+            !server
+                .diagnostics(&small)
+                .iter()
+                .any(|diagnostic| diagnostic.code
+                    == Some(NumberOrString::String(NAVIGATION_DISABLED_CODE.into())))
+        );
     }
 
     #[test]

@@ -504,3 +504,138 @@ fn resolves_a_conditional_namespace_when_environment_is_explicit() {
         DartGraphqlBindingResolution::DirectImport
     );
 }
+
+/// The resolution and target of every reference in `source`, by URI text.
+fn resolutions_in(
+    files: &[(&str, &str)],
+    pubspecs: &[(&str, &str)],
+    source: &str,
+) -> std::collections::HashMap<String, (DartUriResolution, Option<String>)> {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        files
+            .iter()
+            .map(|(path, text)| DartFileInput::new(*path, *text))
+            .collect(),
+        pubspecs
+            .iter()
+            .map(|(path, text)| dartscope_core::PubspecInput::new(*path, *text))
+            .collect(),
+    ));
+    build_uri_graph(&project)
+        .references
+        .into_iter()
+        .filter(|reference| reference.source_path == source)
+        .map(|reference| {
+            (
+                reference.uri,
+                (reference.resolution, reference.target_path),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn percent_escapes_in_a_relative_reference_name_the_decoded_file() {
+    let found = resolutions_in(
+        &[
+            (
+                "lib/a.dart",
+                "import 'b%20c.dart';\nimport 'b c.dart';\nimport '%C3%BCber.dart';\nimport 'sub%2Fb.dart';\nimport '100%.dart';\nimport 'q%zz.dart';\n",
+            ),
+            ("lib/b c.dart", "class B {}"),
+            ("lib/\u{fc}ber.dart", "class U {}"),
+        ],
+        &[],
+        "lib/a.dart",
+    );
+
+    let target = |uri: &str| found[uri].clone();
+    let resolved = |path: &str| (DartUriResolution::Resolved, Some(path.to_string()));
+    assert_eq!(target("b%20c.dart"), resolved("lib/b c.dart"));
+    assert_eq!(target("b c.dart"), resolved("lib/b c.dart"));
+    assert_eq!(target("%C3%BCber.dart"), resolved("lib/\u{fc}ber.dart"));
+    // An escaped separator would change which directory the file is in; it names no file.
+    assert_eq!(target("sub%2Fb.dart"), (DartUriResolution::InvalidUri, None));
+    // A `%` that is not an escape is part of the name, as before.
+    assert_eq!(
+        target("100%.dart"),
+        (
+            DartUriResolution::MissingTarget,
+            Some("lib/100%.dart".to_string())
+        )
+    );
+    assert_eq!(
+        target("q%zz.dart"),
+        (
+            DartUriResolution::MissingTarget,
+            Some("lib/q%zz.dart".to_string())
+        )
+    );
+}
+
+#[test]
+fn an_empty_reference_is_an_invalid_uri_and_not_a_missing_directory() {
+    let found = resolutions_in(
+        &[("lib/a.dart", "import '';\nimport '   ';\n")],
+        &[],
+        "lib/a.dart",
+    );
+
+    assert_eq!(found["" ], (DartUriResolution::InvalidUri, None));
+    assert_eq!(found["   "], (DartUriResolution::InvalidUri, None));
+}
+
+#[test]
+fn a_relative_reference_that_leaves_the_project_root_names_no_project_file() {
+    let found = resolutions_in(
+        &[
+            (
+                "lib/a.dart",
+                "import '../outside.dart';\nimport '../../outside.dart';\nimport '../../../outside.dart';\nimport 'sub/../b.dart';\nimport './b.dart';\n",
+            ),
+            ("lib/b.dart", "class B {}"),
+            ("outside.dart", "class Outside {}"),
+        ],
+        &[],
+        "lib/a.dart",
+    );
+
+    let resolved = |path: &str| (DartUriResolution::Resolved, Some(path.to_string()));
+    assert_eq!(found["../outside.dart"], resolved("outside.dart"));
+    // Dropping the surplus `..` segments used to link these to the root's `outside.dart`.
+    assert_eq!(
+        found["../../outside.dart"],
+        (DartUriResolution::InvalidUri, None)
+    );
+    assert_eq!(
+        found["../../../outside.dart"],
+        (DartUriResolution::InvalidUri, None)
+    );
+    assert_eq!(found["sub/../b.dart"], resolved("lib/b.dart"));
+    assert_eq!(found["./b.dart"], resolved("lib/b.dart"));
+}
+
+#[test]
+fn a_package_uri_cannot_climb_out_of_the_library_directory() {
+    let found = resolutions_in(
+        &[
+            (
+                "lib/a.dart",
+                "import 'package:app/x.dart';\nimport 'package:app/../secret.dart';\nimport 'package:app/sub/../x.dart';\n",
+            ),
+            ("lib/x.dart", "class X {}"),
+            ("secret.dart", "class Secret {}"),
+        ],
+        &[("pubspec.yaml", "name: app\n")],
+        "lib/a.dart",
+    );
+
+    let resolved = |path: &str| (DartUriResolution::Resolved, Some(path.to_string()));
+    assert_eq!(found["package:app/x.dart"], resolved("lib/x.dart"));
+    assert_eq!(
+        found["package:app/../secret.dart"],
+        (DartUriResolution::InvalidUri, None)
+    );
+    assert_eq!(found["package:app/sub/../x.dart"], resolved("lib/x.dart"));
+}

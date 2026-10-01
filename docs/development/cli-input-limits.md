@@ -32,7 +32,10 @@ aggregate budget. Limit failures are input errors (exit code 3) and use stable d
 
 JSON is never partially written on a limit failure. The error is emitted only on stderr. Symlink
 validation remains separate: in-root file symlinks are allowed, while escaping links and directory
-symlinks are rejected before reading.
+symlinks are rejected before reading. Directories of the skip list (for example the Flutter
+`.symlinks` and `.plugin_symlinks` folders) are not entered, so their links are not validated.
+A `.dart` file that is not valid UTF-8 is skipped with the warning `input_file_not_utf8` by
+`analyze-project` and rejected by every other command; it still counts toward the project budgets.
 
 ## Large repositories
 

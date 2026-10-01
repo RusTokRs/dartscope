@@ -36,12 +36,15 @@ The supported commands are:
 | Code | Meaning |
 | --- | --- |
 | `0` | The requested help, version, or JSON operation completed successfully. |
-| `1` | DartScope could not serialize or otherwise complete an internal operation. |
-| `2` | The command line is invalid: unknown command, missing path, unexpected option, or malformed `--env`. |
+| `1` | DartScope could not serialize or otherwise complete an internal operation, or could not write its output for a reason other than a closed pipe. |
+| `2` | The command line is invalid: unknown command, missing path, unexpected option, malformed `--env`, or an argument that is not valid Unicode. |
 | `3` | A requested file, project directory, or lint configuration cannot be read. |
 | `4` | Lint structured output was emitted and a finding reached the configured failure threshold. |
 | `5` | Lint TOML configuration is malformed, unsupported, or semantically invalid. |
 | `6` | Lint project analysis produced an error diagnostic and rule execution was not trusted. |
+
+When the reader of standard output goes away (`dartscope analyze-project . | head`), the command stops
+writing and exits with the exit code of its own result instead of failing.
 
 Malformed Dart, YAML, and package-configuration contents remain diagnostic-bearing success inputs
 for the original analysis commands. The `lint` command uses exit code `6` instead because running
@@ -58,11 +61,17 @@ Each discovered `pubspec.yaml` owns the nearest sibling `.dart_tool/package_conf
 same package directory. This supports nested packages without borrowing a package configuration
 from a parent package.
 
-Directory entries that are symbolic links are not followed. An explicitly supplied project root
-may be a symlink because it is an intentional user-selected boundary, but symlinks encountered
-inside that root are ignored. A symlinked package-config file is also ignored.
+A symbolic link to a file whose target stays inside the project root is read like the file it points
+to; this includes a symlinked package-config file. A link whose target leaves the root, a link to a
+directory, and a link that cannot be resolved fail the run with exit code `3` and a message that
+starts with `input_symlink_rejected`: the CLI does not follow anything it cannot show to be inside
+the root. Directories in the skip lists below are never entered, so the links that Flutter and
+CocoaPods create inside them do not matter. An explicitly supplied project root may be a symlink
+because it is an intentional user-selected boundary.
 
-The recursive walker skips these generated or tool-owned directories by exact name:
+The recursive walker never enters these generated, dependency or tool-owned directories, whatever
+their location (`.symlinks` and `.plugin_symlinks` hold the links that `pod install` and Flutter
+create into the pub cache and into plugin checkouts):
 
 ```text
 .dart_tool
@@ -70,12 +79,22 @@ The recursive walker skips these generated or tool-owned directories by exact na
 .idea
 .pub-cache
 .vscode
-build
-coverage
+.symlinks
+.plugin_symlinks
 node_modules
 Pods
-target
 ```
+
+`build`, `coverage` and `target` hold generated output next to a package, but are ordinary folder
+names inside the source roots, so they are skipped only when no directory between the project root
+and the folder is one of `lib`, `bin`, `test`, `test_driver`, `tool`, `integration_test` or
+`benchmark`. `lib/src/build/steps.dart` is analyzed; `build/generated.dart` and
+`packages/app/build/x.dart` are not.
+
+A `.dart` file that is not valid UTF-8 is not Dart source the analysis can describe. `analyze-project`
+leaves it out and reports the warning `input_file_not_utf8` with the file path (counted in
+`summary.diagnostics`) so that one stray file does not hide the rest of the project; the other
+commands, including `lint`, reject it with exit code `3` (`failed to read`).
 
 Paths containing spaces are supported as normal OS arguments. The CLI does not perform shell
 splitting of path or environment values.
