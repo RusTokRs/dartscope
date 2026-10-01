@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 
 use dartscope_core::{
-    DartDiagnostic, DartFileAnalysis, DartFileReferenceAnalysis, DartGraphqlContractAnalysis,
+    DartDeclaration, DartDeclarationKind, DartDiagnostic, DartFileAnalysis, DartFileReferenceAnalysis, DartGraphqlContractAnalysis,
     DartIdentifierReference, DartIdentifierReferenceResolution,
     DartIdentifierReferenceResolutionAnalysis, DartLexicalBinding, DartPartLinkAnalysis,
     DartPartLinkStatus, DartProjectAnalysis, DartProjectReferenceAnalysis, DartProjectSummary,
@@ -511,7 +511,7 @@ impl DartWorkspaceIndex {
             None => RebuildPlan::all(),
         };
         let changed_declaration_names =
-            changed_top_level_declaration_names(old_file.as_ref(), Some(&file));
+            declaration_names_to_refresh(old_file.as_ref(), Some(&file));
         let changed_graphql_operation_names =
             changed_graphql_operation_names(old_file.as_ref(), Some(&file));
         self.files.insert(path.clone(), file);
@@ -541,7 +541,7 @@ impl DartWorkspaceIndex {
         let Some(removed) = self.files.remove(&path) else {
             return self.no_op_update();
         };
-        let changed_declaration_names = changed_top_level_declaration_names(Some(&removed), None);
+        let changed_declaration_names = declaration_names_to_refresh(Some(&removed), None);
         let changed_graphql_operation_names = changed_graphql_operation_names(Some(&removed), None);
         self.references_by_path.remove(&path);
         self.bindings_by_path.remove(&path);
@@ -1000,8 +1000,7 @@ fn file_rebuild_plan(
     let library_membership_changed = old.library != new.library || old.part_of != new.part_of;
     let namespace_changed =
         import_export_changed || part_directives_changed || library_membership_changed;
-    let top_level_declarations_changed =
-        top_level_declaration_facts(old) != top_level_declaration_facts(new);
+    let declarations_changed = cross_file_declarations(old) != cross_file_declarations(new);
     let graphql_operations_changed = old.graphql_operations != new.graphql_operations;
 
     RebuildPlan {
@@ -1011,12 +1010,8 @@ fn file_rebuild_plan(
         graphql_contracts: namespace_changed
             || graphql_operations_changed
             || old.graphql_operation_uses != new.graphql_operation_uses,
-        identifier_references: namespace_changed
-            || top_level_declarations_changed
-            || references_changed,
-        propagate_dependents: namespace_changed
-            || top_level_declarations_changed
-            || graphql_operations_changed,
+        identifier_references: namespace_changed || declarations_changed || references_changed,
+        propagate_dependents: namespace_changed || declarations_changed || graphql_operations_changed,
     }
 }
 
@@ -1040,56 +1035,35 @@ fn changed_graphql_operation_names(
         .collect()
 }
 
-fn top_level_declaration_facts(
-    file: &DartFileAnalysis,
-) -> Vec<(
-    &str,
-    dartscope_core::DartDeclarationKind,
-    Option<&str>,
-    &dartscope_core::SourceSpan,
-)> {
+/// The declarations other files can see and keep evidence about: everything but local variables.
+///
+/// A resolution cached for another file carries the symbol ID, kind and spans of its target, and the
+/// target is a member (`b.value`) as often as a top-level declaration. Any difference in these
+/// declarations, including a span that moved because of an edit above it or a body that grew below
+/// its first line, therefore makes those cached resolutions stale.
+fn cross_file_declarations(file: &DartFileAnalysis) -> Vec<&DartDeclaration> {
     file.declarations
         .iter()
-        .filter(|declaration| declaration.parent_symbol_id.is_none())
-        .map(|declaration| {
-            (
-                declaration.name.as_str(),
-                declaration.kind,
-                declaration.symbol_id.as_deref(),
-                &declaration.span,
-            )
-        })
+        .filter(|declaration| declaration.kind != DartDeclarationKind::LocalVariable)
         .collect()
 }
 
-fn changed_top_level_declaration_names(
+/// The names whose references have to be resolved again after `old` became `new`: those of every
+/// cross-file declaration of either text when any of them differs, none otherwise.
+fn declaration_names_to_refresh(
     old: Option<&DartFileAnalysis>,
     new: Option<&DartFileAnalysis>,
 ) -> BTreeSet<String> {
-    let old_facts = old.map(top_level_declaration_facts).unwrap_or_default();
-    let new_facts = new.map(top_level_declaration_facts).unwrap_or_default();
-    if old_facts == new_facts {
+    let old_declarations = old.map(cross_file_declarations).unwrap_or_default();
+    let new_declarations = new.map(cross_file_declarations).unwrap_or_default();
+    if old_declarations == new_declarations {
         return BTreeSet::new();
     }
-
-    let mut names = BTreeSet::new();
-    if let Some(file) = old {
-        names.extend(
-            file.declarations
-                .iter()
-                .filter(|declaration| declaration.parent_symbol_id.is_none())
-                .map(|declaration| declaration.name.clone()),
-        );
-    }
-    if let Some(file) = new {
-        names.extend(
-            file.declarations
-                .iter()
-                .filter(|declaration| declaration.parent_symbol_id.is_none())
-                .map(|declaration| declaration.name.clone()),
-        );
-    }
-    names
+    old_declarations
+        .iter()
+        .chain(&new_declarations)
+        .map(|declaration| declaration.name.clone())
+        .collect()
 }
 
 fn reference_sources_for_declaration_names(

@@ -96,8 +96,12 @@ not claim allocator-specific heap precision.
 
 A local reference-fact replacement invalidates only its source path. File insertion/removal recomputes
 that path plus direct URI sources whose previous target resolution may change. Namespace changes report
-the transitive reverse closure. Top-level declaration changes additionally invalidate every reference
-source using an affected name because retained `NotVisible` evidence can change without an import edge.
+the transitive reverse closure. Any difference in the declarations other files can see (everything but local
+variables: names, kinds, symbol IDs, relations such as `extends`, and both spans) is a namespace change for
+that purpose, because a cached resolution in another file carries those facts, including the spans, of its
+target; it additionally invalidates every reference source using an affected name because retained
+`NotVisible` evidence can change without an import edge. An edit above a declaration, or a body that grows
+below its first line, therefore invalidates the dependents even when no name changed.
 Changes to part membership also traverse old and new matched owner/part components so sibling-part
 visibility stays equivalent to a clean rebuild. Metadata paths themselves are not emitted as Dart
 `affected_paths` by this component traversal.
