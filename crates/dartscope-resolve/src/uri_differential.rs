@@ -329,7 +329,13 @@ fn judge(mine: &UriReference, theirs: &str) -> Verdict {
     }
 }
 
-fn judge_print(report: &mut Report, kind: &str, mine: &UriReference, theirs: &str, example: String) {
+fn judge_print(
+    report: &mut Report,
+    kind: &str,
+    mine: &UriReference,
+    theirs: &str,
+    example: String,
+) {
     match judge(mine, theirs) {
         Verdict::Same => {}
         Verdict::Known(known) => report.known(known),
@@ -381,7 +387,8 @@ fn compare_parse(report: &mut Report, input: &str) {
             if reason.contains("port overflow") {
                 report.known("uriparse rejects: port overflow");
             } else if reason.contains("host address mechanism not supported")
-                && input.to_ascii_lowercase().contains("[v") {
+                && input.to_ascii_lowercase().contains("[v")
+            {
                 report.known("uriparse rejects: IPvFuture host");
             } else if reason.contains("colon segment") && absolute_path {
                 report.known("uriparse rejects: colon in the first segment of an absolute path");
