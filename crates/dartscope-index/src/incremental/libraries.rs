@@ -3,7 +3,10 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 
-use dartscope_core::{DartPartLinkAnalysis, DartPartLinkStatus, DartProjectAnalysis, DartUriGraph, DartUriReferenceKind};
+use dartscope_core::{
+    DartPartLinkAnalysis, DartPartLinkStatus, DartProjectAnalysis, DartUriGraph,
+    DartUriReferenceKind,
+};
 
 use crate::namespace::LibraryMembership;
 use crate::uri_graph::sort_uri_references;

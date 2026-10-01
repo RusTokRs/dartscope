@@ -1,8 +1,10 @@
 //! Retained-size metrics of the caches of an index.
 
-use dartscope_core::{DartGraphqlContractAnalysis, DartIdentifierReferenceResolution, DartUriReference};
+use dartscope_core::{
+    DartGraphqlContractAnalysis, DartIdentifierReferenceResolution, DartUriReference,
+};
 
-use super::{DartWorkspaceIndexRetainedMetrics, DartWorkspaceIndex};
+use super::{DartWorkspaceIndex, DartWorkspaceIndexRetainedMetrics};
 
 impl DartWorkspaceIndex {
     pub fn retained_metrics(&self) -> DartWorkspaceIndexRetainedMetrics {

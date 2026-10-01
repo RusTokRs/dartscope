@@ -3,7 +3,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use dartscope_core::{DartIdentifierReference, DartIdentifierReferenceResolution, DartIdentifierReferenceResolutionAnalysis, DartProjectAnalysis, DartUriGraph, DartUriReference};
+use dartscope_core::{
+    DartIdentifierReference, DartIdentifierReferenceResolution,
+    DartIdentifierReferenceResolutionAnalysis, DartProjectAnalysis, DartUriGraph, DartUriReference,
+};
 
 use crate::references::resolve_identifier_references_with_options;
 use crate::uri_graph::{DartIndexOptions, UriGraphBuilder, sort_uri_references};
@@ -29,7 +32,9 @@ pub(super) fn build_uri_reference_cache(
     (cache, graph)
 }
 
-pub(super) fn aggregate_uri_graph(cache: &BTreeMap<String, Arc<Vec<DartUriReference>>>) -> DartUriGraph {
+pub(super) fn aggregate_uri_graph(
+    cache: &BTreeMap<String, Arc<Vec<DartUriReference>>>,
+) -> DartUriGraph {
     let mut references: Vec<_> = cache
         .values()
         .flat_map(|references| references.iter().cloned())

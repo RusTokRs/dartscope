@@ -19,12 +19,14 @@ use crate::references::resolve_identifier_references_with_options;
 use crate::uri_graph::UriGraphBuilder;
 
 use super::caches::{
-    aggregate_reference_resolutions, aggregate_uri_graph, reference_rebuild_paths, uri_rebuild_paths,
+    aggregate_reference_resolutions, aggregate_uri_graph, reference_rebuild_paths,
+    uri_rebuild_paths,
 };
 use super::graphql_cache::{ProjectLinks, aggregate_graphql_contracts, graphql_rebuild_libraries};
 use super::libraries::{
     affected_library_owners, aggregate_library_dependency_fingerprints, graphql_library_owners,
-    library_related_paths, refresh_library_dependency_fingerprint_cache, refresh_library_path_cache,
+    library_related_paths, refresh_library_dependency_fingerprint_cache,
+    refresh_library_path_cache,
 };
 use super::plan::{RebuildPlan, affected_paths, reference_sources_for_declaration_names};
 use super::project::{aggregate_bindings, aggregate_references, build_project};
@@ -72,7 +74,8 @@ impl DartWorkspaceIndex {
         let part_links = self.refresh_part_links(&trigger, &project, &uri_graph);
         let library_dependency_fingerprints =
             self.refresh_library_caches(&trigger, &project, &uri_graph, &part_links);
-        let affected_paths = self.collect_affected_paths(&trigger, &project, &uri_graph, &part_links);
+        let affected_paths =
+            self.collect_affected_paths(&trigger, &project, &uri_graph, &part_links);
         let affected_libraries = affected_library_owners(
             &trigger.changed_paths,
             &affected_paths,

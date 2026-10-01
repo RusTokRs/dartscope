@@ -20,15 +20,26 @@ mod rebuild;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use dartscope_core::{DartDiagnostic, DartFileAnalysis, DartGraphqlContractAnalysis, DartIdentifierReference, DartIdentifierReferenceResolution, DartIdentifierReferenceResolutionAnalysis, DartLexicalBinding, DartPartLinkAnalysis, DartProjectAnalysis, DartProjectReferenceAnalysis, DartUriGraph, DartUriReference, PackageConfigAnalysis, PubspecAnalysis, normalize_path};
+use dartscope_core::{
+    DartDiagnostic, DartFileAnalysis, DartGraphqlContractAnalysis, DartIdentifierReference,
+    DartIdentifierReferenceResolution, DartIdentifierReferenceResolutionAnalysis,
+    DartLexicalBinding, DartPartLinkAnalysis, DartProjectAnalysis, DartProjectReferenceAnalysis,
+    DartUriGraph, DartUriReference, PackageConfigAnalysis, PubspecAnalysis, normalize_path,
+};
 
 use crate::parts::analyze_part_links_with_graph;
 use crate::uri_graph::DartIndexOptions;
 
 use self::caches::{build_reference_resolution_cache, build_uri_reference_cache};
 use self::graphql_cache::build_graphql_contract_cache;
-use self::libraries::{aggregate_library_dependency_fingerprints, build_library_dependency_fingerprint_cache, build_library_path_cache};
-use self::project::{additional_project_diagnostics, aggregate_bindings, aggregate_references, build_project, group_bindings, group_references, normalize_file, normalize_package_config, normalize_pubspec};
+use self::libraries::{
+    aggregate_library_dependency_fingerprints, build_library_dependency_fingerprint_cache,
+    build_library_path_cache,
+};
+use self::project::{
+    additional_project_diagnostics, aggregate_bindings, aggregate_references, build_project,
+    group_bindings, group_references, normalize_file, normalize_package_config, normalize_pubspec,
+};
 
 /// Stable import/export dependency evidence for one normalized Dart library.
 #[derive(Debug, Clone, Eq, PartialEq)]

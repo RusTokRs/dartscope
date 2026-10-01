@@ -37,12 +37,84 @@ impl Rng {
 }
 
 const PIECES: &[&str] = &[
-    "file:", "http:", "package:", "FILE:", "x:", "1:", ":", "//", "///", "/", "./", "../", ".",
-    "..", "a", "b", "lib", "A", "Z", "0", "9", "%20", "%2e", "%2E", "%2f", "%2F", "%41", "%7a",
-    "%", "%4", "%g0", "%zz", "?", "#", "?q", "#f", "=", "&", ";", ",", "@", "u:p@", "[", "]",
-    "[::1]", "[v1.x]", "[::g]", ":80", ":99999", "host", "h.ost-1_x~", " ", "\t", "\\", "^", "{",
-    "}", "|", "`", "\"", "<", ">", "\u{e9}", "\u{0}", "~", "-", "_", "+", "*", "!", "$", "'", "(",
-    ")", "C:", "C|", "..%2f", "%2e%2e/",
+    "file:",
+    "http:",
+    "package:",
+    "FILE:",
+    "x:",
+    "1:",
+    ":",
+    "//",
+    "///",
+    "/",
+    "./",
+    "../",
+    ".",
+    "..",
+    "a",
+    "b",
+    "lib",
+    "A",
+    "Z",
+    "0",
+    "9",
+    "%20",
+    "%2e",
+    "%2E",
+    "%2f",
+    "%2F",
+    "%41",
+    "%7a",
+    "%",
+    "%4",
+    "%g0",
+    "%zz",
+    "?",
+    "#",
+    "?q",
+    "#f",
+    "=",
+    "&",
+    ";",
+    ",",
+    "@",
+    "u:p@",
+    "[",
+    "]",
+    "[::1]",
+    "[v1.x]",
+    "[::g]",
+    ":80",
+    ":99999",
+    "host",
+    "h.ost-1_x~",
+    " ",
+    "\t",
+    "\\",
+    "^",
+    "{",
+    "}",
+    "|",
+    "`",
+    "\"",
+    "<",
+    ">",
+    "\u{e9}",
+    "\u{0}",
+    "~",
+    "-",
+    "_",
+    "+",
+    "*",
+    "!",
+    "$",
+    "'",
+    "(",
+    ")",
+    "C:",
+    "C|",
+    "..%2f",
+    "%2e%2e/",
 ];
 
 const BASES: &[&str] = &[
@@ -85,7 +157,10 @@ fn compare_parse(report: &mut Report, input: &str) {
     let theirs = match guarded(|| URIReference::try_from(input)) {
         Ok(theirs) => theirs,
         Err(panic) => {
-            report.note("uriparse panics: URIReference::try_from", format!("{input:?}: {panic}"));
+            report.note(
+                "uriparse panics: URIReference::try_from",
+                format!("{input:?}: {panic}"),
+            );
             return;
         }
     };
@@ -137,7 +212,10 @@ fn compare_parse(report: &mut Report, input: &str) {
                         format!("{input:?}: {mine:?} / {theirs:?}"),
                     );
                 } else {
-                    report.note("print: differs", format!("{input:?}: {mine:?} / {theirs:?}"));
+                    report.note(
+                        "print: differs",
+                        format!("{input:?}: {mine:?} / {theirs:?}"),
+                    );
                 }
             }
         }
@@ -149,7 +227,10 @@ fn compare_resolve(report: &mut Report, base: &str, reference: &str) {
     let their_base = match guarded(|| URI::try_from(base)) {
         Ok(result) => result,
         Err(panic) => {
-            report.note("uriparse panics: URI::try_from", format!("{base:?}: {panic}"));
+            report.note(
+                "uriparse panics: URI::try_from",
+                format!("{base:?}: {panic}"),
+            );
             return;
         }
     };
@@ -166,8 +247,7 @@ fn compare_resolve(report: &mut Report, base: &str, reference: &str) {
     let (Ok(my_base), Ok(their_base)) = (UriReference::parse_absolute(base), their_base) else {
         return;
     };
-    let (Ok(my_reference), Ok(their_reference)) =
-        (UriReference::parse(reference), their_reference)
+    let (Ok(my_reference), Ok(their_reference)) = (UriReference::parse(reference), their_reference)
     else {
         return;
     };
@@ -221,11 +301,52 @@ fn differential_against_uriparse() {
     }
     // The examples of RFC 3986 section 5.4 and the references of the package-configuration tests.
     for reference in [
-        "g:h", "g", "./g", "g/", "/g", "//g", "?y", "g?y", "#s", "g#s", "g?y#s", ";x", "g;x",
-        "g;x?y#s", "", ".", "./", "..", "../", "../g", "../..", "../../", "../../g", "../../../g",
-        "/./g", "/../g", "g.", ".g", "g..", "..g", "./../g", "./g/.", "g/./h", "g/../h",
-        "g;x=1/./y", "g;x=1/../y", "g?y/./x", "g?y/../x", "g#s/./x", "g#s/../x", "http:g",
-        "lib/", "lib", "../../../packages/shared", "%2e%2e/outside/", "lib%20src/",
+        "g:h",
+        "g",
+        "./g",
+        "g/",
+        "/g",
+        "//g",
+        "?y",
+        "g?y",
+        "#s",
+        "g#s",
+        "g?y#s",
+        ";x",
+        "g;x",
+        "g;x?y#s",
+        "",
+        ".",
+        "./",
+        "..",
+        "../",
+        "../g",
+        "../..",
+        "../../",
+        "../../g",
+        "../../../g",
+        "/./g",
+        "/../g",
+        "g.",
+        ".g",
+        "g..",
+        "..g",
+        "./../g",
+        "./g/.",
+        "g/./h",
+        "g/../h",
+        "g;x=1/./y",
+        "g;x=1/../y",
+        "g?y/./x",
+        "g?y/../x",
+        "g#s/./x",
+        "g#s/../x",
+        "http:g",
+        "lib/",
+        "lib",
+        "../../../packages/shared",
+        "%2e%2e/outside/",
+        "lib%20src/",
         "file:///cache/%70kg/",
     ] {
         compare_parse(&mut report, reference);

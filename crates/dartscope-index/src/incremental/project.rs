@@ -2,7 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use dartscope_core::{DartDiagnostic, DartFileAnalysis, DartIdentifierReference, DartLexicalBinding, DartProjectAnalysis, DartProjectSummary, PackageConfigAnalysis, PubspecAnalysis, normalize_path};
+use dartscope_core::{
+    DartDiagnostic, DartFileAnalysis, DartIdentifierReference, DartLexicalBinding,
+    DartProjectAnalysis, DartProjectSummary, PackageConfigAnalysis, PubspecAnalysis,
+    normalize_path,
+};
 
 pub(super) fn build_project(
     root: &str,
@@ -153,7 +157,9 @@ pub(super) fn aggregate_bindings(
         .collect()
 }
 
-pub(super) fn group_bindings(bindings: Vec<DartLexicalBinding>) -> BTreeMap<String, Vec<DartLexicalBinding>> {
+pub(super) fn group_bindings(
+    bindings: Vec<DartLexicalBinding>,
+) -> BTreeMap<String, Vec<DartLexicalBinding>> {
     let mut grouped: BTreeMap<String, Vec<DartLexicalBinding>> = BTreeMap::new();
     for mut binding in bindings {
         binding.source_path = normalize_path(binding.source_path);

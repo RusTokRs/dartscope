@@ -3,7 +3,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use dartscope_core::{DartGraphqlContractAnalysis, DartPartLinkAnalysis, DartProjectAnalysis, DartUriGraph};
+use dartscope_core::{
+    DartGraphqlContractAnalysis, DartPartLinkAnalysis, DartProjectAnalysis, DartUriGraph,
+};
 
 use crate::graphql::{GraphqlContractAnalyzer, sort_contract_analysis};
 use crate::namespace::LibraryMembership;

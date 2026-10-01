@@ -2,13 +2,21 @@
 
 use std::collections::BTreeSet;
 
-use dartscope_core::{DartFileAnalysis, DartFileReferenceAnalysis, DartIdentifierReference, DartLexicalBinding, PackageConfigAnalysis, PubspecAnalysis, normalize_path};
+use dartscope_core::{
+    DartFileAnalysis, DartFileReferenceAnalysis, DartIdentifierReference, DartLexicalBinding,
+    PackageConfigAnalysis, PubspecAnalysis, normalize_path,
+};
 
 use crate::uri_graph::DartIndexOptions;
 
-use super::{DartWorkspaceSubsystems, DartWorkspaceUpdate, DartWorkspaceIndex};
-use super::plan::{RebuildPlan, changed_graphql_operation_names, declaration_names_to_refresh, file_rebuild_plan};
-use super::project::{normalize_bindings_for_path, normalize_file, normalize_package_config, normalize_pubspec, normalize_references_for_path};
+use super::plan::{
+    RebuildPlan, changed_graphql_operation_names, declaration_names_to_refresh, file_rebuild_plan,
+};
+use super::project::{
+    normalize_bindings_for_path, normalize_file, normalize_package_config, normalize_pubspec,
+    normalize_references_for_path,
+};
+use super::{DartWorkspaceIndex, DartWorkspaceSubsystems, DartWorkspaceUpdate};
 
 impl DartWorkspaceIndex {
     /// Inserts or replaces a normalized file analysis and clears stale reference facts for that path.

@@ -2,7 +2,10 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use dartscope_core::{DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference, DartProjectAnalysis, DartUriGraph};
+use dartscope_core::{
+    DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartIdentifierReference,
+    DartProjectAnalysis, DartUriGraph,
+};
 
 use super::DartWorkspaceSubsystems;
 
