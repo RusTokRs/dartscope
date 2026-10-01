@@ -167,7 +167,9 @@ fn literals(n: usize) -> String {
     }
     source.push_str("};\nfinal items = [\n");
     for i in 0..n {
-        source.push_str(&format!("  Item(id: {i}, name: 'n{i}', tags: const <String>['a']),\n"));
+        source.push_str(&format!(
+            "  Item(id: {i}, name: 'n{i}', tags: const <String>['a']),\n"
+        ));
     }
     source.push_str("];\n");
     source
@@ -276,8 +278,18 @@ fn measure(shape: &str, n: usize, source: &str) {
     let t = Instant::now();
     sort_identifier_references(&mut references);
     let t_sort = t.elapsed();
-    let total = t_file + t_facts + t_regions + t_bindings + t_identifiers + t_reads + t_writes
-        + t_updates + t_methods + t_properties + t_operators + t_sort;
+    let total = t_file
+        + t_facts
+        + t_regions
+        + t_bindings
+        + t_identifiers
+        + t_reads
+        + t_writes
+        + t_updates
+        + t_methods
+        + t_properties
+        + t_operators
+        + t_sort;
     println!(
         "phase {shape} n={n} total={total:?} bytes={} decls={} bindings={} regions={} refs={} file={t_file:?} facts={t_facts:?} regions_t={t_regions:?} bindings_t={t_bindings:?} identifiers={t_identifiers:?} reads={t_reads:?} writes={t_writes:?} updates={t_updates:?} methods={t_methods:?} properties={t_properties:?} operators={t_operators:?} sort={t_sort:?}",
         source.len(),
