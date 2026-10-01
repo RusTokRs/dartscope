@@ -2,12 +2,12 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 
 use dartscope_core::{
-    DartDeclaration, DartDeclarationKind, DartDiagnostic, DartFileAnalysis, DartFileReferenceAnalysis, DartGraphqlContractAnalysis,
-    DartIdentifierReference, DartIdentifierReferenceResolution,
-    DartIdentifierReferenceResolutionAnalysis, DartLexicalBinding, DartPartLinkAnalysis,
-    DartPartLinkStatus, DartProjectAnalysis, DartProjectReferenceAnalysis, DartProjectSummary,
-    DartUriGraph, DartUriReference, DartUriReferenceKind, PackageConfigAnalysis, PubspecAnalysis,
-    normalize_path,
+    DartDeclaration, DartDeclarationKind, DartDiagnostic, DartFileAnalysis,
+    DartFileReferenceAnalysis, DartGraphqlContractAnalysis, DartIdentifierReference,
+    DartIdentifierReferenceResolution, DartIdentifierReferenceResolutionAnalysis,
+    DartLexicalBinding, DartPartLinkAnalysis, DartPartLinkStatus, DartProjectAnalysis,
+    DartProjectReferenceAnalysis, DartProjectSummary, DartUriGraph, DartUriReference,
+    DartUriReferenceKind, PackageConfigAnalysis, PubspecAnalysis, normalize_path,
 };
 
 use crate::graphql::{GraphqlContractAnalyzer, sort_contract_analysis};
@@ -1011,7 +1011,9 @@ fn file_rebuild_plan(
             || graphql_operations_changed
             || old.graphql_operation_uses != new.graphql_operation_uses,
         identifier_references: namespace_changed || declarations_changed || references_changed,
-        propagate_dependents: namespace_changed || declarations_changed || graphql_operations_changed,
+        propagate_dependents: namespace_changed
+            || declarations_changed
+            || graphql_operations_changed,
     }
 }
 
