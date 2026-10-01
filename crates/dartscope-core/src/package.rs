@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::diagnostic::DartDiagnostic;
-use crate::span::SourceSpan;
 use crate::pubspec::{PubspecConfiguration, PubspecDependencySource};
+use crate::span::SourceSpan;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PackageConfigAnalysis {

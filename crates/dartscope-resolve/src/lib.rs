@@ -1009,7 +1009,9 @@ mod tests {
             let resolved = resolve_package_uri(&config, "package:app/a.dart").unwrap();
             assert_eq!(resolved.project_path, None, "{root_uri}: {reason}");
         }
-        for plain in ["", "a", "a/b.dart", "a/", "a/b/", "a b/c", "x_y/z", "lib/C:/x"] {
+        for plain in [
+            "", "a", "a/b.dart", "a/", "a/b/", "a b/c", "x_y/z", "lib/C:/x",
+        ] {
             assert!(is_plain_relative_path(plain), "{plain:?}");
         }
         for rejected in [
