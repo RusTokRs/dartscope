@@ -4,8 +4,9 @@ use dartscope_core::DartDeclarationKind;
 
 use super::scanner::EndMode;
 use crate::declarations::{
-    class_declaration_name, extension_declaration_name, extension_type_declaration_name,
-    mixin_declaration_name, name_after_keyword,
+    callable_name, class_declaration_name, extension_declaration_name,
+    extension_type_declaration_name, extension_type_parameters, mixin_application_superclass,
+    mixin_declaration_name, name_after_keyword, value_after_keyword, values_after_keyword,
 };
 use crate::identifiers::{is_identifier, is_identifier_continue, leading_identifier};
 
@@ -49,10 +50,10 @@ pub(super) fn member_headers(
     }
 
     if let Some(name) = name_after_token(cleaned, "get") {
-        return vec![(name, DartDeclarationKind::Getter, EndMode::BodyOrSemicolon)];
+        return vec![(name, DartDeclarationKind::Getter, callable_end_mode(cleaned))];
     }
     if let Some(name) = name_after_token(cleaned, "set") {
-        return vec![(name, DartDeclarationKind::Setter, EndMode::BodyOrSemicolon)];
+        return vec![(name, DartDeclarationKind::Setter, callable_end_mode(cleaned))];
     }
     if let Some(name) = operator_name(cleaned) {
         return vec![(
@@ -66,15 +67,8 @@ pub(super) fn member_headers(
         if before.contains('=') || starts_control_keyword(before) {
             return Vec::new();
         }
-        let Some(name) = before.split_whitespace().last() else {
-            return Vec::new();
-        };
-        if is_identifier(name) {
-            return vec![(
-                name.to_string(),
-                DartDeclarationKind::Method,
-                EndMode::BodyOrSemicolon,
-            )];
+        if let Some(name) = callable_name(cleaned) {
+            return vec![(name, DartDeclarationKind::Method, callable_end_mode(cleaned))];
         }
     }
 
@@ -82,6 +76,147 @@ pub(super) fn member_headers(
         .into_iter()
         .map(|name| (name, DartDeclarationKind::Field, EndMode::SemicolonOnly))
         .collect()
+}
+
+/// How far a callable declaration extends from its header.
+///
+/// A body is the first `{ ... }` block, but an arrow body (`=> expression;`) ends at the first
+/// semicolon outside brackets even when the expression itself starts with a brace, for example a map
+/// or set literal.
+pub(super) fn callable_end_mode(header: &str) -> EndMode {
+    if header.trim_end().ends_with("=>") {
+        EndMode::SemicolonOnly
+    } else {
+        EndMode::BodyOrSemicolon
+    }
+}
+
+/// Name and kind of a top-level getter or setter, such as `int get total => 1;` or
+/// `set total(int value) {}`.
+///
+/// Variables and functions are recognized before accessors, so a variable that happens to be called
+/// `get` or `set` is never mistaken for one.
+pub(super) fn top_level_accessor(
+    header: &str,
+    indent: usize,
+) -> Option<(String, DartDeclarationKind)> {
+    if indent != 0 {
+        return None;
+    }
+    let cleaned = strip_member_modifiers(header);
+    if let Some(name) = name_after_token(cleaned, "get") {
+        return Some((name, DartDeclarationKind::Getter));
+    }
+    name_after_token(cleaned, "set").map(|name| (name, DartDeclarationKind::Setter))
+}
+
+/// The `extends`, `with`, and `on` clauses of a type header, kept apart so an `on` constraint is never
+/// mistaken for a base class or a mixed-in type.
+#[derive(Default)]
+pub(super) struct TypeRelations {
+    pub(super) extends: Option<String>,
+    pub(super) mixes_in: Vec<String>,
+    pub(super) on_types: Vec<String>,
+}
+
+pub(super) fn type_relations(header: &str, kind: DartDeclarationKind) -> TypeRelations {
+    match kind {
+        DartDeclarationKind::Class => TypeRelations {
+            extends: value_after_keyword(header, "extends")
+                .or_else(|| mixin_application_superclass(header)),
+            mixes_in: values_after_keyword(header, "with"),
+            on_types: Vec::new(),
+        },
+        DartDeclarationKind::Enum => TypeRelations {
+            mixes_in: values_after_keyword(header, "with"),
+            ..TypeRelations::default()
+        },
+        DartDeclarationKind::Mixin => TypeRelations {
+            on_types: values_after_keyword(header, "on"),
+            ..TypeRelations::default()
+        },
+        DartDeclarationKind::Extension => {
+            let type_parameters = extension_type_parameters(header);
+            TypeRelations {
+                // An `on` type that is one of the extension's own type parameters applies to every
+                // receiver, which an empty list expresses.
+                on_types: value_after_keyword(header, "on")
+                    .filter(|on_type| !type_parameters.contains(on_type))
+                    .into_iter()
+                    .collect(),
+                ..TypeRelations::default()
+            }
+        }
+        _ => TypeRelations::default(),
+    }
+}
+
+/// One enum constant: its name and the byte range of its declaration, which starts at the name
+/// (annotations excluded, like every other declaration) and ends before the separator.
+pub(super) struct EnumConstant {
+    pub(super) name: String,
+    pub(super) start: usize,
+    pub(super) end: usize,
+}
+
+/// Collects the constants of an enum body: the comma-separated entries before the first
+/// top-level semicolon (or before the closing brace when there is none).
+///
+/// `masked` has comments and strings blanked, so separators inside constructor arguments, type
+/// arguments, or nested blocks are skipped by tracking bracket depth.
+pub(super) fn enum_constants(
+    masked: &str,
+    body_start: usize,
+    body_end: usize,
+) -> Vec<EnumConstant> {
+    let bytes = masked.as_bytes();
+    let end = body_end.min(bytes.len());
+    let mut constants = Vec::new();
+    let mut nesting = 0usize;
+    let mut angles = 0usize;
+    let mut segment_start = body_start + 1;
+    for index in body_start + 1..=end {
+        // The closing brace ends the last constant exactly like a semicolon does.
+        let byte = if index < end { bytes[index] } else { b';' };
+        match byte {
+            b'(' | b'[' | b'{' => nesting += 1,
+            b')' | b']' | b'}' => nesting = nesting.saturating_sub(1),
+            b'<' if nesting == 0 => angles += 1,
+            b'>' if nesting == 0 => angles = angles.saturating_sub(1),
+            b',' | b';' if nesting == 0 && angles == 0 => {
+                push_enum_constant(masked, segment_start, index.min(end), &mut constants);
+                segment_start = index + 1;
+                if byte == b';' {
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    constants
+}
+
+fn push_enum_constant(masked: &str, start: usize, end: usize, constants: &mut Vec<EnumConstant>) {
+    let Some(segment) = masked.get(start..end) else {
+        return;
+    };
+    let trimmed = segment.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    let constant_start = start + (segment.len() - segment.trim_start().len());
+    let constant_end = constant_start + trimmed.len();
+    let declared_at = crate::metadata::annotations_end(masked, constant_start, constant_end);
+    let after_annotations = &masked[declared_at..constant_end];
+    let name_offset = after_annotations.len() - after_annotations.trim_start().len();
+    let Some(name) = leading_identifier(&after_annotations[name_offset..]) else {
+        return;
+    };
+    constants.push(EnumConstant {
+        name: name.to_string(),
+        start: declared_at + name_offset,
+        end: constant_end,
+    });
 }
 
 pub(super) fn local_variable_names(header: &str) -> Vec<String> {
@@ -138,7 +273,21 @@ pub(super) fn top_level_variables(header: &str, indent: usize) -> Vec<String> {
             .unwrap_or(without_keyword);
         return declared_names(without_keyword, false);
     }
+    if is_accessor_header(header) {
+        return Vec::new();
+    }
     field_names(header)
+}
+
+/// Whether the text before any assignment is a getter or setter header such as `external int get
+/// total;` or `set total(int value)`: a `get` or `set` token that is followed by the accessor's name.
+/// A variable that is merely called `get` (`int get = 0;`) has no token after it.
+fn is_accessor_header(header: &str) -> bool {
+    let tokens: Vec<&str> = assignment_left(header).split_whitespace().collect();
+    tokens
+        .iter()
+        .enumerate()
+        .any(|(index, token)| matches!(*token, "get" | "set") && index + 1 < tokens.len())
 }
 
 fn declared_names(header: &str, require_type: bool) -> Vec<String> {
@@ -151,11 +300,18 @@ fn declared_names(header: &str, require_type: bool) -> Vec<String> {
     let mut names = Vec::new();
     for (index, segment) in segments.into_iter().enumerate() {
         let left = assignment_left(segment).trim();
-        if left.contains('(') {
-            continue;
-        }
-        let Some(candidate) = left.split_whitespace().last() else {
-            continue;
+        let candidate = if left.contains('(') {
+            // Parentheses are only a declarator when they belong to the variable's type: a function
+            // type (`void Function(int) onTap`) or a record type (`(int, int) point`).
+            let Some(name) = function_typed_declarator(left) else {
+                continue;
+            };
+            name
+        } else {
+            let Some(candidate) = left.split_whitespace().last() else {
+                continue;
+            };
+            candidate
         };
         let candidate = candidate.trim_start_matches(['?', '!']);
         if !is_identifier(candidate) {
@@ -167,6 +323,46 @@ fn declared_names(header: &str, require_type: bool) -> Vec<String> {
         names.push(candidate.to_string());
     }
     names
+}
+
+/// The declared name of a variable whose type is a function type or a record type, such as
+/// `void Function(int)? onTap` or `(int, int) point`.
+///
+/// Any other text with parentheses is a call or a statement rather than a declaration, so it yields
+/// no name.
+fn function_typed_declarator(left: &str) -> Option<&str> {
+    if !(left.starts_with('(') || contains_function_type(left)) {
+        return None;
+    }
+    let mut depth = 0usize;
+    let mut last_close = None;
+    for (index, byte) in left.bytes().enumerate() {
+        match byte {
+            b'(' => depth += 1,
+            b')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    last_close = Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    let after = left[last_close? + 1..].trim_start_matches('?').trim();
+    is_identifier(after).then_some(after)
+}
+
+/// Whether `text` names a function type: the word `Function` followed by a parameter list, with or
+/// without type arguments in between.
+fn contains_function_type(text: &str) -> bool {
+    text.match_indices("Function").any(|(index, word)| {
+        let standalone = text[..index]
+            .bytes()
+            .next_back()
+            .is_none_or(|byte| !is_identifier_continue(byte));
+        let next = text[index + word.len()..].trim_start().bytes().next();
+        standalone && matches!(next, Some(b'(' | b'<'))
+    })
 }
 
 fn split_top_level_commas(value: &str) -> Vec<&str> {

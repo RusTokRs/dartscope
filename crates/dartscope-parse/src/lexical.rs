@@ -134,4 +134,74 @@ mod tests {
         );
         assert!(mask.code.contains("PlatformApi;"), "{}", mask.code);
     }
+
+    /// Masks `literal` inside `before` + literal + `after` and checks that exactly the literal was
+    /// blanked, that nothing was reported, and that the code after it is intact.
+    fn assert_literal_is_masked(literal: &str) {
+        let source = format!("var a = {literal}; class After {{}}");
+        let mask = mask_non_code(&source);
+        // Masking blanks every byte except line breaks, which keep the line structure.
+        let blanked: String = literal
+            .chars()
+            .map(|ch| if matches!(ch, '\n' | '\r') { ch } else { ' ' })
+            .collect();
+        let expected = format!("var a = {blanked}; class After {{}}");
+        assert_eq!(mask.code, expected, "source: {source}");
+        assert!(mask.diagnostics.is_empty(), "{:?}", mask.diagnostics);
+    }
+
+    #[test]
+    fn interpolation_may_contain_quotes_of_the_enclosing_string() {
+        assert_literal_is_masked(r#"'${x.replaceAll("'", '')}'"#);
+        assert_literal_is_masked(r#"'a ${b['c']} d'"#);
+        assert_literal_is_masked(r#""${items.join(", ")}""#);
+    }
+
+    #[test]
+    fn interpolation_nests_strings_braces_and_comments() {
+        assert_literal_is_masked(r#"'${a ? "x${c}y" : 'z'} tail'"#);
+        assert_literal_is_masked(r#"'${ {1: 2}[1] } ${ list.map((e) { return e; }).join() }'"#);
+        assert_literal_is_masked("'${a /* } ' */ + b}'");
+        assert_literal_is_masked(r#"'${r'}' + "\\"}'"#);
+    }
+
+    #[test]
+    fn triple_quoted_interpolation_may_span_lines() {
+        assert_literal_is_masked("'''a ${\n  b\n} c'''");
+        assert_literal_is_masked("'''${x.join(\"'''\")} tail'''");
+    }
+
+    #[test]
+    fn escaped_and_raw_dollar_braces_are_plain_text() {
+        assert_literal_is_masked(r#"'\${x'"#);
+        assert_literal_is_masked("r'${x'");
+        assert_literal_is_masked(r#"r'${"'"#);
+    }
+
+    #[test]
+    fn an_unclosed_interpolation_ends_the_literal_at_the_end_of_the_line() {
+        let mask = mask_non_code("var a = '${ foo;\nclass After {}\n");
+        assert_eq!(mask.diagnostics.len(), 1, "{:?}", mask.diagnostics);
+        assert_eq!(mask.diagnostics[0].code, "unterminated_string");
+        assert!(mask.code.contains("class After {}"), "{}", mask.code);
+    }
+
+    #[test]
+    fn a_single_quoted_interpolation_never_crosses_a_line() {
+        let mask = mask_non_code("var a = '${\nfoo}';\nclass After {}\n");
+        assert_eq!(mask.diagnostics.len(), 2, "{:?}", mask.diagnostics);
+        assert!(mask.code.contains("class After {}"), "{}", mask.code);
+    }
+
+    #[test]
+    fn adversarial_interpolation_openers_stay_bounded() {
+        // None of these closes, so every `${` costs one bounded attempt and nothing is retried
+        // recursively; the call must simply return.
+        for pattern in ["'${", "'''${ {", "'${'${\n", "\"${'${\"${", "'${/*"] {
+            let source = pattern.repeat(20_000);
+            let _lines = crate::source_lines::LineIndexScope::enter(&source);
+            let mask = mask_non_code(&source);
+            assert_eq!(mask.code.len(), source.len());
+        }
+    }
 }

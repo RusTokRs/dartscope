@@ -38,6 +38,14 @@ pub(crate) fn parse_pubspec_configuration(input: PubspecInput) -> PubspecConfigu
 }
 
 impl Node {
+    /// Whether the node is an empty or explicitly null YAML scalar (`key:`, `key: ~`, `key: null`).
+    fn is_null(&self) -> bool {
+        matches!(
+            &self.kind,
+            NodeKind::Scalar(value) if matches!(value.as_str(), "" | "~" | "null" | "Null" | "NULL")
+        )
+    }
+
     fn scalar_value(&self) -> Option<&str> {
         match &self.kind {
             NodeKind::Scalar(value) => Some(value),
@@ -100,6 +108,10 @@ fn parse_flutter(
     path: &str,
     analysis: &mut PubspecConfigurationAnalysis,
 ) {
+    // `flutter:` with nothing under it is a null section, which the Flutter tool treats as empty.
+    if flutter.value.is_null() {
+        return;
+    }
     let Some(entries) = flutter.value.mapping() else {
         push_error(
             analysis,

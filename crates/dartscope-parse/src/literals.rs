@@ -55,6 +55,12 @@ pub(crate) fn string_start(bytes: &[u8], index: usize) -> Option<(usize, u8, boo
     Some((content_start, quote, triple, raw))
 }
 
+/// Longest `${...}` expression that is scanned as one unit. A longer or unclosed interpolation is not
+/// followed, which bounds the work a malformed literal can cost.
+const MAX_INTERPOLATION_BYTES: usize = 4096;
+/// Deepest nesting of strings inside interpolations that is followed.
+const MAX_INTERPOLATION_DEPTH: usize = 8;
+
 /// Consumes a Dart string literal that starts at `content_start`.
 ///
 /// Returns `(next_index, terminated)`. `next_index` is the byte after the
@@ -62,12 +68,28 @@ pub(crate) fn string_start(bytes: &[u8], index: usize) -> Option<(usize, u8, boo
 /// Triple-quoted strings may span newlines; single-quoted strings are
 /// unterminated when a newline is hit. Escapes are honoured only for
 /// non-raw strings.
+///
+/// A `${...}` interpolation in a non-raw string is skipped as a whole, so quotes inside it
+/// (`'${items.join(", ")}'`, `'${x.replaceAll("'", '')}'`) do not end the literal. An interpolation of a
+/// single-quoted string must close on the line it opens on; one that does not close, or is longer than
+/// `MAX_INTERPOLATION_BYTES`, leaves the literal unterminated at the end of that line.
 pub(crate) fn consume_string(
+    bytes: &[u8],
+    index: usize,
+    quote: u8,
+    triple: bool,
+    raw: bool,
+) -> (usize, bool) {
+    consume_string_nested(bytes, index, quote, triple, raw, 0)
+}
+
+fn consume_string_nested(
     bytes: &[u8],
     mut index: usize,
     quote: u8,
     triple: bool,
     raw: bool,
+    depth: usize,
 ) -> (usize, bool) {
     while index < bytes.len() {
         if triple && bytes[index..].starts_with(&[quote, quote, quote]) {
@@ -79,13 +101,95 @@ pub(crate) fn consume_string(
         if !triple && matches!(bytes[index], b'\n' | b'\r') {
             return (index, false);
         }
-        if !raw && bytes[index] == b'\\' && index + 1 < bytes.len() {
-            index += 2;
-        } else {
-            index += 1;
+        if !raw {
+            if bytes[index] == b'\\' && index + 1 < bytes.len() {
+                index += 2;
+                continue;
+            }
+            if bytes[index] == b'$' && bytes.get(index + 1) == Some(&b'{') {
+                match consume_interpolation(bytes, index + 2, !triple, depth) {
+                    Some(next) => {
+                        index = next;
+                        continue;
+                    }
+                    // A failure inside a nested literal fails the interpolation that contains it.
+                    None if depth > 0 => return (index, false),
+                    None if !triple => return (line_end(bytes, index), false),
+                    // A triple-quoted literal reads an unclosed `${` as plain text.
+                    None => {}
+                }
+            }
         }
+        index += 1;
     }
     (index, false)
+}
+
+/// Consumes the expression of a `${...}` interpolation whose content starts at `index`.
+///
+/// Returns the index after the closing brace, or `None` when the interpolation is not closed within
+/// `MAX_INTERPOLATION_BYTES` (or, in a single-quoted literal, on the same line) or holds an
+/// unterminated nested string. Nested strings, comments, and braces are skipped as units.
+fn consume_interpolation(
+    bytes: &[u8],
+    mut index: usize,
+    single_line: bool,
+    depth: usize,
+) -> Option<usize> {
+    if depth >= MAX_INTERPOLATION_DEPTH {
+        return None;
+    }
+    let limit = bytes.len().min(index.saturating_add(MAX_INTERPOLATION_BYTES));
+    let window = &bytes[..limit];
+    let mut braces = 0usize;
+    while index < limit {
+        let byte = window[index];
+        if single_line && matches!(byte, b'\n' | b'\r') {
+            return None;
+        }
+        if let Some((content_start, quote, triple, raw)) = string_start(window, index) {
+            let (next, terminated) =
+                consume_string_nested(window, content_start, quote, triple, raw, depth + 1);
+            if !terminated {
+                return None;
+            }
+            index = next;
+            continue;
+        }
+        match byte {
+            b'{' => braces += 1,
+            b'}' => {
+                if braces == 0 {
+                    return Some(index + 1);
+                }
+                braces -= 1;
+            }
+            b'/' if window.get(index + 1) == Some(&b'/') => {
+                while index < limit && !matches!(window[index], b'\n' | b'\r') {
+                    index += 1;
+                }
+                continue;
+            }
+            b'/' if window.get(index + 1) == Some(&b'*') => {
+                let offset = window[index + 2..]
+                    .windows(2)
+                    .position(|pair| pair == b"*/")?;
+                index += offset + 4;
+                continue;
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    None
+}
+
+/// Index of the first line break at or after `index`, or the end of input.
+fn line_end(bytes: &[u8], index: usize) -> usize {
+    bytes[index..]
+        .iter()
+        .position(|byte| matches!(byte, b'\n' | b'\r'))
+        .map_or(bytes.len(), |offset| index + offset)
 }
 
 // ---------------------------------------------------------------------------

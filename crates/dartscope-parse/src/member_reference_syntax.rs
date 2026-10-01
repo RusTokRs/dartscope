@@ -1,3 +1,4 @@
+use crate::declarations::callable_name_range;
 use crate::identifiers::{is_identifier_continue, is_identifier_start};
 use dartscope_core::{DartDeclaration, DartDeclarationKind, SourceSpan};
 
@@ -17,12 +18,12 @@ pub(crate) fn declaration_name_range(
         DartDeclarationKind::Setter => {
             name_after_keyword(masked_source, span.byte_start, header_end, "set")
         }
-        DartDeclarationKind::Field => field_name_range(
-            masked_source,
-            span.byte_start,
-            header_end,
-            &declaration.name,
-        ),
+        DartDeclarationKind::Field => {
+            leading_name_range(masked_source, span.byte_start, header_end, &declaration.name)
+                .or_else(|| {
+                    field_name_range(masked_source, span.byte_start, header_end, &declaration.name)
+                })
+        }
         DartDeclarationKind::Operator => operator_name_range(
             masked_source,
             span.byte_start,
@@ -44,6 +45,11 @@ pub(crate) fn declaration_is_static(
     name_start: usize,
 ) -> bool {
     let span = declaration_span(declaration);
+    if declaration.kind == DartDeclarationKind::Field && name_start == span.byte_start {
+        // An enum constant is the only field that begins with its own name, and it is implicitly
+        // static: it is reached through the enum type (`Color.red`).
+        return true;
+    }
     let bytes = masked_source.as_bytes();
     let mut at = span.byte_start;
     while at < name_start.min(bytes.len()) {
@@ -72,10 +78,40 @@ pub(crate) fn declaration_span(declaration: &DartDeclaration) -> &SourceSpan {
         .unwrap_or(&declaration.span)
 }
 
+/// Range of the method name in a header such as `R map<R>(R value)` or `void Function(int) build()`:
+/// the identifier before the first parameter list that is not a function type's, so neither the
+/// type parameter of a generic method nor `Function` is mistaken for the name.
 fn method_name_range(source: &str, start: usize, end: usize) -> Option<(usize, usize)> {
+    let header = source.get(start..end.min(source.len()))?;
+    callable_name_range(header).map(|(from, to)| (start + from, start + to))
+}
+
+/// The range of `name` when a field declaration begins with it, as an enum constant does
+/// (`mercury(1)`, `earth<int>(3)`). Any other field has a modifier or a type in front of its name,
+/// so a first token that is followed by another identifier is a type, not the name.
+fn leading_name_range(
+    source: &str,
+    start: usize,
+    end: usize,
+    name: &str,
+) -> Option<(usize, usize)> {
     let bytes = source.as_bytes();
-    let paren = (start..end.min(bytes.len())).find(|index| bytes[*index] == b'(')?;
-    last_identifier_range(source, start, paren)
+    let end = end.min(bytes.len());
+    let name_end = start.checked_add(name.len())?;
+    if name_end > end || source.get(start..name_end) != Some(name) {
+        return None;
+    }
+    if bytes
+        .get(name_end)
+        .is_some_and(|byte| is_identifier_continue(*byte))
+    {
+        return None;
+    }
+    let next = skip_whitespace(bytes, name_end);
+    if next < end && is_identifier_start(bytes[next]) {
+        return None;
+    }
+    Some((start, name_end))
 }
 
 fn name_after_keyword(

@@ -80,6 +80,14 @@ pub(crate) fn extension_type_declaration_name(trimmed: &str) -> Option<String> {
 /// declarations belong to [`extension_type_declaration_name`].
 pub(crate) fn extension_declaration_name(trimmed: &str) -> Option<String> {
     let rest = trimmed.trim_start().strip_prefix("extension")?;
+    // `extension<T> on T { ... }` is an unnamed extension with type parameters.
+    if rest.starts_with('<') {
+        return skip_angle_group(rest)?
+            .trim_start()
+            .strip_prefix("on")
+            .filter(|tail| tail.starts_with(char::is_whitespace))
+            .map(|_| String::new());
+    }
     if !rest.starts_with(char::is_whitespace) {
         return None;
     }
@@ -90,29 +98,134 @@ pub(crate) fn extension_declaration_name(trimmed: &str) -> Option<String> {
     }
 }
 
+/// Returns the text after the `<...>` group that `text` starts with, nested groups included.
+fn skip_angle_group(text: &str) -> Option<&str> {
+    let mut depth = 0usize;
+    for (index, byte) in text.bytes().enumerate() {
+        match byte {
+            b'<' => depth += 1,
+            b'>' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(&text[index + 1..]);
+                }
+            }
+            b'(' | b')' | b'{' | b'}' | b';' => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
 pub(crate) fn name_after_keyword(trimmed: &str, keyword: &str) -> Option<String> {
     let rest = trimmed.strip_prefix(keyword)?.trim_start();
     next_identifier(rest)
 }
 
+/// Byte index of the first whole-word `keyword` in `text` that is not inside type arguments or
+/// parentheses: preceded and followed by whitespace, so a keyword that starts a continuation line
+/// (`\non Widget {`) is found like one in the middle of a line, while the `extends` of a type
+/// parameter bound (`class A<T extends B> extends C`) is skipped.
+fn keyword_index(text: &str, keyword: &str) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let keyword = keyword.as_bytes();
+    let mut depth = 0usize;
+    for (index, byte) in bytes.iter().copied().enumerate() {
+        match byte {
+            b'<' | b'(' => depth += 1,
+            b'>' | b')' => depth = depth.saturating_sub(1),
+            _ if depth == 0
+                && bytes[index..].starts_with(keyword)
+                && index > 0
+                && bytes[index - 1].is_ascii_whitespace()
+                && bytes
+                    .get(index + keyword.len())
+                    .is_some_and(u8::is_ascii_whitespace) =>
+            {
+                return Some(index);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 pub(crate) fn value_after_keyword(trimmed: &str, keyword: &str) -> Option<String> {
-    let marker = format!(" {keyword} ");
-    let index = trimmed.find(&marker)?;
-    next_qualified_identifier(&trimmed[index + marker.len()..])
+    let index = keyword_index(trimmed, keyword)?;
+    next_qualified_identifier(trimmed[index + keyword.len()..].trim_start())
 }
 
 pub(crate) fn values_after_keyword(trimmed: &str, keyword: &str) -> Vec<String> {
-    let marker = format!(" {keyword} ");
-    let Some(index) = trimmed.find(&marker) else {
+    let Some(index) = keyword_index(trimmed, keyword) else {
         return Vec::new();
     };
-    trimmed[index + marker.len()..]
+    let clause = trimmed[index + keyword.len()..]
         .split(['{', '('])
         .next()
-        .unwrap_or_default()
-        .split(',')
+        .unwrap_or_default();
+    split_outside_type_arguments(clause)
+        .into_iter()
         .filter_map(|part| next_qualified_identifier(part.trim()))
         .collect()
+}
+
+/// Splits a clause such as `A<K, V>, B` at the commas that are not inside type arguments.
+fn split_outside_type_arguments(clause: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    for (index, byte) in clause.bytes().enumerate() {
+        match byte {
+            b'<' => depth += 1,
+            b'>' => depth = depth.saturating_sub(1),
+            b',' if depth == 0 => {
+                parts.push(&clause[start..index]);
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&clause[start..]);
+    parts
+}
+
+/// The superclass of a mixin application (`class A = B with M;`), which has no `extends` clause.
+pub(crate) fn mixin_application_superclass(header: &str) -> Option<String> {
+    let (_, after) = header.split_once('=')?;
+    next_qualified_identifier(after.trim_start())
+}
+
+/// Names of the type parameters an `extension` declares (`extension X<T extends Foo, U> on ...`).
+///
+/// The list sits between the `extension` keyword (or the extension name) and the `on` keyword.
+pub(crate) fn extension_type_parameters(header: &str) -> Vec<String> {
+    let Some(rest) = header.trim_start().strip_prefix("extension") else {
+        return Vec::new();
+    };
+    let head = keyword_index(rest, "on").map_or(rest, |index| &rest[..index]);
+    let Some(open) = head.find('<') else {
+        return Vec::new();
+    };
+    let mut depth = 0usize;
+    let mut start = open + 1;
+    let mut names = Vec::new();
+    for (index, byte) in head.bytes().enumerate().skip(open) {
+        match byte {
+            b'<' => depth += 1,
+            b'>' | b',' if depth == 1 => {
+                if let Some(name) = leading_identifier(head[start..index].trim()) {
+                    names.push(name.to_string());
+                }
+                start = index + 1;
+                if byte == b'>' {
+                    break;
+                }
+            }
+            b'>' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    names
 }
 
 pub(crate) fn next_identifier(input: &str) -> Option<String> {
@@ -149,9 +262,72 @@ pub(crate) fn top_level_function(trimmed: &str, indent: usize) -> Option<String>
     if trimmed.starts_with("if ") || trimmed.starts_with("for ") || trimmed.starts_with("while ") {
         return None;
     }
-    let before_paren = trimmed.split_once('(')?.0.trim();
-    let name = before_paren.split_whitespace().last()?;
-    is_identifier(name).then_some(name.to_string())
+    callable_name(trimmed)
+}
+
+/// Name of the callable whose parameter list opens first in `header`.
+///
+/// A header can carry parentheses before the declared parameter list: a function type in return
+/// position (`void Function(int) make()`) and a record type (`(int, int) pair()`) both come first.
+/// Neither is a declaration, so the name is the identifier before the first parameter list that is
+/// not preceded by `Function` and not a bare group. A type-parameter list after the name
+/// (`first<T>(...)`) is not part of the name.
+pub(crate) fn callable_name(header: &str) -> Option<String> {
+    callable_name_range(header).map(|(start, end)| header[start..end].to_string())
+}
+
+/// Byte range of [`callable_name`] inside `header`.
+pub(crate) fn callable_name_range(header: &str) -> Option<(usize, usize)> {
+    let mut depth = 0usize;
+    for (index, byte) in header.bytes().enumerate() {
+        match byte {
+            b'(' => {
+                if depth == 0
+                    && let Some((start, end)) = name_range_before_parameters(&header[..index])
+                    && &header[start..end] != "Function"
+                {
+                    return Some((start, end));
+                }
+                depth += 1;
+            }
+            b')' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Range of the identifier that ends `prefix` once a trailing type-parameter list is removed.
+fn name_range_before_parameters(prefix: &str) -> Option<(usize, usize)> {
+    let end = strip_type_parameters(prefix.trim_end()).len();
+    let stripped = &prefix[..end];
+    let start = stripped
+        .char_indices()
+        .rev()
+        .find(|&(_, ch)| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '$'))
+        .map_or(0, |(index, ch)| index + ch.len_utf8());
+    is_identifier(&stripped[start..]).then_some((start, end))
+}
+
+/// Removes a trailing `<...>` (nested angle brackets included) from `text`.
+fn strip_type_parameters(text: &str) -> &str {
+    if !text.ends_with('>') {
+        return text;
+    }
+    let mut depth = 0usize;
+    for (index, byte) in text.bytes().enumerate().rev() {
+        match byte {
+            b'>' => depth += 1,
+            b'<' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return text[..index].trim_end();
+                }
+            }
+            _ => {}
+        }
+    }
+    text
 }
 
 pub(crate) fn variable_name_after_keyword(trimmed: &str, keyword: &str) -> Option<String> {

@@ -6,17 +6,18 @@ mod syntax;
 use dartscope_core::{DartDeclaration, DartDeclarationKind, DartDiagnostic, SourceSpan};
 
 use self::scanner::{
-    EndMode, annotations_end, body_range, brace_depth_at, declaration_end, declaration_header,
+    EndMode, annotations_end, body_range, declaration_end, declaration_header, depth_at,
     depth_within_line, enum_member_start, first_code_byte, line_brace_depths, next_code_byte,
     source_line_text,
 };
 use self::syntax::{
-    SymbolIdAllocator, has_primary_constructor, is_callable_kind, is_concise_constructor,
-    is_directive, is_type_kind, kind_label, local_variable_names, member_headers,
-    top_level_variables, type_header,
+    SymbolIdAllocator, callable_end_mode, enum_constants, has_primary_constructor,
+    is_callable_kind, is_concise_constructor, is_directive, is_type_kind, kind_label,
+    local_variable_names, member_headers, top_level_accessor, top_level_variables, type_header,
+    type_relations,
 };
-use crate::declarations::{top_level_function, value_after_keyword, values_after_keyword};
-use crate::source_lines::{source_lines, span_for_byte_range};
+use crate::declarations::top_level_function;
+use crate::source_lines::{line_span_for_byte, source_lines, span_for_byte_range};
 
 #[derive(Debug, Clone)]
 struct DeclarationRecord {
@@ -208,23 +209,14 @@ fn top_level_records(
         let symbol_id = ids.allocate(format!("{path}::{}:{name}", kind_label(kind)));
         let body = body_range(masked, at, end);
         let full_span = span_for_byte_range(source, at, end);
+        let relations = type_relations(header, kind);
         let declaration = DartDeclaration {
             name: name.clone(),
             kind,
             span: anchor.clone(),
-            extends: match kind {
-                DartDeclarationKind::Class => value_after_keyword(header, "extends"),
-                DartDeclarationKind::Extension => value_after_keyword(header, "on"),
-                _ => None,
-            },
-            mixes_in: if kind == DartDeclarationKind::Class {
-                values_after_keyword(header, "with")
-            } else if kind == DartDeclarationKind::Mixin {
-                // `mixin M on A, B` — treat `on` constraints as ancestors
-                values_after_keyword(header, "on")
-            } else {
-                Vec::new()
-            },
+            extends: relations.extends,
+            mixes_in: relations.mixes_in,
+            on_types: relations.on_types,
             symbol_id: Some(symbol_id),
             parent_symbol_id: None,
             declaration_span: Some(full_span),
@@ -254,6 +246,7 @@ fn top_level_records(
                         span: anchor.clone(),
                         extends: None,
                         mixes_in: Vec::new(),
+                        on_types: Vec::new(),
                         symbol_id: Some(symbol_id),
                         parent_symbol_id: None,
                         declaration_span: Some(full_span.clone()),
@@ -265,15 +258,19 @@ fn top_level_records(
         return Some((records, end));
     }
 
-    let name = top_level_function(header.trim(), indent)?;
-    let end = declaration_end(masked, at, EndMode::BodyOrSemicolon).unwrap_or(line.byte_end());
-    let symbol_id = ids.allocate(format!("{path}::function:{name}"));
+    let (name, kind) = top_level_function(header.trim(), indent)
+        .map(|name| (name, DartDeclarationKind::Function))
+        .or_else(|| top_level_accessor(header.trim(), indent))?;
+    let end =
+        declaration_end(masked, at, callable_end_mode(header)).unwrap_or(line.byte_end());
+    let symbol_id = ids.allocate(format!("{path}::{}:{name}", kind_label(kind)));
     let declaration = DartDeclaration {
         name,
-        kind: DartDeclarationKind::Function,
+        kind,
         span: anchor,
         extends: None,
         mixes_in: Vec::new(),
+        on_types: Vec::new(),
         symbol_id: Some(symbol_id),
         parent_symbol_id: None,
         declaration_span: Some(span_for_byte_range(source, at, end)),
@@ -301,7 +298,7 @@ fn collect_members(
         return;
     };
     let owner_id = owner.declaration.symbol_id.as_deref().unwrap_or_default();
-    let owner_depth = brace_depth_at(masked, body_start) + 1;
+    let owner_depth = depth_at(masked, lines, line_depths, body_start) + 1;
     let member_start = if owner.declaration.kind == DartDeclarationKind::Enum {
         enum_member_start(masked, body_start, body_end, owner_depth).unwrap_or(body_end)
     } else {
@@ -310,7 +307,34 @@ fn collect_members(
     let mut cursor = member_start;
     let mut ids = SymbolIdAllocator::default();
 
-    for (index, line) in lines.iter().copied().enumerate() {
+    if owner.declaration.kind == DartDeclarationKind::Enum {
+        for constant in enum_constants(masked, body_start, body_end) {
+            let symbol_id = ids.allocate(format!("{owner_id}/field:{}", constant.name));
+            records.push(DeclarationRecord {
+                declaration: DartDeclaration {
+                    name: constant.name,
+                    kind: DartDeclarationKind::Field,
+                    span: line_span_for_byte(source, constant.start),
+                    extends: None,
+                    mixes_in: Vec::new(),
+                    on_types: Vec::new(),
+                    symbol_id: Some(symbol_id),
+                    parent_symbol_id: Some(owner_id.to_string()),
+                    declaration_span: Some(span_for_byte_range(
+                        source,
+                        constant.start,
+                        constant.end,
+                    )),
+                },
+                body: None,
+            });
+        }
+    }
+
+    // Lines that end before the first member cannot contain one; skipping them with a binary
+    // search keeps the total work linear when a file declares many types.
+    let first_line = lines.partition_point(|line| line.byte_end() <= cursor);
+    for (index, line) in lines.iter().copied().enumerate().skip(first_line) {
         if cursor >= body_end {
             break;
         }
@@ -382,6 +406,7 @@ fn collect_members(
                     ),
                     extends: None,
                     mixes_in: Vec::new(),
+                    on_types: Vec::new(),
                     symbol_id: Some(symbol_id),
                     parent_symbol_id: Some(owner_id.to_string()),
                     declaration_span: Some(full_span.clone()),
@@ -411,7 +436,8 @@ fn collect_locals(
     let mut cursor = body_start + 1;
     let mut ids = SymbolIdAllocator::default();
 
-    for line in lines.iter().copied() {
+    let first_line = lines.partition_point(|line| line.byte_end() <= cursor);
+    for line in lines.iter().copied().skip(first_line) {
         if cursor >= body_end {
             break;
         }
@@ -457,6 +483,7 @@ fn collect_locals(
                         ),
                         extends: None,
                         mixes_in: Vec::new(),
+                        on_types: Vec::new(),
                         symbol_id: Some(symbol_id),
                         parent_symbol_id: Some(owner_id.to_string()),
                         declaration_span: Some(full_span.clone()),

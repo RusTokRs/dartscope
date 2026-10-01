@@ -98,6 +98,7 @@ fn populated_v1_golden_contracts_match_public_models() {
             },
             extends: None,
             mixes_in: Vec::new(),
+            on_types: Vec::new(),
             symbol_id: Some("lib/main.dart::class:MyClass".to_string()),
             parent_symbol_id: None,
             declaration_span: Some(SourceSpan {

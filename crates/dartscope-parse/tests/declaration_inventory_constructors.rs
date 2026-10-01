@@ -124,6 +124,7 @@ fn ordinary_type_headers_never_report_unsupported_constructor_syntax() {
             .into_iter()
             .map(|(name, _)| name)
             .collect::<Vec<_>>(),
-        vec!["A", "B", "C", "M1", "M2", "E", "J", "K", "L"]
+        // `a` is the constant of `enum E`, which is a field of the enum.
+        vec!["A", "B", "C", "M1", "M2", "E", "a", "J", "K", "L"]
     );
 }

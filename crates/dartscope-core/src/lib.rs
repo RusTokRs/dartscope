@@ -366,6 +366,14 @@ pub struct DartDeclaration {
     pub span: SourceSpan,
     pub extends: Option<String>,
     pub mixes_in: Vec<String>,
+    /// Types named by an `on` clause: the superclass constraints of a `mixin` or the extended type
+    /// of an `extension`. Empty for every other declaration, and for an extension whose `on` type is
+    /// one of its own type parameters (`extension X<T> on T` applies to any receiver).
+    ///
+    /// `extends` and `mixes_in` describe class headers only (`extends` / `with`); an `on` clause is
+    /// reported here instead so it is never mistaken for a base class or a mixed-in type.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub on_types: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub symbol_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

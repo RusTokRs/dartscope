@@ -9,8 +9,13 @@ const ALIAS_MESSAGE: &str =
     "YAML anchors, aliases, and merge keys are not supported by the pubspec parser";
 
 pub(crate) fn parse_marked_yaml(source: &str) -> MarkedYamlDocument {
-    let mut receiver = Receiver::new(source);
-    let mut parser = Parser::new_from_str(source);
+    // The YAML scanner does not skip a byte-order mark, so it would become part of the first key and
+    // hide `name:`. The scanner reads the text after it; marker positions are shifted back by the
+    // mark's one character so spans still point into the original source.
+    let content = source.strip_prefix('\u{feff}').unwrap_or(source);
+    let skipped_chars = usize::from(content.len() != source.len());
+    let mut receiver = Receiver::new(source, skipped_chars);
+    let mut parser = Parser::new_from_str(content);
     if let Err(error) = parser.load(&mut receiver, true) {
         receiver.scan_error(error);
     }
@@ -76,6 +81,8 @@ enum Frame {
 struct Receiver<'a> {
     source: &'a str,
     byte_offsets: Vec<usize>,
+    /// Characters of `source` that precede the text handed to the YAML scanner.
+    skipped_chars: usize,
     frames: Vec<Frame>,
     root: Option<Node>,
     diagnostics: Vec<DartDiagnostic>,
@@ -84,7 +91,7 @@ struct Receiver<'a> {
 }
 
 impl<'a> Receiver<'a> {
-    fn new(source: &'a str) -> Self {
+    fn new(source: &'a str, skipped_chars: usize) -> Self {
         let mut byte_offsets = source
             .char_indices()
             .map(|(index, _)| index)
@@ -93,6 +100,7 @@ impl<'a> Receiver<'a> {
         Self {
             source,
             byte_offsets,
+            skipped_chars,
             frames: Vec::new(),
             root: None,
             diagnostics: Vec::new(),
@@ -103,7 +111,7 @@ impl<'a> Receiver<'a> {
 
     fn byte_index(&self, mark: Marker) -> usize {
         self.byte_offsets
-            .get(mark.index())
+            .get(mark.index() + self.skipped_chars)
             .copied()
             .unwrap_or(self.source.len())
     }

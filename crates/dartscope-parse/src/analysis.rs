@@ -24,9 +24,11 @@ use crate::namespace::{directive_uri, extract_namespace_directives};
 use crate::operator_references::collect_operator_references;
 use crate::property_references::collect_property_references;
 use crate::pubspec::parse_pubspec;
-use crate::source_lines::{SourceLine, attach_diagnostic_paths, source_lines};
+use crate::source_lines::{LineIndexScope, SourceLine, attach_diagnostic_paths, source_lines};
 
 pub(crate) fn analyze_file_heuristic(input: DartFileInput) -> DartFileAnalysis {
+    // Build the line table of this file once instead of once per span.
+    let _lines = LineIndexScope::enter(&input.source);
     let lexical = mask_non_code(&input.source);
     let mut state = FileAnalysisState::new(&input, &lexical.code, lexical.diagnostics);
     for (source_line, code_line) in source_lines(&input.source)
@@ -38,15 +40,15 @@ pub(crate) fn analyze_file_heuristic(input: DartFileInput) -> DartFileAnalysis {
     state.finish()
 }
 
-struct FileAnalysisState {
+struct FileAnalysisState<'a> {
     analysis: DartFileAnalysis,
-    source: String,
+    source: &'a str,
     masked_source: String,
 }
 
-impl FileAnalysisState {
+impl<'a> FileAnalysisState<'a> {
     fn new(
-        input: &DartFileInput,
+        input: &'a DartFileInput,
         masked_source: &str,
         lexical_diagnostics: Vec<DartDiagnostic>,
     ) -> Self {
@@ -63,7 +65,7 @@ impl FileAnalysisState {
 
         Self {
             analysis,
-            source: input.source.clone(),
+            source: &input.source,
             masked_source: masked_source.to_string(),
         }
     }
@@ -137,7 +139,7 @@ impl FileAnalysisState {
             });
         }
 
-        let constant = string_constant_at(&self.source, source_trimmed, indent, source_start);
+        let constant = string_constant_at(self.source, source_trimmed, indent, source_start);
         if let Some(constant) = constant {
             self.analysis.string_constants.push(constant);
         }
@@ -145,10 +147,10 @@ impl FileAnalysisState {
 
     fn finish(mut self) -> DartFileAnalysis {
         let (declarations, diagnostics) =
-            collect_declaration_inventory(&self.analysis.path, &self.source, &self.masked_source);
+            collect_declaration_inventory(&self.analysis.path, self.source, &self.masked_source);
         self.analysis.declarations = declarations;
         self.analysis.invocations = collect_invocations(
-            &self.source,
+            self.source,
             &self.masked_source,
             &self.analysis.declarations,
         );
@@ -267,6 +269,7 @@ pub fn analyze_project(input: DartProjectInput) -> DartProjectAnalysis {
 pub fn analyze_file_with_references(input: DartFileInput) -> DartFileReferenceAnalysis {
     let source = input.source.clone();
     let file = analyze_file(input);
+    let _lines = LineIndexScope::enter(&source);
     let lexical = mask_non_code(&source);
     let bindings = collect_lexical_bindings(&source, &lexical.code, &file);
     let mut references = collect_identifier_references(&source, &lexical.code, &file, &bindings);
@@ -314,6 +317,7 @@ pub fn analyze_project_with_references(input: DartProjectInput) -> DartProjectRe
         let Some(source) = sources.get(&file.path) else {
             continue;
         };
+        let _lines = LineIndexScope::enter(source);
         let lexical = mask_non_code(source);
         let file_bindings = collect_lexical_bindings(source, &lexical.code, file);
         let mut file_references =

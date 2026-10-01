@@ -837,3 +837,37 @@ class Concise {
             && (item.name == "new" || item.name == "named")
     }));
 }
+
+/// Every span helper needs the line index of the text it measures. Analysing a file builds it once,
+/// so the cost grows with the file instead of with declarations times file size (a 16,000-class file
+/// used to take minutes). The count is deterministic, unlike a timing assertion.
+#[test]
+fn analyzing_a_file_builds_its_line_index_once() {
+    let mut source = String::new();
+    for index in 0..400 {
+        source.push_str(&format!(
+            "class C{index} {{\n  int field{index} = {index};\n  void method{index}() {{\n    var local = field{index};\n  }}\n}}\n"
+        ));
+    }
+
+    let before = crate::source_lines::line_table_builds();
+    let analysis = analyze_file(DartFileInput::new("lib/many.dart", source.clone()));
+    let builds = crate::source_lines::line_table_builds() - before;
+
+    assert!(
+        analysis.declarations.len() >= 1600,
+        "{} declarations",
+        analysis.declarations.len()
+    );
+    assert!(builds <= 4, "{builds} line indexes were built for one file");
+
+    let before = crate::source_lines::line_table_builds();
+    let with_references = crate::analyze_file_with_references(DartFileInput::new("lib/many.dart", source));
+    let builds = crate::source_lines::line_table_builds() - before;
+
+    assert!(!with_references.file.declarations.is_empty());
+    assert!(
+        builds <= 4,
+        "{builds} line indexes were built for one file with references"
+    );
+}

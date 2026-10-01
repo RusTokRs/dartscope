@@ -166,6 +166,25 @@ pub(super) fn brace_depth_at(source: &str, at: usize) -> usize {
         })
 }
 
+/// Returns the brace depth at `at` from the per-line depths instead of rescanning from the file start.
+///
+/// `line_depths[i]` is the depth at the start of `lines[i]`. An offset that is not inside any line
+/// (inside a line terminator or past the last line) falls back to a scan from the file start.
+pub(super) fn depth_at(
+    source: &str,
+    lines: &[SourceLine<'_>],
+    line_depths: &[usize],
+    at: usize,
+) -> usize {
+    let index = lines.partition_point(|line| line.byte_end() < at);
+    match (lines.get(index), line_depths.get(index)) {
+        (Some(line), Some(depth)) if line.byte_start <= at => {
+            depth_within_line(source, *line, *depth, at)
+        }
+        _ => brace_depth_at(source, at),
+    }
+}
+
 pub(super) fn first_code_byte(line: SourceLine<'_>, source: &str) -> usize {
     let text = &source[line.byte_start..line.byte_end()];
     line.byte_start + text.len().saturating_sub(text.trim_start().len())
