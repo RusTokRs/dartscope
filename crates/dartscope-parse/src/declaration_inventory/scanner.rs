@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use crate::source_lines::SourceLine;
 
 /// How many bytes of a statement are examined to decide whether it declares a local variable.
@@ -111,6 +113,8 @@ pub(super) fn declaration_end(source: &str, start: usize, mode: EndMode) -> Opti
     None
 }
 
+/// The scan that `Scans::body_range` makes under its budget, kept as the specification.
+#[cfg(test)]
 pub(super) fn body_range(source: &str, start: usize, end: usize) -> Option<(usize, usize)> {
     let open = first_top_level_brace(source, start, end)?;
     let close = find_matching_brace(source, open)?;
@@ -222,6 +226,116 @@ impl BraceDepths {
     }
 }
 
+/// How many bytes the unbounded scans of one file may read, per byte of the file.
+///
+/// A header or a declaration is scanned to its terminator, and the scan of a line that has none
+/// reads to the end of the file, so a file of thousands of such lines (imports without semicolons,
+/// prose, a truncated paste) is read thousands of times over. Real code reads every byte a handful
+/// of times: the scan of a type, of each member inside it and of each statement inside that. A file
+/// that exceeds the factor stops being scanned and its inventory ends there, with a warning.
+const SCAN_BUDGET_PER_BYTE: usize = 64;
+
+/// The part of the scan budget that does not depend on the size of the file.
+const SCAN_BUDGET_BASE_BYTES: usize = 1 << 20;
+
+/// The unbounded scans over one masked text, and the budget that keeps their total linear.
+pub(super) struct Scans<'a> {
+    masked: &'a str,
+    depths: BraceDepths,
+    remaining: Cell<usize>,
+    /// Where the scan that exhausted the budget started.
+    exhausted_at: Cell<Option<usize>>,
+}
+
+impl<'a> Scans<'a> {
+    pub(super) fn new(masked: &'a str) -> Self {
+        Self::with_budget(
+            masked,
+            masked
+                .len()
+                .saturating_mul(SCAN_BUDGET_PER_BYTE)
+                .saturating_add(SCAN_BUDGET_BASE_BYTES),
+        )
+    }
+
+    fn with_budget(masked: &'a str, budget: usize) -> Self {
+        Self {
+            masked,
+            depths: BraceDepths::new(masked),
+            remaining: Cell::new(budget),
+            exhausted_at: Cell::new(None),
+        }
+    }
+
+    pub(super) fn depth_at(&self, at: usize) -> usize {
+        self.depths.at(at)
+    }
+
+    /// The offset of the scan that used up the budget; every scan since has been refused.
+    pub(super) fn exhausted_at(&self) -> Option<usize> {
+        self.exhausted_at.get()
+    }
+
+    pub(super) fn is_exhausted(&self) -> bool {
+        self.exhausted_at.get().is_some()
+    }
+
+    /// Takes `bytes` out of the budget for a scan that began at `at`; `false` once it is spent.
+    fn charge(&self, at: usize, bytes: usize) -> bool {
+        match self.remaining.get().checked_sub(bytes) {
+            Some(remaining) if !self.is_exhausted() => {
+                self.remaining.set(remaining);
+                true
+            }
+            _ => {
+                self.remaining.set(0);
+                if !self.is_exhausted() {
+                    self.exhausted_at.set(Some(at));
+                }
+                false
+            }
+        }
+    }
+
+    /// The header that starts at `at`, up to its terminator or the end of the text.
+    pub(super) fn header(&self, at: usize) -> Option<&'a str> {
+        if self.is_exhausted() {
+            return None;
+        }
+        let header = declaration_header(self.masked, at)?;
+        self.charge(at, header.len()).then_some(header)
+    }
+
+    /// Where the declaration that starts at `at` ends.
+    pub(super) fn end(&self, at: usize, mode: EndMode) -> Option<usize> {
+        if self.is_exhausted() {
+            return None;
+        }
+        let end = declaration_end(self.masked, at, mode);
+        let scanned = end.unwrap_or(self.masked.len()).saturating_sub(at);
+        if self.charge(at, scanned) { end } else { None }
+    }
+
+    /// The first top-level `{` in `[at, end)` and the `}` that closes it.
+    pub(super) fn body_range(&self, at: usize, end: usize) -> Option<(usize, usize)> {
+        if self.is_exhausted() {
+            return None;
+        }
+        let open = first_top_level_brace(self.masked, at, end);
+        let to_open = open.unwrap_or_else(|| end.min(self.masked.len()));
+        if !self.charge(at, to_open.saturating_sub(at)) {
+            return None;
+        }
+        let open = open?;
+        let close = find_matching_brace(self.masked, open);
+        let to_close = close.unwrap_or(self.masked.len());
+        if !self.charge(open, to_close.saturating_sub(open)) {
+            return None;
+        }
+        Some((open, close?))
+    }
+}
+
 pub(super) fn first_code_byte(line: SourceLine<'_>, source: &str) -> usize {
     let text = &source[line.byte_start..line.byte_end()];
     line.byte_start + text.len().saturating_sub(text.trim_start().len())
@@ -280,5 +394,50 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn the_scans_return_what_the_free_functions_return_while_the_budget_lasts() {
+        let source = "class A extends B { int f() { return 1; } }\nint x = 1;\nimport 'a'\n";
+        let scans = Scans::new(source);
+        for at in 0..=source.len() + 1 {
+            assert_eq!(scans.header(at), declaration_header(source, at), "header {at}");
+            for mode in [EndMode::BodyOrSemicolon, EndMode::SemicolonOnly] {
+                assert_eq!(
+                    scans.end(at, mode),
+                    declaration_end(source, at, mode),
+                    "end {at}"
+                );
+            }
+            for end in [at, at + 5, source.len() + 3] {
+                assert_eq!(
+                    scans.body_range(at, end),
+                    body_range(source, at, end),
+                    "body {at}..{end}"
+                );
+            }
+        }
+        assert!(!scans.is_exhausted());
+    }
+
+    #[test]
+    fn lines_that_never_end_exhaust_the_budget_after_a_bounded_number_of_scans() {
+        // Each header runs to the end of the text, so reading all of them is quadratic. With the
+        // budget the scans stop being made after a few dozen, however many lines follow.
+        let source = "import 'a.dart'\n".repeat(20_000);
+        let scans = Scans::with_budget(&source, 50 * source.len());
+        let mut answered = 0usize;
+        for line in 0..20_000 {
+            if scans.header(line * 16).is_some() {
+                answered += 1;
+            }
+        }
+        assert!(scans.is_exhausted());
+        assert!((10..200).contains(&answered), "{answered} headers were answered");
+        assert_eq!(scans.exhausted_at(), Some(answered * 16));
+        assert_eq!(scans.end(0, EndMode::SemicolonOnly), None);
+        assert_eq!(scans.body_range(0, source.len()), None);
+        // Whatever was refused costs nothing more.
+        assert_eq!(scans.header(0), None);
     }
 }

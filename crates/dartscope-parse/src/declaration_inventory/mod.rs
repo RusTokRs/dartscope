@@ -6,9 +6,8 @@ mod syntax;
 use dartscope_core::{DartDeclaration, DartDeclarationKind, DartDiagnostic};
 
 use self::scanner::{
-    AnnotationRuns, BraceDepths, EndMode, STATEMENT_PROBE_BYTES, body_range, declaration_end,
-    declaration_header, declaration_header_within, enum_member_start, first_code_byte,
-    next_code_byte,
+    AnnotationRuns, EndMode, STATEMENT_PROBE_BYTES, Scans, declaration_header_within,
+    enum_member_start, first_code_byte, next_code_byte,
 };
 use self::syntax::{
     SymbolIdAllocator, callable_end_mode, enum_constants, has_primary_constructor,
@@ -31,14 +30,14 @@ pub(crate) fn collect_declaration_inventory(
     masked_source: &str,
 ) -> (Vec<DartDeclaration>, Vec<DartDiagnostic>) {
     let lines = source_lines(masked_source);
-    let depths = BraceDepths::new(masked_source);
+    let scans = Scans::new(masked_source);
     let mut diagnostics = Vec::new();
     let mut records = collect_top_level(
         path,
         source,
         masked_source,
         &lines,
-        &depths,
+        &scans,
         &mut diagnostics,
     );
 
@@ -52,7 +51,7 @@ pub(crate) fn collect_declaration_inventory(
             source,
             masked_source,
             &lines,
-            &depths,
+            &scans,
             &type_record,
             &mut records,
             &mut diagnostics,
@@ -65,7 +64,14 @@ pub(crate) fn collect_declaration_inventory(
         .cloned()
         .collect();
     for callable in callable_records {
-        collect_locals(source, masked_source, &lines, &callable, &mut records);
+        collect_locals(source, masked_source, &lines, &scans, &callable, &mut records);
+    }
+    if let Some(at) = scans.exhausted_at() {
+        diagnostics.push(DartDiagnostic::warning(
+            "declaration_scan_truncated",
+            "the declaration inventory stops here: scanning the declarations of this file would read it far more often than its size justifies, which happens when many consecutive lines have no terminator",
+            Some(line_span_for_byte(source, at)),
+        ));
     }
 
     records.sort_by(|left, right| {
@@ -98,7 +104,7 @@ fn collect_top_level(
     source: &str,
     masked: &str,
     lines: &[crate::source_lines::SourceLine<'_>],
-    depths: &BraceDepths,
+    scans: &Scans<'_>,
     diagnostics: &mut Vec<DartDiagnostic>,
 ) -> Vec<DeclarationRecord> {
     let mut records = Vec::new();
@@ -107,6 +113,9 @@ fn collect_top_level(
     let mut annotations = AnnotationRuns::new(masked.len());
 
     for line in lines.iter().copied() {
+        if scans.is_exhausted() {
+            break;
+        }
         if line.byte_end() <= cursor {
             continue;
         }
@@ -122,7 +131,7 @@ fn collect_top_level(
             .count();
         let mut at = line_start;
         while at < line.byte_end() {
-            if depths.at(at) != 0 {
+            if scans.depth_at(at) != 0 {
                 break;
             }
             // An annotation tail can share the declaration's line, and a declaration may be indented
@@ -138,11 +147,11 @@ fn collect_top_level(
             let Some((mut found, end)) = top_level_records(
                 path,
                 source,
-                masked,
                 line,
                 indent,
                 &mut ids,
                 diagnostics,
+                scans,
                 declared_at,
             ) else {
                 break;
@@ -188,16 +197,18 @@ fn skip_surplus_closer(
 fn top_level_records(
     path: &str,
     source: &str,
-    masked: &str,
     line: crate::source_lines::SourceLine<'_>,
     indent: usize,
     ids: &mut SymbolIdAllocator,
     diagnostics: &mut Vec<DartDiagnostic>,
+    scans: &Scans<'_>,
     at: usize,
 ) -> Option<(Vec<DeclarationRecord>, usize)> {
-    let header = declaration_header(masked, at)?;
+    let header = scans.header(at)?;
     if is_directive(header) {
-        let end = declaration_end(masked, at, EndMode::SemicolonOnly).unwrap_or(line.byte_end());
+        let end = scans
+            .end(at, EndMode::SemicolonOnly)
+            .unwrap_or(line.byte_end());
         return Some((Vec::new(), end));
     }
     if header.trim_start().starts_with('@') {
@@ -206,9 +217,11 @@ fn top_level_records(
     let anchor = line_span(source, line);
 
     if let Some((name, kind)) = type_header(header) {
-        let end = declaration_end(masked, at, EndMode::BodyOrSemicolon).unwrap_or(line.byte_end());
+        let end = scans
+            .end(at, EndMode::BodyOrSemicolon)
+            .unwrap_or(line.byte_end());
         let symbol_id = ids.allocate(format!("{path}::{}:{name}", kind_label(kind)));
-        let body = body_range(masked, at, end);
+        let body = scans.body_range(at, end);
         let full_span = span_for_byte_range(source, at, end);
         let relations = type_relations(header, kind);
         let declaration = DartDeclaration {
@@ -234,7 +247,9 @@ fn top_level_records(
 
     let names = top_level_variables(header.trim(), indent);
     if !names.is_empty() {
-        let end = declaration_end(masked, at, EndMode::SemicolonOnly).unwrap_or(line.byte_end());
+        let end = scans
+            .end(at, EndMode::SemicolonOnly)
+            .unwrap_or(line.byte_end());
         let full_span = span_for_byte_range(source, at, end);
         let records = names
             .into_iter()
@@ -262,7 +277,9 @@ fn top_level_records(
     let (name, kind) = top_level_function(header.trim(), indent)
         .map(|name| (name, DartDeclarationKind::Function))
         .or_else(|| top_level_accessor(header.trim(), indent))?;
-    let end = declaration_end(masked, at, callable_end_mode(header)).unwrap_or(line.byte_end());
+    let end = scans
+        .end(at, callable_end_mode(header))
+        .unwrap_or(line.byte_end());
     let symbol_id = ids.allocate(format!("{path}::{}:{name}", kind_label(kind)));
     let declaration = DartDeclaration {
         name,
@@ -278,7 +295,7 @@ fn top_level_records(
     Some((
         vec![DeclarationRecord {
             declaration,
-            body: body_range(masked, at, end),
+            body: scans.body_range(at, end),
         }],
         end,
     ))
@@ -289,7 +306,7 @@ fn collect_members(
     source: &str,
     masked: &str,
     lines: &[crate::source_lines::SourceLine<'_>],
-    depths: &BraceDepths,
+    scans: &Scans<'_>,
     owner: &DeclarationRecord,
     records: &mut Vec<DeclarationRecord>,
     diagnostics: &mut Vec<DartDiagnostic>,
@@ -298,7 +315,7 @@ fn collect_members(
         return;
     };
     let owner_id = owner.declaration.symbol_id.as_deref().unwrap_or_default();
-    let owner_depth = depths.at(body_start) + 1;
+    let owner_depth = scans.depth_at(body_start) + 1;
     let member_start = if owner.declaration.kind == DartDeclarationKind::Enum {
         enum_member_start(masked, body_start, body_end, owner_depth).unwrap_or(body_end)
     } else {
@@ -340,7 +357,7 @@ fn collect_members(
         note_visited_line();
         // Lines are in order, so once one starts at the end of the body no later line can hold a
         // member; without this check the scan of every type walks on through the rest of the file.
-        if cursor >= body_end || line.byte_start >= body_end {
+        if cursor >= body_end || line.byte_start >= body_end || scans.is_exhausted() {
             break;
         }
         if line.byte_end() <= cursor {
@@ -348,7 +365,7 @@ fn collect_members(
         }
         let mut at = first_code_byte(line, masked).max(cursor);
         while at < body_end && at < line.byte_end() {
-            if depths.at(at) != owner_depth {
+            if scans.depth_at(at) != owner_depth {
                 break;
             }
             if masked.as_bytes()[at] == b'}' {
@@ -361,7 +378,7 @@ fn collect_members(
             if declared_at >= line.byte_end() {
                 break;
             }
-            let Some(header) = declaration_header(masked, declared_at) else {
+            let Some(header) = scans.header(declared_at) else {
                 break;
             };
             let declaration_at = declared_at;
@@ -378,7 +395,8 @@ fn collect_members(
                     "concise constructor syntax requires Dart 3.13 language-version handling",
                     Some(line_span(source, line)),
                 ));
-                cursor = declaration_end(masked, declaration_at, EndMode::BodyOrSemicolon)
+                cursor = scans
+                    .end(declaration_at, EndMode::BodyOrSemicolon)
                     .unwrap_or(line.byte_end());
                 match next_code_byte(masked, cursor, line.byte_end()) {
                     Some(next) => at = next,
@@ -391,9 +409,11 @@ fn collect_members(
             let Some((_, _, mode)) = members.first() else {
                 break;
             };
-            let end = declaration_end(masked, declaration_at, *mode).unwrap_or(line.byte_end());
+            let end = scans
+                .end(declaration_at, *mode)
+                .unwrap_or(line.byte_end());
             let full_span = span_for_byte_range(source, declaration_at, end);
-            let body = body_range(masked, declaration_at, end);
+            let body = scans.body_range(declaration_at, end);
             for (name, kind, _) in members {
                 let base_id = format!("{owner_id}/{}:{name}", kind_label(kind));
                 let symbol_id = ids.allocate(base_id);
@@ -423,6 +443,7 @@ fn collect_locals(
     source: &str,
     masked: &str,
     lines: &[crate::source_lines::SourceLine<'_>],
+    scans: &Scans<'_>,
     owner: &DeclarationRecord,
     records: &mut Vec<DeclarationRecord>,
 ) {
@@ -439,7 +460,7 @@ fn collect_locals(
         #[cfg(test)]
         note_visited_line();
         // See `collect_members`: a line that starts at the end of the body ends the scan.
-        if cursor >= body_end || line.byte_start >= body_end {
+        if cursor >= body_end || line.byte_start >= body_end || scans.is_exhausted() {
             break;
         }
         if line.byte_end() <= cursor {
@@ -470,7 +491,7 @@ fn collect_locals(
                 if local_variable_names(probe.trim()).is_empty() {
                     break;
                 }
-                let Some(header) = declaration_header(masked, declared_at) else {
+                let Some(header) = scans.header(declared_at) else {
                     break;
                 };
                 header
@@ -483,7 +504,8 @@ fn collect_locals(
             if names.is_empty() {
                 break;
             }
-            let end = declaration_end(masked, declaration_at, EndMode::SemicolonOnly)
+            let end = scans
+                .end(declaration_at, EndMode::SemicolonOnly)
                 .unwrap_or(line.byte_end());
             let full_span = span_for_byte_range(source, declaration_at, end);
             for name in names {
@@ -585,6 +607,55 @@ mod tests {
         assert!(
             scanned <= (lines + 8) * (STATEMENT_PROBE_BYTES + 16),
             "{scanned} header bytes were scanned for {lines} argument lines"
+        );
+    }
+
+    #[test]
+    fn many_unterminated_lines_end_the_inventory_with_a_warning() {
+        // Each import runs to the `{` of the class at the end, so reading them all is quadratic.
+        let source = format!("{}class A {{}}\n", "import 'a.dart'\n".repeat(20_000));
+        let masked = mask_non_code(&source).code;
+        let _scope = crate::source_lines::LineIndexScope::enter(&source);
+
+        let (declarations, diagnostics) =
+            collect_declaration_inventory("lib/a.dart", &source, &masked);
+
+        let warnings: Vec<_> = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == "declaration_scan_truncated")
+            .collect();
+        assert_eq!(warnings.len(), 1, "{diagnostics:?}");
+        assert!(warnings[0].span.is_some());
+        // The scan stopped long before the class at the end of the file.
+        assert!(declarations.is_empty(), "{declarations:?}");
+    }
+
+    #[test]
+    fn ordinary_files_stay_far_below_the_scan_budget() {
+        let count = 3000;
+        let mut source = String::new();
+        for index in 0..count {
+            source.push_str(&format!(
+                "/// Doc {index}\n@Deprecated('x')\nclass C{index} extends B with M implements I {{\n  final int a;\n  C{index}(this.a);\n  int get b => a;\n  void m(int x) {{\n    var y = x;\n    final z = [1, 2, 3];\n    if (y > 0) {{ g(y); }}\n  }}\n}}\n\nint top{index}(int q) => q;\nconst k{index} = <String, int>{{'a': 1, 'b': 2}};\n"
+            ));
+        }
+        let masked = mask_non_code(&source).code;
+        let _scope = crate::source_lines::LineIndexScope::enter(&source);
+
+        let (declarations, diagnostics) =
+            collect_declaration_inventory("lib/a.dart", &source, &masked);
+
+        assert!(
+            !diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "declaration_scan_truncated"),
+            "{diagnostics:?}"
+        );
+        // A class, a field, a constructor, a getter, a method, two locals, a function and a constant.
+        assert!(
+            declarations.len() >= 8 * count,
+            "{} declarations for {count} repetitions",
+            declarations.len()
         );
     }
 }
