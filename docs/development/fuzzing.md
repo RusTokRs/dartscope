@@ -96,7 +96,7 @@ not just plausible. The check that was used, and that suits any such rewrite:
    Any difference is a defect of the rewrite; diff the two `--dump` outputs of the first mismatch.
 
 The rewrite of `FileFacts` produced no difference in 15,652 mutants of 13 seeds, and none in a longer
-campaign of 150,000 mutants of 21 seeds. Each structure additionally has an equivalence test against the scan
+campaign of 151,326 mutants of 21 seeds. Each structure additionally has an equivalence test against the scan
 it replaces (the `linear` modules in the tests of `interval_index.rs`, `source_structure.rs`,
 `declaration_tables.rs`, `binding_index.rs` and `lexical_reads.rs`).
 

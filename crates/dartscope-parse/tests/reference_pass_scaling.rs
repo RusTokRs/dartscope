@@ -101,6 +101,9 @@ fn functions(n: usize) -> String {
     source
 }
 
+/// A named generator of source text and the size to start from.
+type Shape = (&'static str, fn(usize) -> String, usize);
+
 fn time(source: &str) -> Duration {
     let started = Instant::now();
     let analysis =
@@ -113,7 +116,7 @@ fn time(source: &str) -> Duration {
 #[test]
 #[ignore = "informational timing; run with --ignored --nocapture"]
 fn print_growth_of_the_reference_analysis_per_doubling() {
-    let shapes: [(&str, fn(usize) -> String, usize); 6] = [
+    let shapes: [Shape; 6] = [
         ("classes", classes, 500),
         ("widgets", widgets, 100),
         ("statements", statements, 1000),

@@ -1,11 +1,13 @@
-//! Statement boundaries, angle brackets and braces of one masked source text.
+//! Statement boundaries, angle brackets, delimiter pairs and expression ends of one masked source text.
 //!
 //! Several heuristics of the reference passes look backwards to the start of the statement around a
-//! token, count the angle brackets in front of it, or look for the brace block that encloses a
-//! declaration. Done per token with a scan, each of them costs the length of the statement or of the
-//! enclosing body, so a long statement or a long method makes the file quadratic. One pass over the
-//! text records where the interesting bytes are, and each question becomes a binary search that
-//! returns what the scan returned.
+//! token, count the angle brackets in front of it, look for the brace block that encloses a
+//! declaration, find the closer of a parenthesis, or scan forward to the end of the expression that
+//! contains a token. Done per token with a scan, each of them costs the length of the statement or of
+//! the enclosing body (or, for an unmatched opener, of the rest of the file), so a long statement, a
+//! long method or broken code makes the file quadratic. One pass over the text records where the
+//! interesting bytes are, and each question becomes a binary search that returns what the scan
+//! returned.
 
 use crate::interval_index::MinTree;
 
