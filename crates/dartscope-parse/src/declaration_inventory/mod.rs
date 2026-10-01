@@ -118,6 +118,11 @@ fn collect_top_level(
     let mut cursor = 0usize;
     let mut ids = SymbolIdAllocator::default();
     let mut annotations = AnnotationRuns::new(masked.len());
+    let scan = TopLevelScan {
+        path,
+        source,
+        scans,
+    };
 
     for line in lines.iter().copied() {
         if scans.is_exhausted() {
@@ -151,16 +156,9 @@ fn collect_top_level(
                 break;
             }
             let indent = if from_line_start { line_indent } else { 0 };
-            let Some((mut found, end)) = top_level_records(
-                path,
-                source,
-                line,
-                indent,
-                &mut ids,
-                diagnostics,
-                scans,
-                declared_at,
-            ) else {
+            let Some((mut found, end)) =
+                top_level_records(&scan, line, indent, &mut ids, diagnostics, declared_at)
+            else {
                 break;
             };
             records.append(&mut found);
@@ -198,19 +196,29 @@ fn skip_surplus_closer(
     }
 }
 
+/// What the scan of the top level of one file keeps fixed.
+#[derive(Clone, Copy)]
+struct TopLevelScan<'a, 's> {
+    path: &'a str,
+    source: &'a str,
+    scans: &'a Scans<'s>,
+}
+
 /// Collects every top-level declaration that starts at `at`, which may sit in the middle of a source
 /// line. Returns the declarations and the byte offset where scanning may continue.
-#[allow(clippy::too_many_arguments)]
 fn top_level_records(
-    path: &str,
-    source: &str,
+    scan: &TopLevelScan<'_, '_>,
     line: crate::source_lines::SourceLine<'_>,
     indent: usize,
     ids: &mut SymbolIdAllocator,
     diagnostics: &mut Vec<DartDiagnostic>,
-    scans: &Scans<'_>,
     at: usize,
 ) -> Option<(Vec<DeclarationRecord>, usize)> {
+    let TopLevelScan {
+        path,
+        source,
+        scans,
+    } = *scan;
     let header = scans.header(at)?;
     if is_directive(header) {
         let end = scans
@@ -308,7 +316,6 @@ fn top_level_records(
     ))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn collect_members(
     source: &str,
     masked: &str,

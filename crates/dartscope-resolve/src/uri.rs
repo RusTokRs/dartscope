@@ -7,9 +7,13 @@
 //! reference resolution of RFC 3986 section 5.2 and its inverse, printing) in code that this
 //! repository owns, tests against the examples of RFC 3986 section 5.4, and fuzzes.
 //!
-//! Syntax is validated, not normalized: percent-escapes keep their case, an escaped dot is not a dot
-//! segment, and the scheme and host keep the case they were written in. Callers that compare
-//! URIs decode and lower-case what they compare.
+//! Syntax is validated, not normalized, with three exceptions that make a resolved URI safe to read
+//! as a path: the scheme is lower-cased (RFC 3986 section 3.1 asks producers for that form), an
+//! escaped dot (`%2e`) is a dot (section 2.3: an escaped unreserved character is the same
+//! character), so `%2e%2e/` climbs like `../` instead of hiding a climb from the check that follows,
+//! and a resolution whose path would read as an authority (`//` without one, section 3.3) is an error
+//! instead of a URI that names another place. Escapes, the host and an empty port keep the text they
+//! were written with; callers that compare URIs decode and lower-case what they compare.
 
 use std::fmt;
 use std::net::Ipv6Addr;
@@ -26,6 +30,9 @@ pub(crate) enum UriError {
     Authority,
     /// A URI (as opposed to a reference) without a scheme.
     MissingScheme,
+    /// A resolved path that starts with `//` although the URI has no authority: printed, it would
+    /// read as an authority.
+    Path,
 }
 
 /// A URI reference: a URI, or a relative reference that is resolved against one.
@@ -75,7 +82,7 @@ impl UriReference {
             })?;
         }
         Ok(Self {
-            scheme: scheme.map(str::to_string),
+            scheme: scheme.map(str::to_ascii_lowercase),
             authority: authority.map(str::to_string),
             path: path.to_string(),
             query: query.map(str::to_string),
@@ -108,9 +115,15 @@ impl UriReference {
         self.fragment.as_deref()
     }
 
+    #[cfg(test)]
+    pub(crate) fn path(&self) -> &str {
+        &self.path
+    }
+
     /// Resolves `reference` against this URI, the base, as RFC 3986 section 5.2.2 does (strict:
-    /// a reference with a scheme is never read as relative to the base).
-    pub(crate) fn resolve(&self, reference: &UriReference) -> UriReference {
+    /// a reference with a scheme is never read as relative to the base). Fails when the result has
+    /// no authority and a path that starts with `//`, which no URI can express.
+    pub(crate) fn resolve(&self, reference: &UriReference) -> Result<UriReference, UriError> {
         let mut target = UriReference {
             scheme: None,
             authority: None,
@@ -144,7 +157,10 @@ impl UriReference {
             }
             target.scheme.clone_from(&self.scheme);
         }
-        target
+        if target.authority.is_none() && target.path.starts_with("//") {
+            return Err(UriError::Path);
+        }
+        Ok(target)
     }
 
     /// RFC 3986 section 5.2.3: the base path up to its last `/`, followed by the reference path.
@@ -305,37 +321,68 @@ fn validate_ip_literal(inside: &str) -> Result<(), UriError> {
         .map_err(|_| UriError::Authority)
 }
 
-/// RFC 3986 section 5.2.4, over slices of the input so that the cost is linear in its length.
+/// RFC 3986 section 5.2.4, over slices of the input so that the cost is linear in its length. A
+/// segment that is a dot once its escapes are read (`%2e`) is a dot segment (section 2.3).
 fn remove_dot_segments(path: &str) -> String {
     let mut rest = path;
     let mut output = String::with_capacity(path.len());
     while !rest.is_empty() {
-        if let Some(after) = rest.strip_prefix("../") {
-            rest = after;
-        } else if let Some(after) = rest.strip_prefix("./") {
-            rest = after;
-        } else if rest.starts_with("/./") {
-            rest = &rest[2..];
-        } else if rest == "/." {
-            rest = "/";
-        } else if rest.starts_with("/../") {
-            rest = &rest[3..];
-            pop_segment(&mut output);
-        } else if rest == "/.." {
-            rest = "/";
-            pop_segment(&mut output);
-        } else if rest == "." || rest == ".." {
-            rest = "";
-        } else {
-            let start = usize::from(rest.starts_with('/'));
-            let end = rest[start..]
-                .find('/')
-                .map_or(rest.len(), |slash| start + slash);
-            output.push_str(&rest[..end]);
-            rest = &rest[end..];
+        let leading_slash = rest.starts_with('/');
+        let body = if leading_slash { &rest[1..] } else { rest };
+        let end = body.find('/').unwrap_or(body.len());
+        let after = &body[end..];
+        match (dot_segment(&body[..end]), leading_slash) {
+            // `../` and `./` in front of the path, or `.` and `..` as all that is left: dropped.
+            (Dot::Single | Dot::Double, false) => rest = after.strip_prefix('/').unwrap_or(after),
+            // `/./x` and `/.` stay at their level.
+            (Dot::Single, true) => rest = if after.is_empty() { "/" } else { after },
+            // `/../x` and `/..` climb one segment of what has been kept.
+            (Dot::Double, true) => {
+                pop_segment(&mut output);
+                rest = if after.is_empty() { "/" } else { after };
+            }
+            // Any other segment moves to the output, together with its `/`.
+            (Dot::None, _) => {
+                let length = usize::from(leading_slash) + end;
+                output.push_str(&rest[..length]);
+                rest = &rest[length..];
+            }
         }
     }
     output
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Dot {
+    None,
+    Single,
+    Double,
+}
+
+/// Whether `segment` is `.` or `..`, each dot written either as itself or as `%2e` or `%2E`.
+fn dot_segment(segment: &str) -> Dot {
+    let bytes = segment.as_bytes();
+    let mut dots = 0;
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'.' {
+            index += 1;
+        } else if bytes[index..].starts_with(b"%2") && matches!(bytes.get(index + 2), Some(b'e' | b'E'))
+        {
+            index += 3;
+        } else {
+            return Dot::None;
+        }
+        dots += 1;
+        if dots > 2 {
+            return Dot::None;
+        }
+    }
+    match dots {
+        1 => Dot::Single,
+        2 => Dot::Double,
+        _ => Dot::None,
+    }
 }
 
 /// Removes the last segment of `output` together with the `/` in front of it.
@@ -353,7 +400,7 @@ mod tests {
     fn resolved(base: &str, reference: &str) -> String {
         let base = UriReference::parse_absolute(base).unwrap();
         let reference = UriReference::parse(reference).unwrap();
-        base.resolve(&reference).to_string()
+        base.resolve(&reference).unwrap().to_string()
     }
 
     #[test]
@@ -439,17 +486,123 @@ mod tests {
     }
 
     #[test]
-    fn keeps_escapes_and_case_as_written() {
+    fn keeps_escapes_host_and_empty_port_as_written() {
         assert_eq!(
             resolved("file:///cache/my%20package/", "lib%20src/Api%2fX.dart"),
             "file:///cache/my%20package/lib%20src/Api%2fX.dart"
         );
-        // An escaped dot is not a dot segment; callers that care decode it.
-        assert_eq!(resolved("file:///a/b/", "%2e%2e/c"), "file:///a/b/%2e%2e/c");
+        let reference = UriReference::parse("file://Host:/A%2f%4A").unwrap();
+        assert_eq!(reference.authority(), Some("Host:"));
+        assert_eq!(reference.to_string(), "file://Host:/A%2f%4A");
+    }
+
+    #[test]
+    fn the_scheme_is_lower_case() {
         let reference = UriReference::parse("FILE://Host/A").unwrap();
-        assert_eq!(reference.scheme(), Some("FILE"));
-        assert_eq!(reference.authority(), Some("Host"));
-        assert_eq!(reference.to_string(), "FILE://Host/A");
+        assert_eq!(reference.scheme(), Some("file"));
+        assert_eq!(reference.to_string(), "file://Host/A");
+        assert_eq!(resolved("FILE:///A/B/", "Http://h/x"), "http://h/x");
+        assert_eq!(resolved("FILE:///A/B/", "c"), "file:///A/B/c");
+    }
+
+    #[test]
+    fn an_escaped_dot_is_a_dot_segment() {
+        for (reference, expected) in [
+            ("%2e%2e/c", "file:///a/c"),
+            ("%2E%2E/c", "file:///a/c"),
+            (".%2e/c", "file:///a/c"),
+            ("%2e./c", "file:///a/c"),
+            ("%2e/c", "file:///a/b/c"),
+            ("%2E", "file:///a/b/"),
+            ("x/%2e%2e/%2e%2e/c", "file:///a/c"),
+            ("/%2e%2e/%2e%2e/c", "file:///c"),
+            ("../%2e%2e/%2e%2e/%2e%2e/c", "file:///c"),
+            ("g/%2e%2e", "file:///a/b/"),
+            ("g/%2e", "file:///a/b/g/"),
+        ] {
+            assert_eq!(resolved("file:///a/b/", reference), expected, "{reference:?}");
+        }
+    }
+
+    #[test]
+    fn dots_that_are_not_a_whole_segment_stay() {
+        for (reference, expected) in [
+            ("...", "file:///a/b/..."),
+            ("%2e%2e%2e/c", "file:///a/b/%2e%2e%2e/c"),
+            ("%2ex/c", "file:///a/b/%2ex/c"),
+            (".%2fb", "file:///a/b/.%2fb"),
+            ("%2e%2f%2e%2e%2fc", "file:///a/b/%2e%2f%2e%2e%2fc"),
+            ("%252e", "file:///a/b/%252e"),
+        ] {
+            assert_eq!(resolved("file:///a/b/", reference), expected);
+        }
+    }
+
+    #[test]
+    fn a_resolution_that_would_read_as_an_authority_is_an_error() {
+        let urn = UriReference::parse_absolute("urn:x:y").unwrap();
+        // The climb leaves nothing in front of `//b`, which printed would read as the host `b`.
+        for reference in ["a/..//b", "Z../%2e%2e//////", "/a/..//b"] {
+            let parsed = UriReference::parse(reference).unwrap();
+            assert_eq!(urn.resolve(&parsed), Err(UriError::Path), "{reference:?}");
+        }
+        // A reference that brings its own authority is unambiguous.
+        let own_authority = UriReference::parse("//x/..//b").unwrap();
+        assert_eq!(urn.resolve(&own_authority).unwrap().to_string(), "urn://x//b");
+        // The same shape with a scheme of its own, as a package configuration could write it, must
+        // not print as a URI inside the project root.
+        let hostile = UriReference::parse("file:/a/..///__dartscope_project__/x").unwrap();
+        let base = UriReference::parse_absolute("file:///__dartscope_project__/a/").unwrap();
+        assert_eq!(base.resolve(&hostile), Err(UriError::Path));
+        // With an authority, even an empty one, a path that starts with `//` is unambiguous.
+        let base = UriReference::parse_absolute("file:///a/").unwrap();
+        let reference = UriReference::parse("..//b").unwrap();
+        assert_eq!(base.resolve(&reference).unwrap().to_string(), "file:////b");
+    }
+
+    #[test]
+    fn inputs_on_which_the_uriparse_crate_panicked_are_errors() {
+        // Found by comparing with `uriparse` 0.6.4, whose `resolve` unwrapped the same condition.
+        for (base, reference) in [
+            ("urn:x:y", "Z../%2e%2e//////"),
+            ("file://host/share/x", "Z:99999%2e%2e/..///%41u:p@"),
+        ] {
+            let base = UriReference::parse_absolute(base).unwrap();
+            let reference = UriReference::parse(reference).unwrap();
+            assert_eq!(base.resolve(&reference), Err(UriError::Path));
+        }
+    }
+
+    #[test]
+    fn a_colon_in_the_first_segment_is_fine_unless_it_could_be_a_scheme() {
+        for valid in [
+            "/C:/Users/demo",
+            "/a:b",
+            "//host/a:b",
+            "./a:b",
+            "a/b:c",
+            "file:/C:/x",
+        ] {
+            assert!(UriReference::parse(valid).is_ok(), "{valid:?}");
+        }
+        for invalid in [":a", "1a:b/c:d", "a b:c", "%41:b/c"] {
+            assert!(UriReference::parse(invalid).is_err(), "{invalid:?}");
+        }
+    }
+
+    #[test]
+    fn a_port_is_any_run_of_digits() {
+        for valid in [
+            "//host:99999/",
+            "//host:0/",
+            "//host:/",
+            "//host:000000000000000000000000/",
+        ] {
+            assert!(UriReference::parse(valid).is_ok(), "{valid:?}");
+        }
+        for invalid in ["//host:80a/", "//host:-1/", "//host:+1/", "//host:8 0/"] {
+            assert!(UriReference::parse(invalid).is_err(), "{invalid:?}");
+        }
     }
 
     #[test]

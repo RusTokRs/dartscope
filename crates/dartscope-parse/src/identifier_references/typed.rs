@@ -21,6 +21,16 @@ struct ClauseRange {
     end: usize,
 }
 
+/// What every type-position scan of one file shares: both texts, the analysis the references belong
+/// to, and the import prefixes that may qualify a type name.
+#[derive(Clone, Copy)]
+pub(super) struct TypeScan<'a> {
+    pub(super) source: &'a str,
+    pub(super) masked_source: &'a str,
+    pub(super) analysis: &'a DartFileAnalysis,
+    pub(super) import_prefixes: &'a HashSet<String>,
+}
+
 pub(super) fn collect_typed_identifier_references(
     source: &str,
     masked_source: &str,
@@ -32,20 +42,19 @@ pub(super) fn collect_typed_identifier_references(
         .filter_map(|import| import.prefix.clone())
         .collect();
     let mut references = Vec::new();
+    let scan = TypeScan {
+        source,
+        masked_source,
+        analysis,
+        import_prefixes: &import_prefixes,
+    };
 
     for declaration in analysis
         .declarations
         .iter()
         .filter(|declaration| is_type_declaration_kind(declaration.kind))
     {
-        collect_nominal_type_clause_references(
-            source,
-            masked_source,
-            analysis,
-            declaration,
-            &import_prefixes,
-            &mut references,
-        );
+        collect_nominal_type_clause_references(scan, declaration, &mut references);
     }
 
     for invocation in &analysis.invocations {
@@ -64,13 +73,11 @@ pub(super) fn collect_typed_identifier_references(
 }
 
 fn collect_nominal_type_clause_references(
-    source: &str,
-    masked_source: &str,
-    analysis: &DartFileAnalysis,
+    scan: TypeScan<'_>,
     declaration: &DartDeclaration,
-    import_prefixes: &HashSet<String>,
     references: &mut Vec<DartIdentifierReference>,
 ) {
+    let masked_source = scan.masked_source;
     let Some(span) = declaration.declaration_span.as_ref() else {
         return;
     };
@@ -81,30 +88,23 @@ fn collect_nominal_type_clause_references(
     let type_parameters = type_parameter_names(masked_source, span.byte_start, header_end);
 
     for range in clause_ranges(masked_source, span.byte_start, header_end, declaration.kind) {
-        collect_clause_type_roots(
-            source,
-            masked_source,
-            analysis,
-            declaration,
-            range,
-            import_prefixes,
-            &type_parameters,
-            references,
-        );
+        collect_clause_type_roots(scan, declaration, range, &type_parameters, references);
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn collect_clause_type_roots(
-    source: &str,
-    masked_source: &str,
-    analysis: &DartFileAnalysis,
+    scan: TypeScan<'_>,
     declaration: &DartDeclaration,
     range: ClauseRange,
-    import_prefixes: &HashSet<String>,
     type_parameters: &HashSet<String>,
     references: &mut Vec<DartIdentifierReference>,
 ) {
+    let TypeScan {
+        source,
+        masked_source,
+        analysis,
+        import_prefixes,
+    } = scan;
     let bytes = masked_source.as_bytes();
     let mut at = range.start;
     while at < range.end.min(bytes.len()) {

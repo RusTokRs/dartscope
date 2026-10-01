@@ -5,6 +5,7 @@ use dartscope_core::{
     DartIdentifierReferenceKind, SourceSpan,
 };
 
+use super::typed::TypeScan;
 use crate::declaration_tables::DeclarationTables;
 use crate::identifiers::{is_identifier_continue, is_identifier_start};
 use crate::source_lines::span_for_byte_range;
@@ -35,57 +36,41 @@ pub(super) fn collect_declaration_type_references(
         .filter_map(|import| import.prefix.clone())
         .collect();
     let mut references = Vec::new();
+    let scan = TypeScan {
+        source,
+        masked_source,
+        analysis,
+        import_prefixes: &import_prefixes,
+    };
 
     for declaration in &analysis.declarations {
         let type_parameters = visible_type_parameter_names(masked_source, tables, declaration);
         if supports_return_type(declaration.kind) {
-            collect_return_type(
-                source,
-                masked_source,
-                analysis,
-                declaration,
-                &import_prefixes,
-                &type_parameters,
-                &mut references,
-            );
+            collect_return_type(scan, declaration, &type_parameters, &mut references);
         }
         if supports_parameters(declaration.kind) {
-            collect_parameter_types(
-                source,
-                masked_source,
-                analysis,
-                declaration,
-                &import_prefixes,
-                &type_parameters,
-                &mut references,
-            );
+            collect_parameter_types(scan, declaration, &type_parameters, &mut references);
         }
         if supports_variable_type(declaration.kind) {
-            collect_variable_type(
-                source,
-                masked_source,
-                analysis,
-                declaration,
-                &import_prefixes,
-                &type_parameters,
-                &mut references,
-            );
+            collect_variable_type(scan, declaration, &type_parameters, &mut references);
         }
     }
 
     references
 }
 
-#[allow(clippy::too_many_arguments)]
 fn collect_return_type(
-    source: &str,
-    masked_source: &str,
-    analysis: &DartFileAnalysis,
+    scan: TypeScan<'_>,
     declaration: &DartDeclaration,
-    import_prefixes: &HashSet<String>,
     type_parameters: &HashSet<String>,
     references: &mut Vec<DartIdentifierReference>,
 ) {
+    let TypeScan {
+        source,
+        masked_source,
+        analysis,
+        import_prefixes,
+    } = scan;
     let Some(span) = declaration.declaration_span.as_ref() else {
         return;
     };
@@ -112,16 +97,13 @@ fn collect_return_type(
     ));
 }
 
-#[allow(clippy::too_many_arguments)]
 fn collect_parameter_types(
-    source: &str,
-    masked_source: &str,
-    analysis: &DartFileAnalysis,
+    scan: TypeScan<'_>,
     declaration: &DartDeclaration,
-    import_prefixes: &HashSet<String>,
     type_parameters: &HashSet<String>,
     references: &mut Vec<DartIdentifierReference>,
 ) {
+    let masked_source = scan.masked_source;
     let Some(span) = declaration.declaration_span.as_ref() else {
         return;
     };
@@ -131,31 +113,23 @@ fn collect_parameter_types(
     else {
         return;
     };
-    collect_parameter_range(
-        source,
-        masked_source,
-        analysis,
-        declaration,
-        start,
-        end,
-        import_prefixes,
-        type_parameters,
-        references,
-    );
+    collect_parameter_range(scan, declaration, start, end, type_parameters, references);
 }
 
-#[allow(clippy::too_many_arguments)]
 fn collect_parameter_range(
-    source: &str,
-    masked_source: &str,
-    analysis: &DartFileAnalysis,
+    scan: TypeScan<'_>,
     declaration: &DartDeclaration,
     start: usize,
     end: usize,
-    import_prefixes: &HashSet<String>,
     type_parameters: &HashSet<String>,
     references: &mut Vec<DartIdentifierReference>,
 ) {
+    let TypeScan {
+        source,
+        masked_source,
+        analysis,
+        import_prefixes,
+    } = scan;
     for (segment_start, segment_end) in top_level_segments(masked_source, start, end) {
         let Some((trimmed_start, trimmed_end)) =
             trim_range(masked_source, segment_start, segment_end)
@@ -171,13 +145,10 @@ fn collect_parameter_range(
             (Some(b'{'), Some(b'}')) | (Some(b'['), Some(b']'))
         ) {
             collect_parameter_range(
-                source,
-                masked_source,
-                analysis,
+                scan,
                 declaration,
                 trimmed_start + 1,
                 trimmed_end - 1,
-                import_prefixes,
                 type_parameters,
                 references,
             );
@@ -215,16 +186,18 @@ fn collect_parameter_range(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn collect_variable_type(
-    source: &str,
-    masked_source: &str,
-    analysis: &DartFileAnalysis,
+    scan: TypeScan<'_>,
     declaration: &DartDeclaration,
-    import_prefixes: &HashSet<String>,
     type_parameters: &HashSet<String>,
     references: &mut Vec<DartIdentifierReference>,
 ) {
+    let TypeScan {
+        source,
+        masked_source,
+        analysis,
+        import_prefixes,
+    } = scan;
     let Some(span) = declaration.declaration_span.as_ref() else {
         return;
     };

@@ -43,7 +43,7 @@ fi
 if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[uri\]'; then
   # The one-off comparison of crate::uri with the uriparse crate that it replaces.
   run u_diff cargo test -p dartscope-resolve --lib --locked -- --ignored --nocapture differential
-  grep -E '^differential|panicked|error' "$OUT/u_diff.log" | cut -c1-420 >"$OUT/uri.sum"
+  grep -E '^differential|panicked|error|unexplained' "$OUT/u_diff.log" | cut -c1-420 >"$OUT/uri.sum"
   emit uri "$OUT/uri.sum" --chunk 3900 --max 10
 fi
 if [ "${RUNNER_OS:-}" = "Linux" ] && printf '%s' "$msg" | grep -q '\[gates\]'; then

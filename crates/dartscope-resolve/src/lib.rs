@@ -178,17 +178,30 @@ pub fn resolve_package_uri(
     let config_uri = project_file_uri(&config.path)?;
     let root_reference = UriReference::parse(package.root_uri.as_str())
         .map_err(|_| PackageUriResolutionError::InvalidConfiguredUri(package.name.clone()))?;
-    let root_uri = directory_uri(&config_uri.resolve(&root_reference), &package.name)?;
+    let root_uri = directory_uri(
+        &config_uri
+            .resolve(&root_reference)
+            .map_err(|_| PackageUriResolutionError::InvalidConfiguredUri(package.name.clone()))?,
+        &package.name,
+    )?;
     let package_base_uri = if let Some(package_uri) = package.package_uri.as_deref() {
         let reference = UriReference::parse(package_uri)
             .map_err(|_| PackageUriResolutionError::InvalidConfiguredUri(package.name.clone()))?;
-        directory_uri(&root_uri.resolve(&reference), &package.name)?
+        directory_uri(
+            &root_uri.resolve(&reference).map_err(|_| {
+                PackageUriResolutionError::InvalidConfiguredUri(package.name.clone())
+            })?,
+            &package.name,
+        )?
     } else {
         root_uri
     };
     let library_reference = UriReference::parse(library_path)
         .map_err(|_| PackageUriResolutionError::InvalidPackageUri(package_uri.to_string()))?;
-    let resolved_uri = package_base_uri.resolve(&library_reference).to_string();
+    let resolved_uri = package_base_uri
+        .resolve(&library_reference)
+        .map_err(|_| PackageUriResolutionError::InvalidPackageUri(package_uri.to_string()))?
+        .to_string();
 
     Ok(DartResolvedPackageUri {
         package_name: package_name.to_string(),
@@ -221,10 +234,19 @@ fn directory_uri(
         .map_err(|_| PackageUriResolutionError::InvalidConfiguredUri(package_name.to_string()))
 }
 
+/// The project-relative path a resolved URI names, or `None` when it names nothing inside the project.
+///
+/// A path that still holds a `.` or `..` segment once it is decoded (an escaped separator, `%2f` or
+/// `%5c`, written in a `rootUri` or `packageUri`) would climb when a caller joins it to a directory,
+/// so it is not a project path.
 fn project_path_from_uri(uri: &str) -> Option<String> {
     let encoded = uri.strip_prefix(PROJECT_URI_ROOT)?;
     let decoded = percent_decode_str(encoded).decode_utf8().ok()?;
-    Some(normalize_path(decoded.into_owned()))
+    let path = normalize_path(decoded.into_owned());
+    if path.split('/').any(|segment| matches!(segment, "." | "..")) {
+        return None;
+    }
+    Some(path)
 }
 
 fn parse_optional_metadata(
@@ -439,10 +461,10 @@ fn resolve_package_directories(
     package: &DartPackageConfigEntry,
 ) -> Option<PackageDirectories> {
     let root_reference = UriReference::parse(package.root_uri.as_str()).ok()?;
-    let root_uri = directory_uri(&config_uri.resolve(&root_reference), &package.name).ok()?;
+    let root_uri = directory_uri(&config_uri.resolve(&root_reference).ok()?, &package.name).ok()?;
     let package_uri = if let Some(package_uri) = package.package_uri.as_deref() {
         let reference = UriReference::parse(package_uri).ok()?;
-        directory_uri(&root_uri.resolve(&reference), &package.name).ok()?
+        directory_uri(&root_uri.resolve(&reference).ok()?, &package.name).ok()?
     } else {
         root_uri.clone()
     };
@@ -913,6 +935,47 @@ mod tests {
         assert!(matches!(
             resolve_package_uri(&valid_config, "package:app/%2e%2e/secret.dart"),
             Err(PackageUriResolutionError::InvalidPackageUri(_))
+        ));
+    }
+
+    #[test]
+    fn an_escaped_dot_climbs_like_a_dot() {
+        let config = parse_package_config(PackageConfigInput::new(
+            "apps/demo/.dart_tool/package_config.json",
+            r#"{"configVersion":2,"packages":[{"name":"demo","rootUri":"%2e%2e/","packageUri":"lib/"}]}"#,
+        ));
+        let resolved = resolve_package_uri(&config, "package:demo/src/api.dart").unwrap();
+        assert_eq!(
+            resolved.project_path.as_deref(),
+            Some("apps/demo/lib/src/api.dart")
+        );
+    }
+
+    #[test]
+    fn a_root_uri_with_an_escaped_separator_names_no_project_path() {
+        // `%2f` decodes into a separator after the dot segments have been removed, so the decoded
+        // path would climb out of the project when a caller joins it to a directory.
+        let config = parse_package_config(PackageConfigInput::new(
+            ".dart_tool/package_config.json",
+            r#"{"configVersion":2,"packages":[{"name":"app","rootUri":"../tool%2f..%2f..%2fsecret/","packageUri":"lib/"}]}"#,
+        ));
+        let resolved = resolve_package_uri(&config, "package:app/main.dart").unwrap();
+        assert_eq!(resolved.project_path, None);
+        assert!(resolved.resolved_uri.contains("%2f"));
+    }
+
+    #[test]
+    fn a_root_uri_that_cannot_be_written_as_a_uri_is_refused() {
+        // The climb leaves nothing in front of `//`, so the resolved URI would read as a host: an
+        // error, where the `uriparse` crate panicked on the same shape.
+        let config = parse_package_config(PackageConfigInput::new(
+            ".dart_tool/package_config.json",
+            r#"{"configVersion":2,"packages":[{"name":"app","rootUri":"file:/a/..///__dartscope_project__/x/","packageUri":"lib/"}]}"#,
+        ));
+        assert!(config.diagnostics.is_empty());
+        assert!(matches!(
+            resolve_package_uri(&config, "package:app/main.dart"),
+            Err(PackageUriResolutionError::InvalidConfiguredUri(name)) if name == "app"
         ));
     }
 

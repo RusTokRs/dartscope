@@ -136,31 +136,40 @@ fn collect_parameter_bindings(
     }
     let scope_span = span_for_byte_range(source, close + 1, span.byte_end);
     let mut occurrences = HashMap::new();
-    collect_parameter_range(
+    let scan = ParameterScan {
         source,
         masked_source,
         analysis,
         owner_id,
-        start,
-        end,
-        &scope_span,
-        &mut occurrences,
-        bindings,
-    );
+        scope_span: &scope_span,
+    };
+    collect_parameter_range(scan, start, end, &mut occurrences, bindings);
 }
 
-#[allow(clippy::too_many_arguments)]
+/// What the walk over the parameter list of one callable keeps fixed.
+#[derive(Clone, Copy)]
+struct ParameterScan<'a> {
+    source: &'a str,
+    masked_source: &'a str,
+    analysis: &'a DartFileAnalysis,
+    owner_id: &'a str,
+    scope_span: &'a SourceSpan,
+}
+
 fn collect_parameter_range(
-    source: &str,
-    masked_source: &str,
-    analysis: &DartFileAnalysis,
-    owner_id: &str,
+    scan: ParameterScan<'_>,
     start: usize,
     end: usize,
-    scope_span: &SourceSpan,
     occurrences: &mut HashMap<String, usize>,
     bindings: &mut Vec<DartLexicalBinding>,
 ) {
+    let ParameterScan {
+        source,
+        masked_source,
+        analysis,
+        owner_id,
+        scope_span,
+    } = scan;
     for (segment_start, segment_end) in top_level_segments(masked_source, start, end) {
         let Some((trimmed_start, trimmed_end)) =
             trim_range(masked_source, segment_start, segment_end)
@@ -176,13 +185,9 @@ fn collect_parameter_range(
             (Some(b'{'), Some(b'}')) | (Some(b'['), Some(b']'))
         ) {
             collect_parameter_range(
-                source,
-                masked_source,
-                analysis,
-                owner_id,
+                scan,
                 trimmed_start + 1,
                 trimmed_end - 1,
-                scope_span,
                 occurrences,
                 bindings,
             );

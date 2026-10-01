@@ -6,8 +6,8 @@
 //! contents via LSP `textDocument/didOpen` / `didChange` notifications and the files of the project
 //! as text from a `WorkspaceSource`. `FsWorkspace` is the one adapter that reads the filesystem.
 //!
-//! The crate is `0.1` and `planned` in `docs/development/dartscope-library-plan.md#DS-LSP-001`;
-//! the initial implementation covers:
+//! The crate is `0.1`; its status and remaining gaps are tracked in
+//! `docs/development/dartscope-library-plan.md#DS-LSP-001`. It covers:
 //! - LSP lifecycle (`initialize` / `initialized` / `shutdown` / `exit`) with the protocol's error
 //!   codes and exit codes, and `Content-Length` framing with a bounded message size (`rpc`)
 //! - incremental document synchronization (full and incremental `didChange`, clamped ranges)
