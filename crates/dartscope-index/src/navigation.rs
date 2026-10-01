@@ -328,7 +328,7 @@ fn resolve_reference(
         name: reference.name.clone(),
         prefix: reference.prefix.clone(),
     };
-    let resolution = resolve_symbol_with_resolver(&analysis.project, query, namespace);
+    let resolution = resolve_symbol_with_resolver(query, namespace);
     let external_uris = external_namespace_uris(analysis, uri_graph, &reference);
     let status = definition_status(resolution.status, !external_uris.is_empty());
     let mut targets = resolution
@@ -357,7 +357,7 @@ fn resolve_constructor_reference(
         name: reference.name.clone(),
         prefix: reference.prefix.clone(),
     };
-    let resolution = resolve_constructible_type_with_resolver(&analysis.project, query, namespace);
+    let resolution = resolve_constructible_type_with_resolver(query, namespace);
     let external_uris = external_namespace_uris(analysis, uri_graph, &reference);
     let base_status = if resolution.status
         == DartSymbolResolutionStatus::ConditionalEnvironmentRequired

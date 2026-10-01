@@ -57,7 +57,7 @@ pub fn resolve_identifier_references_with_options(
                 name: reference.name.clone(),
                 prefix: reference.prefix.clone(),
             };
-            let resolution = resolve_symbol_with_resolver(project, query, &resolver);
+            let resolution = resolve_symbol_with_resolver(query, &resolver);
             DartIdentifierReferenceResolution {
                 reference,
                 status: resolution.status,

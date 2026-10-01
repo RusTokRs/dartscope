@@ -1,5 +1,9 @@
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
+
 use dartscope_core::{
-    DartDeclarationKind, DartIdentifierReference, DartIdentifierReferenceKind,
+    DartDeclaration, DartDeclarationKind, DartIdentifierReference, DartIdentifierReferenceKind,
     DartProjectReferenceAnalysis, DartSymbolCandidate, DartSymbolQuery, DartSymbolResolutionBasis,
     DartSymbolResolutionStatus, DartUriGraph,
 };
@@ -49,30 +53,78 @@ struct IndexedMember {
     candidate: DartSymbolCandidate,
 }
 
+/// How far up the `extends`/`with`/`on` relations one member lookup climbs. Real hierarchies are a
+/// few levels deep; the cap only bounds pathological generated chains.
+const MAX_ANCESTOR_DEPTH: usize = 128;
+
+/// The supertypes of one type in member lookup order. Each entry holds the declarations one
+/// `extends`/`with`/`on` entry names: one declaration, or several when the name is ambiguous.
+type AncestorGroups = Vec<Vec<DartSymbolCandidate>>;
+
+/// Member positions of one owner, by member name, split by staticness.
+#[derive(Debug, Clone, Default)]
+struct OwnerMembers {
+    instance: HashMap<String, Vec<usize>>,
+    statics: HashMap<String, Vec<usize>>,
+}
+
+/// Every lookup the member resolver needs is a hash lookup: resolving all references of a project
+/// must not rescan every member or declaration once per reference.
 #[derive(Debug, Clone, Default)]
 pub(super) struct MemberIndex {
     members: Vec<IndexedMember>,
+    by_owner: HashMap<String, OwnerMembers>,
+    instance_by_name: HashMap<String, Vec<usize>>,
+    /// `(file position, declaration position)` per symbol ID, in project order.
+    declarations: HashMap<String, Vec<(usize, usize)>>,
+    /// Ancestors per owner symbol ID. They depend only on the owner, so every reference inside the
+    /// same type shares one walk.
+    ancestors: RefCell<HashMap<String, Rc<AncestorGroups>>>,
 }
 
 impl MemberIndex {
     pub(super) fn new(analysis: &DartProjectReferenceAnalysis) -> Self {
+        let mut file_positions: HashMap<&str, usize> = HashMap::new();
+        let mut by_parent_and_name: HashMap<(usize, &str, &str), Vec<usize>> = HashMap::new();
+        let mut declarations: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
+        for (file_position, file) in analysis.project.files.iter().enumerate() {
+            // The first file with a path wins, as it did when files were searched linearly.
+            file_positions.entry(file.path.as_str()).or_insert(file_position);
+            for (position, declaration) in file.declarations.iter().enumerate() {
+                if let Some(parent) = declaration.parent_symbol_id.as_deref() {
+                    by_parent_and_name
+                        .entry((file_position, parent, declaration.name.as_str()))
+                        .or_default()
+                        .push(position);
+                }
+                if let Some(symbol_id) = declaration.symbol_id.as_deref() {
+                    declarations
+                        .entry(symbol_id.to_string())
+                        .or_default()
+                        .push((file_position, position));
+                }
+            }
+        }
         let mut members = analysis
             .references
             .iter()
             .filter_map(|reference| {
                 let (family, is_static) = declaration_fact(reference.kind)?;
                 let owner_symbol_id = reference.prefix.clone()?;
-                let file = analysis
-                    .project
-                    .files
+                let file_position = *file_positions.get(reference.source_path.as_str())?;
+                let file = &analysis.project.files[file_position];
+                let declaration = by_parent_and_name
+                    .get(&(
+                        file_position,
+                        owner_symbol_id.as_str(),
+                        reference.name.as_str(),
+                    ))?
                     .iter()
-                    .find(|file| file.path == reference.source_path)?;
-                let declaration = file.declarations.iter().find(|declaration| {
-                    family.contains(declaration.kind)
-                        && declaration.name == reference.name
-                        && declaration.parent_symbol_id.as_deref() == Some(owner_symbol_id.as_str())
-                        && declaration_span_contains(declaration, &reference.span)
-                })?;
+                    .map(|position| &file.declarations[*position])
+                    .find(|declaration| {
+                        family.contains(declaration.kind)
+                            && declaration_span_contains(declaration, &reference.span)
+                    })?;
                 Some(IndexedMember {
                     owner_symbol_id,
                     is_static,
@@ -103,7 +155,191 @@ impl MemberIndex {
                 ))
         });
         members.dedup();
-        Self { members }
+        let mut by_owner: HashMap<String, OwnerMembers> = HashMap::new();
+        let mut instance_by_name: HashMap<String, Vec<usize>> = HashMap::new();
+        for (position, member) in members.iter().enumerate() {
+            let owner = by_owner.entry(member.owner_symbol_id.clone()).or_default();
+            let named = if member.is_static {
+                &mut owner.statics
+            } else {
+                &mut owner.instance
+            };
+            named
+                .entry(member.candidate.name.clone())
+                .or_default()
+                .push(position);
+            if !member.is_static {
+                instance_by_name
+                    .entry(member.candidate.name.clone())
+                    .or_default()
+                    .push(position);
+            }
+        }
+        Self {
+            members,
+            by_owner,
+            instance_by_name,
+            declarations,
+            ancestors: RefCell::default(),
+        }
+    }
+
+    /// Members of one owner with one name, in index order.
+    fn members_named<'a>(
+        &'a self,
+        owner_symbol_id: &str,
+        is_static: bool,
+        name: &str,
+    ) -> impl Iterator<Item = &'a IndexedMember> + 'a {
+        self.by_owner
+            .get(owner_symbol_id)
+            .and_then(|owner| {
+                if is_static {
+                    owner.statics.get(name)
+                } else {
+                    owner.instance.get(name)
+                }
+            })
+            .into_iter()
+            .flatten()
+            .map(|position| &self.members[*position])
+    }
+
+    /// Instance members with one name, whatever their owner.
+    fn instance_members_named<'a>(
+        &'a self,
+        name: &str,
+    ) -> impl Iterator<Item = &'a IndexedMember> + 'a {
+        self.instance_by_name
+            .get(name)
+            .into_iter()
+            .flatten()
+            .map(|position| &self.members[*position])
+    }
+
+    /// Declarations carrying one symbol ID with the path of their file.
+    fn declarations_with_symbol_id<'a>(
+        &'a self,
+        analysis: &'a DartProjectReferenceAnalysis,
+        symbol_id: &str,
+    ) -> impl Iterator<Item = (&'a str, &'a DartDeclaration)> + 'a {
+        self.declarations
+            .get(symbol_id)
+            .into_iter()
+            .flatten()
+            .map(|(file_position, position)| {
+                let file = &analysis.project.files[*file_position];
+                (file.path.as_str(), &file.declarations[*position])
+            })
+    }
+
+    fn declaration<'a>(
+        &'a self,
+        analysis: &'a DartProjectReferenceAnalysis,
+        symbol_id: &str,
+    ) -> Option<&'a DartDeclaration> {
+        self.declarations_with_symbol_id(analysis, symbol_id)
+            .next()
+            .map(|(_, declaration)| declaration)
+    }
+
+    /// The supertypes of `owner` in the order Dart looks members up: the mixins of a class (the one
+    /// applied last first), then its superclass, then everything those inherit in turn. A mixin's
+    /// `on` constraints and an extension's extended type count as supertypes too, because the body
+    /// of either sees their members.
+    ///
+    /// Each type appears once, at its first position, so inheritance cycles end the walk instead of
+    /// repeating it, and a chain stops at [`MAX_ANCESTOR_DEPTH`] levels.
+    fn ancestor_groups(
+        &self,
+        analysis: &DartProjectReferenceAnalysis,
+        namespace: &NamespaceResolver<'_, '_>,
+        owner: &DartSymbolCandidate,
+    ) -> Rc<AncestorGroups> {
+        let Some(owner_symbol_id) = owner.symbol_id.as_deref() else {
+            return Rc::default();
+        };
+        if let Some(groups) = self.ancestors.borrow().get(owner_symbol_id) {
+            return Rc::clone(groups);
+        }
+        let groups = Rc::new(self.walk_ancestors(analysis, namespace, owner, owner_symbol_id));
+        self.ancestors
+            .borrow_mut()
+            .insert(owner_symbol_id.to_string(), Rc::clone(&groups));
+        groups
+    }
+
+    fn walk_ancestors(
+        &self,
+        analysis: &DartProjectReferenceAnalysis,
+        namespace: &NamespaceResolver<'_, '_>,
+        owner: &DartSymbolCandidate,
+        owner_symbol_id: &str,
+    ) -> AncestorGroups {
+        let mut visited: HashSet<String> = HashSet::from([owner_symbol_id.to_string()]);
+        let mut ancestors: AncestorGroups = Vec::new();
+        // An explicit stack keeps a very long chain from overflowing the call stack. Groups are
+        // pushed in reverse so the first relation of a type is expanded first.
+        let mut pending: Vec<(Vec<DartSymbolCandidate>, usize)> = Vec::new();
+        self.push_relations(analysis, namespace, owner, 1, &mut pending);
+        while let Some((group, depth)) = pending.pop() {
+            let group = group
+                .into_iter()
+                .filter(|candidate| {
+                    candidate
+                        .symbol_id
+                        .as_deref()
+                        .is_some_and(|symbol_id| visited.insert(symbol_id.to_string()))
+                })
+                .collect::<Vec<_>>();
+            if group.is_empty() {
+                continue;
+            }
+            if depth < MAX_ANCESTOR_DEPTH {
+                for candidate in group.iter().rev() {
+                    self.push_relations(analysis, namespace, candidate, depth + 1, &mut pending);
+                }
+            }
+            ancestors.push(group);
+        }
+        ancestors
+    }
+
+    fn push_relations(
+        &self,
+        analysis: &DartProjectReferenceAnalysis,
+        namespace: &NamespaceResolver<'_, '_>,
+        subtype: &DartSymbolCandidate,
+        depth: usize,
+        pending: &mut Vec<(Vec<DartSymbolCandidate>, usize)>,
+    ) {
+        let Some(declaration) = subtype
+            .symbol_id
+            .as_deref()
+            .and_then(|symbol_id| self.declaration(analysis, symbol_id))
+        else {
+            return;
+        };
+        let relations = declaration
+            .mixes_in
+            .iter()
+            .rev()
+            .chain(&declaration.extends)
+            .chain(&declaration.on_types);
+        let groups = relations
+            .map(|qualified| {
+                let (prefix, name) = split_qualified(qualified);
+                let query = DartSymbolQuery {
+                    source_path: subtype.declaration_path.clone(),
+                    name,
+                    prefix,
+                };
+                let mut candidates = resolve_member_owner_with_resolver(query, namespace).candidates;
+                sort_candidates(&mut candidates);
+                candidates
+            })
+            .collect::<Vec<_>>();
+        pending.extend(groups.into_iter().rev().map(|group| (group, depth)));
     }
 }
 
@@ -176,15 +412,11 @@ fn resolve_declaration_reference(
 ) -> ResolvedReference {
     let (_, is_static) = declaration_fact(reference.kind)
         .expect("member declaration resolver received an access fact");
-    let owner_symbol_id = reference.prefix.as_deref();
+    let owner_symbol_id = reference.prefix.as_deref().unwrap_or_default();
     let mut targets = member_index
-        .members
-        .iter()
+        .members_named(owner_symbol_id, is_static, &reference.name)
         .filter(|member| {
-            Some(member.owner_symbol_id.as_str()) == owner_symbol_id
-                && member.is_static == is_static
-                && member.candidate.name == reference.name
-                && member.candidate.declaration_path == reference.source_path
+            member.candidate.declaration_path == reference.source_path
                 && member.candidate.declaration_span.byte_start <= reference.span.byte_start
                 && reference.span.byte_end <= member.candidate.declaration_span.byte_end
         })
@@ -213,25 +445,13 @@ fn resolve_instance_reference(
     member_use: MemberUse,
 ) -> ResolvedReference {
     let owner_symbol_id = reference.prefix.as_deref().unwrap_or_default();
-    let mut owners = member_owner_candidates_by_symbol_id(
+    let owners = member_owners_by_symbol_id(
         analysis,
         namespace,
+        member_index,
         &reference.source_path,
         owner_symbol_id,
     );
-    owners.sort_by(|left, right| {
-        (
-            &left.declaration_path,
-            left.declaration_span.byte_start,
-            &left.name,
-        )
-            .cmp(&(
-                &right.declaration_path,
-                right.declaration_span.byte_start,
-                &right.name,
-            ))
-    });
-    owners.dedup();
     let mut refinements = owners
         .iter()
         .map(|owner| {
@@ -246,10 +466,9 @@ fn resolve_instance_reference(
             )
         })
         .collect::<Vec<_>>();
-    if (refinements.is_empty()
-        || refinements
-            .iter()
-            .all(|refinement| refinement.status == DartDefinitionResolutionStatus::Missing))
+    // Only a receiver whose type is not a project declaration can be matched against every visible
+    // extension. When the receiver's type is known, an extension has to apply to that type.
+    if owners.is_empty()
         && let Some(extension) = refine_extension_member(
             analysis,
             member_index,
@@ -257,6 +476,7 @@ fn resolve_instance_reference(
             &reference.source_path,
             &reference.name,
             member_use,
+            ExtensionReceiver::Unknown,
         )
     {
         refinements.push(extension);
@@ -281,25 +501,13 @@ fn resolve_exact_owner_static_reference(
     member_use: MemberUse,
 ) -> ResolvedReference {
     let owner_symbol_id = reference.prefix.as_deref().unwrap_or_default();
-    let mut owners = member_owner_candidates_by_symbol_id(
+    let owners = member_owners_by_symbol_id(
         analysis,
         namespace,
+        member_index,
         &reference.source_path,
         owner_symbol_id,
     );
-    owners.sort_by(|left, right| {
-        (
-            &left.declaration_path,
-            left.declaration_span.byte_start,
-            &left.name,
-        )
-            .cmp(&(
-                &right.declaration_path,
-                right.declaration_span.byte_start,
-                &right.name,
-            ))
-    });
-    owners.dedup();
     let refinements = owners
         .iter()
         .map(|owner| {
@@ -351,7 +559,7 @@ fn resolve_static_reference(
         name: owner_name.clone(),
         prefix: import_prefix.clone(),
     };
-    let resolution = resolve_member_owner_with_resolver(&analysis.project, query, namespace);
+    let resolution = resolve_member_owner_with_resolver(query, namespace);
     let external_uris = external_member_owner_uris(
         analysis,
         uri_graph,
@@ -464,14 +672,8 @@ fn refine_direct_member(
         return missing_target(owner);
     };
     let mut exact = member_index
-        .members
-        .iter()
-        .filter(|member| {
-            member.owner_symbol_id == owner_symbol_id
-                && member.is_static == is_static
-                && member.candidate.name == member_name
-                && candidate_matches_use(member.candidate.kind, member_use)
-        })
+        .members_named(owner_symbol_id, is_static, member_name)
+        .filter(|member| candidate_matches_use(member.candidate.kind, member_use))
         .map(|member| {
             let mut candidate = member.candidate.clone();
             candidate.basis = owner.basis;
@@ -490,22 +692,7 @@ fn refine_direct_member(
             candidate.basis = DartSymbolResolutionBasis::NotVisible;
         }
     }
-    exact.sort_by(|left, right| {
-        (
-            &left.declaration_path,
-            left.declaration_span.byte_start,
-            &left.name,
-            left.kind,
-            &left.symbol_id,
-        )
-            .cmp(&(
-                &right.declaration_path,
-                right.declaration_span.byte_start,
-                &right.name,
-                right.kind,
-                &right.symbol_id,
-            ))
-    });
+    sort_candidates(&mut exact);
     exact.dedup();
     let status = if !visible {
         DartDefinitionResolutionStatus::NotVisible
@@ -544,110 +731,153 @@ fn refine_instance_member_with_inheritance(
     if direct.status != DartDefinitionResolutionStatus::Missing {
         return direct;
     }
+    let ancestors = member_index.ancestor_groups(analysis, namespace, owner);
     if let Some(inherited) = refine_inherited_instance_member(
-        analysis,
         member_index,
         namespace,
         source_path,
-        owner,
+        &ancestors,
         member_name,
         member_use,
     ) {
         return inherited;
     }
-    if let Some(extension) = refine_extension_member(
+    // The member is not declared by the type or any of its supertypes, so only an extension of one
+    // of those types can provide it.
+    let receiver_types = std::iter::once(owner)
+        .chain(ancestors.iter().flatten())
+        .map(|candidate| candidate.name.as_str())
+        .collect::<Vec<_>>();
+    refine_extension_member(
         analysis,
         member_index,
         namespace,
         source_path,
         member_name,
         member_use,
-    ) {
-        return extension;
-    }
-    direct
+        ExtensionReceiver::Known(&receiver_types),
+    )
+    .unwrap_or(direct)
 }
 
+/// Looks the member up in the supertypes of the owner in lookup order. The first supertype that
+/// declares it ends the search, so a member declared higher up never shadows a nearer one. Several
+/// declarations behind one ambiguous name make the result ambiguous.
 fn refine_inherited_instance_member(
-    analysis: &DartProjectReferenceAnalysis,
     member_index: &MemberIndex,
     namespace: &NamespaceResolver<'_, '_>,
     source_path: &str,
-    owner: &DartSymbolCandidate,
+    ancestors: &AncestorGroups,
     member_name: &str,
     member_use: MemberUse,
 ) -> Option<MemberRefinement> {
-    let owner_symbol_id = owner.symbol_id.as_deref()?;
-    let owner_decl = find_declaration_by_symbol_id(analysis, owner_symbol_id)?;
-    let mut ancestors: Vec<String> = Vec::new();
-    if let Some(extends) = &owner_decl.extends {
-        ancestors.push(extends.clone());
-    }
-    ancestors.extend(owner_decl.mixes_in.clone());
-    if ancestors.is_empty() {
-        return None;
-    }
-    let mut inherited_targets: Vec<DartSymbolCandidate> = Vec::new();
-    let mut inherited_statuses: Vec<DartDefinitionResolutionStatus> = Vec::new();
-    for qualified in ancestors {
-        let (prefix, name) = split_qualified(&qualified);
-        let query = DartSymbolQuery {
-            source_path: owner.declaration_path.clone(),
-            name,
-            prefix,
-        };
-        let resolution = resolve_member_owner_with_resolver(&analysis.project, query, namespace);
-        for candidate in resolution.candidates {
+    for group in ancestors {
+        let mut inherited_targets: Vec<DartSymbolCandidate> = Vec::new();
+        let mut inherited_statuses: Vec<DartDefinitionResolutionStatus> = Vec::new();
+        for candidate in group {
             let refinement = refine_direct_member(
                 member_index,
                 namespace,
                 source_path,
-                &candidate,
+                candidate,
                 member_name,
                 false,
                 member_use,
             );
-            if refinement.status != DartDefinitionResolutionStatus::Missing {
-                inherited_statuses.push(refinement.status);
-                inherited_targets.extend(
-                    refinement
-                        .targets
-                        .iter()
-                        .filter_map(|target| match target {
-                            DartDefinitionTarget::Namespace(candidate) => Some(candidate.clone()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>(),
-                );
+            if refinement.status == DartDefinitionResolutionStatus::Missing {
+                continue;
             }
+            inherited_statuses.push(refinement.status);
+            inherited_targets.extend(refinement.targets.into_iter().filter_map(
+                |target| match target {
+                    DartDefinitionTarget::Namespace(candidate) => Some(candidate),
+                    _ => None,
+                },
+            ));
         }
+        if inherited_targets.is_empty() {
+            continue;
+        }
+        sort_candidates(&mut inherited_targets);
+        inherited_targets.dedup();
+        let targets = inherited_targets
+            .into_iter()
+            .map(DartDefinitionTarget::Namespace)
+            .collect::<Vec<_>>();
+        let status = combine_statuses(&inherited_statuses, targets.len());
+        return Some(MemberRefinement { status, targets });
     }
-    if inherited_targets.is_empty() {
+    None
+}
+
+/// What is known about the type of the receiver an extension member is looked up for.
+#[derive(Debug, Clone, Copy)]
+enum ExtensionReceiver<'a> {
+    /// The receiver is not a project declaration, so its type, and with it the applicable
+    /// extensions, cannot be told apart.
+    Unknown,
+    /// The receiver is an instance of a project type; these are the names of that type and of every
+    /// supertype the project declares.
+    Known(&'a [&'a str]),
+}
+
+/// Whether the extended type of `extension` includes the receiver. An extension of `Object` or
+/// `dynamic` applies to everything, and one without a recorded `on` type (`extension<T> on T`) as
+/// well.
+fn extension_applies_to(extension: &DartDeclaration, receiver: ExtensionReceiver<'_>) -> bool {
+    let ExtensionReceiver::Known(receiver_types) = receiver else {
+        return true;
+    };
+    extension.on_types.is_empty()
+        || extension.on_types.iter().any(|on_type| {
+            let on_type = on_type.rsplit('.').next().unwrap_or(on_type);
+            matches!(on_type, "Object" | "dynamic") || receiver_types.contains(&on_type)
+        })
+}
+
+/// How the library of `source_path` sees the extension, or `None` when it does not. An extension
+/// applies implicitly in its own library and wherever an import that is not deferred brings it into
+/// scope, with or without an import prefix. An unnamed extension is only reachable from its own
+/// library.
+fn extension_visibility(
+    namespace: &NamespaceResolver<'_, '_>,
+    source_path: &str,
+    extension: &DartDeclaration,
+    extension_path: &str,
+) -> Option<DartSymbolResolutionBasis> {
+    if extension_path == source_path {
+        return Some(DartSymbolResolutionBasis::SameFile);
+    }
+    if namespace.same_library(source_path, extension_path) {
+        return Some(DartSymbolResolutionBasis::SameLibrary);
+    }
+    if extension.name.is_empty() {
         return None;
     }
-    inherited_targets.sort_by(|left, right| {
-        (
-            &left.declaration_path,
-            left.declaration_span.byte_start,
-            &left.name,
-            left.kind,
-            &left.symbol_id,
-        )
-            .cmp(&(
-                &right.declaration_path,
-                right.declaration_span.byte_start,
-                &right.name,
-                right.kind,
-                &right.symbol_id,
-            ))
-    });
-    inherited_targets.dedup();
-    let targets = inherited_targets
-        .into_iter()
-        .map(DartDefinitionTarget::Namespace)
-        .collect::<Vec<_>>();
-    let status = combine_statuses(&inherited_statuses, targets.len());
-    Some(MemberRefinement { status, targets })
+    let prefixes = std::iter::once(None).chain(
+        namespace
+            .import_prefixes(source_path)
+            .into_iter()
+            .map(|prefix| Some(prefix.to_string())),
+    );
+    for prefix in prefixes {
+        let query = DartSymbolQuery {
+            source_path: source_path.to_string(),
+            name: extension.name.clone(),
+            prefix,
+        };
+        let visible = resolve_member_owner_with_resolver(query, namespace)
+            .candidates
+            .into_iter()
+            .find(|candidate| {
+                candidate.symbol_id == extension.symbol_id
+                    && candidate.basis != DartSymbolResolutionBasis::NotVisible
+            });
+        if let Some(candidate) = visible {
+            return Some(candidate.basis);
+        }
+    }
+    None
 }
 
 fn refine_extension_member(
@@ -657,60 +887,57 @@ fn refine_extension_member(
     source_path: &str,
     member_name: &str,
     member_use: MemberUse,
+    receiver: ExtensionReceiver<'_>,
 ) -> Option<MemberRefinement> {
     let mut extension_candidates: Vec<DartSymbolCandidate> = Vec::new();
     let mut extension_statuses: Vec<DartDefinitionResolutionStatus> = Vec::new();
-    for member in &member_index.members {
-        if member.is_static {
-            continue;
-        }
-        if member.candidate.name != member_name {
-            continue;
-        }
+    for member in member_index.instance_members_named(member_name) {
         if !candidate_matches_use(member.candidate.kind, member_use) {
             continue;
         }
-        let Some(owner_decl) =
-            find_declaration_by_symbol_id(analysis, member.owner_symbol_id.as_str())
+        let Some(extension) = member_index.declaration(analysis, member.owner_symbol_id.as_str())
         else {
             continue;
         };
-        if !matches!(
-            owner_decl.kind,
-            DartDeclarationKind::Extension | DartDeclarationKind::ExtensionType
-        ) {
+        // Members of an extension type belong to values of that type, never to other receivers.
+        if extension.kind != DartDeclarationKind::Extension
+            || !extension_applies_to(extension, receiver)
+        {
             continue;
         }
-        // Without receiver inference we accept any extension with a matching member name.
-        // A future `on`-type-aware filter can be added once receiver-type inference is available:
-        //   if owner_decl.extends.as_deref() != Some(inferred_receiver) { continue; }
-        let is_private = member_name.starts_with('_');
         let same_library = namespace.same_library(source_path, &member.candidate.declaration_path);
-        let visible = !is_private || same_library;
         let mut candidate = member.candidate.clone();
-        if !visible {
+        if member_name.starts_with('_') && !same_library {
             candidate.basis = DartSymbolResolutionBasis::NotVisible;
             extension_statuses.push(DartDefinitionResolutionStatus::NotVisible);
-        } else {
-            let basis = if member.candidate.declaration_path == source_path {
-                DartSymbolResolutionBasis::SameFile
-            } else if same_library {
-                DartSymbolResolutionBasis::SameLibrary
-            } else {
-                // Extension from an imported library — conservatively report as DirectImport.
-                // Exact import-graph check is deferred; the resolver is intentionally permissive
-                // without receiver inference.
-                DartSymbolResolutionBasis::DirectImport
-            };
+        } else if let Some(basis) = extension_visibility(
+            namespace,
+            source_path,
+            extension,
+            &member.candidate.declaration_path,
+        ) {
             candidate.basis = basis;
             extension_statuses.push(DartDefinitionResolutionStatus::Resolved);
+        } else {
+            continue;
         }
         extension_candidates.push(candidate);
     }
     if extension_candidates.is_empty() {
         return None;
     }
-    extension_candidates.sort_by(|left, right| {
+    sort_candidates(&mut extension_candidates);
+    extension_candidates.dedup();
+    let targets = extension_candidates
+        .into_iter()
+        .map(DartDefinitionTarget::Namespace)
+        .collect::<Vec<_>>();
+    let status = combine_statuses(&extension_statuses, targets.len());
+    Some(MemberRefinement { status, targets })
+}
+
+fn sort_candidates(candidates: &mut [DartSymbolCandidate]) {
+    candidates.sort_by(|left, right| {
         (
             &left.declaration_path,
             left.declaration_span.byte_start,
@@ -726,27 +953,6 @@ fn refine_extension_member(
                 &right.symbol_id,
             ))
     });
-    extension_candidates.dedup();
-    let targets = extension_candidates
-        .into_iter()
-        .map(DartDefinitionTarget::Namespace)
-        .collect::<Vec<_>>();
-    let status = combine_statuses(&extension_statuses, targets.len());
-    Some(MemberRefinement { status, targets })
-}
-
-fn find_declaration_by_symbol_id<'a>(
-    analysis: &'a DartProjectReferenceAnalysis,
-    symbol_id: &str,
-) -> Option<&'a dartscope_core::DartDeclaration> {
-    for file in &analysis.project.files {
-        for declaration in &file.declarations {
-            if declaration.symbol_id.as_deref() == Some(symbol_id) {
-                return Some(declaration);
-            }
-        }
-    }
-    None
 }
 
 fn split_qualified(qualified: &str) -> (Option<String>, String) {
@@ -821,34 +1027,41 @@ fn static_member_owner(reference: &DartIdentifierReference) -> Option<(Option<St
     }
 }
 
-fn member_owner_candidates_by_symbol_id(
+/// The member-owning declarations carrying one symbol ID, ordered by location.
+fn member_owners_by_symbol_id(
     analysis: &DartProjectReferenceAnalysis,
     namespace: &NamespaceResolver<'_, '_>,
+    member_index: &MemberIndex,
     source_path: &str,
     owner_symbol_id: &str,
 ) -> Vec<DartSymbolCandidate> {
-    let mut owners = Vec::new();
-    for file in &analysis.project.files {
-        for declaration in &file.declarations {
-            if declaration.symbol_id.as_deref() != Some(owner_symbol_id)
-                || !is_member_owner_kind(declaration.kind)
-            {
-                continue;
-            }
-            let basis = if file.path == source_path {
+    let mut owners = member_index
+        .declarations_with_symbol_id(analysis, owner_symbol_id)
+        .filter(|(_, declaration)| is_member_owner_kind(declaration.kind))
+        .map(|(path, declaration)| {
+            let basis = if path == source_path {
                 DartSymbolResolutionBasis::SameFile
-            } else if namespace.same_library(source_path, &file.path) {
+            } else if namespace.same_library(source_path, path) {
                 DartSymbolResolutionBasis::SameLibrary
             } else {
                 DartSymbolResolutionBasis::NotVisible
             };
-            owners.push(declaration_candidate(
-                file.path.as_str(),
-                declaration,
-                basis,
-            ));
-        }
-    }
+            declaration_candidate(path, declaration, basis)
+        })
+        .collect::<Vec<_>>();
+    owners.sort_by(|left, right| {
+        (
+            &left.declaration_path,
+            left.declaration_span.byte_start,
+            &left.name,
+        )
+            .cmp(&(
+                &right.declaration_path,
+                right.declaration_span.byte_start,
+                &right.name,
+            ))
+    });
+    owners.dedup();
     owners
 }
 
@@ -868,7 +1081,7 @@ fn external_member_owner_uris(
 
 fn declaration_candidate(
     path: &str,
-    declaration: &dartscope_core::DartDeclaration,
+    declaration: &DartDeclaration,
     basis: DartSymbolResolutionBasis,
 ) -> DartSymbolCandidate {
     DartSymbolCandidate {
@@ -885,7 +1098,7 @@ fn declaration_candidate(
 }
 
 fn declaration_span_contains(
-    declaration: &dartscope_core::DartDeclaration,
+    declaration: &DartDeclaration,
     span: &dartscope_core::SourceSpan,
 ) -> bool {
     let declaration_span = declaration

@@ -11,6 +11,7 @@ use dartscope_core::{
 use crate::parts::analyze_part_links_with_graph;
 use crate::uri_graph::{DartIndexOptions, build_uri_graph_with_options};
 
+#[derive(Clone, Copy)]
 struct DeclarationLocation<'a> {
     path: &'a str,
     declaration: &'a DartDeclaration,
@@ -47,6 +48,9 @@ pub(crate) struct NamespaceResolver<'source, 'options> {
     uri_graph: Arc<DartUriGraph>,
     library_membership: LibraryMembership,
     files_by_path: HashMap<&'source str, &'source DartFileAnalysis>,
+    /// Top-level declarations by name in project order, so resolving a name never rescans every
+    /// declaration of the project.
+    top_level_by_name: HashMap<&'source str, Vec<DeclarationLocation<'source>>>,
     options: &'options DartIndexOptions,
 }
 
@@ -112,6 +116,20 @@ impl<'source, 'options> NamespaceResolver<'source, 'options> {
         uri_graph: Arc<DartUriGraph>,
         part_links: &DartPartLinkAnalysis,
     ) -> Self {
+        let mut top_level_by_name: HashMap<&str, Vec<DeclarationLocation<'_>>> = HashMap::new();
+        for file in &project.files {
+            for declaration in &file.declarations {
+                if declaration.parent_symbol_id.is_none() {
+                    top_level_by_name
+                        .entry(declaration.name.as_str())
+                        .or_default()
+                        .push(DeclarationLocation {
+                            path: file.path.as_str(),
+                            declaration,
+                        });
+                }
+            }
+        }
         Self {
             uri_graph,
             library_membership: LibraryMembership::from_part_links(part_links),
@@ -120,12 +138,43 @@ impl<'source, 'options> NamespaceResolver<'source, 'options> {
                 .iter()
                 .map(|file| (file.path.as_str(), file))
                 .collect(),
+            top_level_by_name,
             options,
         }
     }
 
+    fn top_level_declarations(&self, name: &str) -> &[DeclarationLocation<'source>] {
+        self.top_level_by_name
+            .get(name)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+
     pub(crate) fn same_library(&self, left: &str, right: &str) -> bool {
         self.library_membership.same_library(left, right)
+    }
+
+    /// Prefixes of the non-deferred imports of the library `source_path` belongs to, sorted and
+    /// without duplicates.
+    pub(crate) fn import_prefixes(&self, source_path: &str) -> Vec<&'source str> {
+        let namespace_owner = self.library_membership.owner_of(source_path);
+        let Some(file) = self
+            .files_by_path
+            .get(namespace_owner)
+            .or_else(|| self.files_by_path.get(source_path))
+            .copied()
+        else {
+            return Vec::new();
+        };
+        let mut prefixes: Vec<&str> = file
+            .imports
+            .iter()
+            .filter(|import| !import.is_deferred)
+            .filter_map(|import| import.prefix.as_deref())
+            .collect();
+        prefixes.sort_unstable();
+        prefixes.dedup();
+        prefixes
     }
 
     pub(crate) fn resolve(
@@ -352,23 +401,21 @@ pub fn resolve_symbol_with_options(
     options: &DartIndexOptions,
 ) -> DartSymbolResolution {
     let resolver = NamespaceResolver::new(project, options);
-    resolve_symbol_with_resolver(project, query, &resolver)
+    resolve_symbol_with_resolver(query, &resolver)
 }
 
 pub(crate) fn resolve_symbol_with_resolver(
-    project: &DartProjectAnalysis,
     query: DartSymbolQuery,
     resolver: &NamespaceResolver<'_, '_>,
 ) -> DartSymbolResolution {
-    resolve_symbol_with_resolver_filter(project, query, resolver, |_| true)
+    resolve_symbol_with_resolver_filter(query, resolver, |_| true)
 }
 
 pub(crate) fn resolve_constructible_type_with_resolver(
-    project: &DartProjectAnalysis,
     query: DartSymbolQuery,
     resolver: &NamespaceResolver<'_, '_>,
 ) -> DartSymbolResolution {
-    resolve_symbol_with_resolver_filter(project, query, resolver, |kind| {
+    resolve_symbol_with_resolver_filter(query, resolver, |kind| {
         matches!(
             kind,
             DartDeclarationKind::Class | DartDeclarationKind::ExtensionType
@@ -377,11 +424,10 @@ pub(crate) fn resolve_constructible_type_with_resolver(
 }
 
 pub(crate) fn resolve_member_owner_with_resolver(
-    project: &DartProjectAnalysis,
     query: DartSymbolQuery,
     resolver: &NamespaceResolver<'_, '_>,
 ) -> DartSymbolResolution {
-    resolve_symbol_with_resolver_filter(project, query, resolver, |kind| {
+    resolve_symbol_with_resolver_filter(query, resolver, |kind| {
         matches!(
             kind,
             DartDeclarationKind::Class
@@ -394,12 +440,23 @@ pub(crate) fn resolve_member_owner_with_resolver(
 }
 
 fn resolve_symbol_with_resolver_filter(
-    project: &DartProjectAnalysis,
     query: DartSymbolQuery,
     resolver: &NamespaceResolver<'_, '_>,
     allowed_kind: impl Fn(DartDeclarationKind) -> bool,
 ) -> DartSymbolResolution {
-    let declarations = collect_declarations(project, query.name.as_str(), &allowed_kind);
+    let mut declarations: Vec<_> = resolver
+        .top_level_declarations(query.name.as_str())
+        .iter()
+        .filter(|location| allowed_kind(location.declaration.kind))
+        .copied()
+        .collect();
+    declarations.sort_by_key(|candidate| {
+        (
+            candidate.path,
+            candidate.declaration.span.byte_start,
+            candidate.declaration.kind,
+        )
+    });
     let candidates: Vec<_> = declarations
         .iter()
         .map(|location| NamespaceCandidate {
@@ -449,35 +506,6 @@ fn finish_local_resolution(
         status,
         candidates: matches,
     })
-}
-
-fn collect_declarations<'a>(
-    project: &'a DartProjectAnalysis,
-    name: &str,
-    allowed_kind: &impl Fn(DartDeclarationKind) -> bool,
-) -> Vec<DeclarationLocation<'a>> {
-    let mut candidates = Vec::new();
-    for file in &project.files {
-        for declaration in &file.declarations {
-            if declaration.parent_symbol_id.is_none()
-                && declaration.name == name
-                && allowed_kind(declaration.kind)
-            {
-                candidates.push(DeclarationLocation {
-                    path: file.path.as_str(),
-                    declaration,
-                });
-            }
-        }
-    }
-    candidates.sort_by_key(|candidate| {
-        (
-            candidate.path,
-            candidate.declaration.span.byte_start,
-            candidate.declaration.kind,
-        )
-    });
-    candidates
 }
 
 fn import_matches_prefix(import: &dartscope_core::DartImport, prefix: Option<&str>) -> bool {
