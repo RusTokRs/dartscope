@@ -117,7 +117,8 @@ fn measure(shape: &str, n: usize, source: &str) {
     let mut references = collect_identifier_references(source, &lexical.code, &file, &bindings);
     let t_identifiers = t.elapsed();
     let t = Instant::now();
-    let reads = collect_lexical_read_references(source, &lexical.code, &file, &bindings, &references);
+    let reads =
+        collect_lexical_read_references(source, &lexical.code, &file, &bindings, &references);
     references.extend(reads);
     let t_reads = t.elapsed();
     let t = Instant::now();
