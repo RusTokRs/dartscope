@@ -38,6 +38,7 @@ pub(crate) fn collect_lexical_read_references(
     let existing = reference_spans(existing_references);
     let index = BindingIndex::new(masked_source, &facts.structure, bindings);
     let bytes = masked_source.as_bytes();
+    let assignments = assignment_positions(bytes);
     let mut reads = Vec::new();
     let mut at = 0usize;
 
@@ -60,7 +61,7 @@ pub(crate) fn collect_lexical_read_references(
             || index.is_declaration(token.start, token.end)
             || index.is_deferred_local_initializer(token.text, token.start)
             || index.is_local_declaration_prefix(token.start)
-            || !is_conservative_read_position(masked_source, &facts.structure, token)
+            || !is_conservative_read_position(masked_source, &facts.structure, &assignments, token)
         {
             continue;
         }
@@ -125,6 +126,7 @@ fn member_read_reference(
 fn is_conservative_read_position(
     source: &str,
     structure: &SourceStructure,
+    assignments: &[usize],
     token: IdentifierToken<'_>,
 ) -> bool {
     let bytes = source.as_bytes();
@@ -135,7 +137,7 @@ fn is_conservative_read_position(
         && next.is_none_or(|at| bytes[at] != b':')
         && !starts_write_operator(bytes, next)
         && !ends_increment_operator(bytes, previous)
-        && !precedes_assignment_in_statement(source, token.end)
+        && !precedes_assignment_in_statement(assignments, structure, token.end)
         && !follows_type_keyword(source, token.start)
         && !structure.is_inside_angle_pair(token.start)
 }
@@ -192,32 +194,36 @@ fn ends_increment_operator(bytes: &[u8], at: Option<usize>) -> bool {
             .is_some_and(|operator| operator == b"++" || operator == b"--")
 }
 
-fn precedes_assignment_in_statement(source: &str, start: usize) -> bool {
-    let bytes = source.as_bytes();
-    let mut at = start;
-    let mut parens = 0usize;
-    let mut brackets = 0usize;
-    let mut braces = 0usize;
+/// Whether an assignment operator follows `start` before the expression that contains it ends.
+///
+/// Such a token is part of an assignment target (`a.b = c`, `list[i] = x`) and is not a plain read.
+/// `assignments` holds the position of every assignment operator of the text, and
+/// `SourceStructure::expression_end` the place where the expression stops, so the answer needs no
+/// scan; it is exactly what scanning forward from `start` for an operator, stopping at the first
+/// `;`, `,` or `{` outside nested groups (or the `}` of an enclosing block), finds.
+fn precedes_assignment_in_statement(
+    assignments: &[usize],
+    structure: &SourceStructure,
+    start: usize,
+) -> bool {
+    let first = assignments.partition_point(|&at| at < start);
+    assignments.get(first).is_some_and(|&at| {
+        structure
+            .expression_end(start)
+            .is_none_or(|end| at < end)
+    })
+}
 
-    while at < bytes.len() {
-        match bytes[at] {
-            b'(' => parens += 1,
-            b')' => parens = parens.saturating_sub(1),
-            b'[' => brackets += 1,
-            b']' => brackets = brackets.saturating_sub(1),
-            b'{' if parens == 0 && brackets == 0 && braces == 0 => break,
-            b'{' => braces += 1,
-            b'}' if braces == 0 => break,
-            b'}' => braces -= 1,
-            b',' | b';' if parens == 0 && brackets == 0 && braces == 0 => break,
-            _ => {}
-        }
-        if assignment_operator_at(bytes, at) {
-            return true;
-        }
-        at += 1;
-    }
-    false
+/// The position of every assignment operator in `bytes`, in increasing order.
+fn assignment_positions(bytes: &[u8]) -> Vec<usize> {
+    (0..bytes.len())
+        .filter(|&at| {
+            matches!(
+                bytes[at],
+                b'>' | b'<' | b'?' | b'~' | b'+' | b'-' | b'*' | b'/' | b'%' | b'&' | b'|' | b'^' | b'='
+            ) && assignment_operator_at(bytes, at)
+        })
+        .collect()
 }
 
 fn assignment_operator_at(bytes: &[u8], at: usize) -> bool {
@@ -275,3 +281,6 @@ fn next_non_whitespace(bytes: &[u8], mut at: usize) -> Option<usize> {
     }
     (at < bytes.len()).then_some(at)
 }
+
+#[cfg(test)]
+mod tests;

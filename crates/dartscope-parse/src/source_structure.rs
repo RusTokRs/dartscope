@@ -7,6 +7,8 @@
 //! text records where the interesting bytes are, and each question becomes a binary search that
 //! returns what the scan returned.
 
+use crate::interval_index::MinTree;
+
 /// Positions of the bytes that the statement heuristics care about, found in one pass.
 pub(crate) struct SourceStructure {
     len: usize,
@@ -22,6 +24,10 @@ pub(crate) struct SourceStructure {
     brace_closes: Vec<Option<usize>>,
     /// After each brace byte, the position of the innermost `{` that is still open.
     brace_tops: Vec<(usize, Option<usize>)>,
+    /// The bytes that can end the scan of an expression (`;`, `,`, `{` and `}`) with the key that
+    /// tells for which start of a scan they do; see `expression_end`.
+    breaks: Vec<(usize, usize)>,
+    break_keys: MinTree,
 }
 
 impl SourceStructure {
@@ -34,11 +40,27 @@ impl SourceStructure {
             brace_opens: Vec::new(),
             brace_closes: Vec::new(),
             brace_tops: Vec::new(),
+            breaks: Vec::new(),
+            break_keys: MinTree::new(&[]),
         };
         let mut depth = 0usize;
         let mut open_blocks: Vec<usize> = Vec::new();
+        let mut open_parens: Vec<usize> = Vec::new();
+        let mut open_brackets: Vec<usize> = Vec::new();
         for (at, byte) in source.bytes().enumerate() {
             match byte {
+                b'(' => open_parens.push(at),
+                b')' => {
+                    open_parens.pop();
+                }
+                b'[' => open_brackets.push(at),
+                b']' => {
+                    open_brackets.pop();
+                }
+                b',' => {
+                    let innermost = innermost_open(&open_parens, &open_brackets, &open_blocks, &structure.brace_opens);
+                    structure.breaks.push((at, innermost));
+                }
                 b'<' => {
                     depth += 1;
                     structure.angle_depths.push((at, depth));
@@ -49,6 +71,17 @@ impl SourceStructure {
                     structure.closing_angles.push(at);
                 }
                 b';' | b'{' | b'}' => {
+                    // A closing brace ends a scan whenever no block opened since the scan started
+                    // is open; the other bytes also need every parenthesis and bracket closed.
+                    let brace_top = open_blocks
+                        .last()
+                        .map_or(0, |&index| structure.brace_opens[index] + 1);
+                    let key = if byte == b'}' {
+                        brace_top
+                    } else {
+                        innermost_open(&open_parens, &open_brackets, &open_blocks, &structure.brace_opens)
+                    };
+                    structure.breaks.push((at, key));
                     if depth > 0 {
                         depth = 0;
                         structure.angle_depths.push((at, 0));
@@ -77,6 +110,8 @@ impl SourceStructure {
                 _ => {}
             }
         }
+        let keys: Vec<usize> = structure.breaks.iter().map(|&(_, key)| key).collect();
+        structure.break_keys = MinTree::new(&keys);
         structure
     }
 
@@ -134,11 +169,36 @@ impl SourceStructure {
         top.filter(|&open| open >= floor)
     }
 
+    /// Where a scan of an expression that begins at `start` stops: at the first `;`, `,` or `{`
+    /// that is outside every group opened since `start`, or at the first `}` that closes a block
+    /// opened before `start`; `None` when it runs to the end of the text. A `)` or `]` that
+    /// closes a group opened before `start` does not stop the scan.
+    pub(crate) fn expression_end(&self, start: usize) -> Option<usize> {
+        let from = self.breaks.partition_point(|&(at, _)| at < start);
+        let index = self.break_keys.first_at_or_below(from, start)?;
+        Some(self.breaks[index].0)
+    }
+
     /// The `}` that closes the `{` at `open`.
     pub(crate) fn closing_brace(&self, open: usize) -> Option<usize> {
         let index = self.brace_opens.binary_search(&open).ok()?;
         self.brace_closes[index]
     }
+}
+
+/// The key of a break at a position where the innermost open delimiter of any kind is the
+/// parenthesis, bracket or block that opened last: one more than its position, so that zero means
+/// there is none and the break ends every scan.
+fn innermost_open(
+    parens: &[usize],
+    brackets: &[usize],
+    blocks: &[usize],
+    brace_opens: &[usize],
+) -> usize {
+    let paren = parens.last().map_or(0, |&at| at + 1);
+    let bracket = brackets.last().map_or(0, |&at| at + 1);
+    let brace = blocks.last().map_or(0, |&index| brace_opens[index] + 1);
+    paren.max(bracket).max(brace)
 }
 
 #[cfg(test)]
@@ -204,6 +264,33 @@ mod tests {
             false
         }
 
+        /// Where the scan of an expression from `start` stops; `None` at the end of the text.
+        pub(super) fn expression_end(source: &str, start: usize) -> Option<usize> {
+            let bytes = source.as_bytes();
+            let mut at = start;
+            let mut parens = 0usize;
+            let mut brackets = 0usize;
+            let mut braces = 0usize;
+            while at < bytes.len() {
+                match bytes[at] {
+                    b'(' => parens += 1,
+                    b')' => parens = parens.saturating_sub(1),
+                    b'[' => brackets += 1,
+                    b']' => brackets = brackets.saturating_sub(1),
+                    b'{' if parens == 0 && brackets == 0 && braces == 0 => return Some(at),
+                    b'{' => braces += 1,
+                    b'}' if braces == 0 => return Some(at),
+                    b'}' => braces -= 1,
+                    b',' | b';' if parens == 0 && brackets == 0 && braces == 0 => {
+                        return Some(at);
+                    }
+                    _ => {}
+                }
+                at += 1;
+            }
+            None
+        }
+
         /// The innermost block that is open at `limit`, found by scanning from `floor`.
         pub(super) fn innermost_open_brace(
             source: &str,
@@ -264,7 +351,7 @@ mod tests {
 
     fn random_source(rng: &mut Rng) -> String {
         const PIECES: &[&str] = &[
-            "<", ">", "<", ">", ";", "{", "}", "{", "}", "(", ")", "a", "bc", " ", "\n", "=>", ", ",
+            "<", ">", "<", ">", ";", "{", "}", "{", "}", "(", ")", "[", "]", "a", "bc", " ", "\n", "=>", ", ",
         ];
         let count = rng.below(24);
         (0..count)
@@ -284,6 +371,11 @@ mod tests {
                     structure.statement_start(at),
                     linear::statement_start(&source, at),
                     "statement_start({at}) in {source:?}"
+                );
+                assert_eq!(
+                    structure.expression_end(at),
+                    linear::expression_end(&source, at),
+                    "expression_end({at}) in {source:?}"
                 );
                 if at <= len {
                     assert_eq!(

@@ -145,9 +145,61 @@ impl<K: Ord + Copy> StabbingIndex<K> {
     }
 }
 
+/// Finds the first value at or after an index that is at most a limit, in `O(log n)`.
+pub(crate) struct MinTree {
+    len: usize,
+    /// Number of leaves: the length rounded up to a power of two.
+    size: usize,
+    /// A complete binary tree of minima; the leaves start at `size`, padded with `usize::MAX`.
+    minima: Vec<usize>,
+}
+
+impl MinTree {
+    pub(crate) fn new(values: &[usize]) -> Self {
+        let size = values.len().next_power_of_two();
+        let mut minima = vec![usize::MAX; 2 * size];
+        minima[size..size + values.len()].copy_from_slice(values);
+        for node in (1..size).rev() {
+            minima[node] = minima[2 * node].min(minima[2 * node + 1]);
+        }
+        Self {
+            len: values.len(),
+            size,
+            minima,
+        }
+    }
+
+    /// The smallest index `i >= from` with `values[i] <= limit`.
+    pub(crate) fn first_at_or_below(&self, from: usize, limit: usize) -> Option<usize> {
+        if from >= self.len {
+            return None;
+        }
+        self.descend(1, 0, self.size, from, limit)
+    }
+
+    fn descend(
+        &self,
+        node: usize,
+        low: usize,
+        high: usize,
+        from: usize,
+        limit: usize,
+    ) -> Option<usize> {
+        if high <= from || self.minima[node] > limit {
+            return None;
+        }
+        if high - low == 1 {
+            return Some(low);
+        }
+        let middle = low + (high - low) / 2;
+        self.descend(2 * node, low, middle, from, limit)
+            .or_else(|| self.descend(2 * node + 1, middle, high, from, limit))
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{IntervalSet, Stab, StabbingIndex};
+    use super::{IntervalSet, MinTree, Stab, StabbingIndex};
 
     /// xorshift64*, enough to produce varied intervals deterministically.
     struct Rng(u64);
@@ -232,6 +284,25 @@ mod tests {
                             > 1,
                     });
                 assert_eq!(index.best_at(point), expected, "point {point} in {items:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn min_tree_agrees_with_a_scan() {
+        let mut rng = Rng(0xABCD_EF01_2345_6789);
+        for round in 0..300 {
+            let values: Vec<usize> = (0..round % 20).map(|_| rng.below(12)).collect();
+            let tree = MinTree::new(&values);
+            for from in 0..values.len() + 2 {
+                for limit in 0..13 {
+                    let expected = (from..values.len()).find(|&index| values[index] <= limit);
+                    assert_eq!(
+                        tree.first_at_or_below(from, limit),
+                        expected,
+                        "from {from}, limit {limit} in {values:?}"
+                    );
+                }
             }
         }
     }
