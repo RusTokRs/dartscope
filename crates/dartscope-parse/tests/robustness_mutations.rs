@@ -561,11 +561,9 @@ fn mutated_sources_never_panic_and_report_spans_that_describe_the_text() {
     let mut panics = BTreeMap::new();
     let mut problems = BTreeMap::new();
     for (index, seed) in SEEDS.iter().enumerate() {
-        let mut rng = Rng(
-            0x9E37_79B9_7F4A_7C15
-                ^ ((index as u64 + 1) * 0x1000_0000_01B3)
-                ^ salt.wrapping_mul(0xD6E8_FEB8_6659_FD93),
-        );
+        let mut rng = Rng(0x9E37_79B9_7F4A_7C15
+            ^ ((index as u64 + 1) * 0x1000_0000_01B3)
+            ^ salt.wrapping_mul(0xD6E8_FEB8_6659_FD93));
         let mut candidates = vec![(*seed).to_string()];
         candidates.extend((0..rounds).map(|_| mutate(&mut rng, seed)));
         for source in candidates {
