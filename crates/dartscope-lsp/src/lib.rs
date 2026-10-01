@@ -15,8 +15,8 @@
 //!   without inventing member/type results unavailable from the index.
 //!
 //! Positions are `crate::types::Position` (0-indexed line, 0-indexed UTF-16 character)
- //! and are converted to `dartscope_core::SourceSpan` (1-indexed line, 1-indexed char
- //! column, byte offsets) via `coordinates`.
+//! and are converted to `dartscope_core::SourceSpan` (1-indexed line, 1-indexed char
+//! column, byte offsets) via `coordinates`.
 
 pub mod coordinates;
 pub mod server;

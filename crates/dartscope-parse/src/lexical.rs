@@ -5,7 +5,9 @@ use crate::source_lines::span_for_byte_range;
 
 // Re-export the canonical literal helpers so existing `crate::lexical::`
 // call sites keep working while the implementation lives in `literals.rs`.
-pub(crate) use crate::literals::{find_string_literal_start, string_literal_range, string_literals_value};
+pub(crate) use crate::literals::{
+    find_string_literal_start, string_literal_range, string_literals_value,
+};
 
 pub(crate) struct LexicalMask {
     pub(crate) code: String,

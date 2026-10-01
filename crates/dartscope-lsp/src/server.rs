@@ -3,9 +3,7 @@
 use std::collections::HashMap;
 
 use dartscope_core::{DartFileInput, DartProjectInput};
-use dartscope_index::{
-    DartDefinitionQuery, DartWorkspaceIndex, DartWorkspaceResolutionContext,
-};
+use dartscope_index::{DartDefinitionQuery, DartWorkspaceIndex, DartWorkspaceResolutionContext};
 use thiserror::Error;
 
 use crate::coordinates::lsp_position_to_byte_offset;
@@ -143,7 +141,8 @@ impl DartLspServer {
         let Some(index) = &self.index else {
             return Ok(None);
         };
-        let path = uri_to_path(uri).unwrap_or_else(|_| uri.path().trim_start_matches('/').to_string());
+        let path =
+            uri_to_path(uri).unwrap_or_else(|_| uri.path().trim_start_matches('/').to_string());
         let query = DartDefinitionQuery::new(path, offset);
         let ctx = DartWorkspaceResolutionContext::from_snapshot(&index.snapshot());
         let batch = ctx.find_definitions(&[query]);
@@ -194,7 +193,8 @@ impl DartLspServer {
         let Some(index) = &self.index else {
             return Ok(None);
         };
-        let path = uri_to_path(uri).unwrap_or_else(|_| uri.path().trim_start_matches('/').to_string());
+        let path =
+            uri_to_path(uri).unwrap_or_else(|_| uri.path().trim_start_matches('/').to_string());
         let query = DartDefinitionQuery::new(path, offset);
         let ctx = DartWorkspaceResolutionContext::from_snapshot(&index.snapshot());
         let batch = ctx.find_definitions(&[query]);
@@ -214,7 +214,8 @@ impl DartLspServer {
                     .get(&ref_uri)
                     .map(|s| s.as_str())
                     .unwrap_or(content.as_str());
-                let range = crate::coordinates::source_span_to_lsp_range(ref_content, &reference.span);
+                let range =
+                    crate::coordinates::source_span_to_lsp_range(ref_content, &reference.span);
                 locations.push(Location {
                     uri: ref_uri,
                     range,
@@ -242,7 +243,8 @@ impl DartLspServer {
         let Some(index) = &self.index else {
             return Ok(None);
         };
-        let path = uri_to_path(uri).unwrap_or_else(|_| uri.path().trim_start_matches('/').to_string());
+        let path =
+            uri_to_path(uri).unwrap_or_else(|_| uri.path().trim_start_matches('/').to_string());
         let query = DartDefinitionQuery::new(path, offset);
         let ctx = DartWorkspaceResolutionContext::from_snapshot(&index.snapshot());
         let batch = ctx.find_definitions(&[query]);
@@ -282,7 +284,8 @@ impl DartLspServer {
         let Some(content) = self.documents.get(uri) else {
             return Err(LspError::DocumentNotOpen(uri.to_string()));
         };
-        let path = uri_to_path(uri).unwrap_or_else(|_| uri.path().trim_start_matches('/').to_string());
+        let path =
+            uri_to_path(uri).unwrap_or_else(|_| uri.path().trim_start_matches('/').to_string());
         let Some(index) = &self.index else {
             return Ok(None);
         };
@@ -328,11 +331,14 @@ impl DartLspServer {
                                 content,
                                 member.declaration_span.as_ref().unwrap_or(&member.span),
                             );
-                            let sel = crate::coordinates::source_span_to_lsp_range(content, &member.span);
+                            let sel =
+                                crate::coordinates::source_span_to_lsp_range(content, &member.span);
                             let k = match member.kind {
                                 dartscope_core::DartDeclarationKind::Method => SymbolKind::Method,
                                 dartscope_core::DartDeclarationKind::Field => SymbolKind::Field,
-                                dartscope_core::DartDeclarationKind::Constructor => SymbolKind::Constructor,
+                                dartscope_core::DartDeclarationKind::Constructor => {
+                                    SymbolKind::Constructor
+                                }
                                 dartscope_core::DartDeclarationKind::Getter => SymbolKind::Property,
                                 dartscope_core::DartDeclarationKind::Setter => SymbolKind::Property,
                                 _ => SymbolKind::Property,
@@ -360,7 +366,8 @@ impl DartLspServer {
         let Some(index) = &self.index else {
             return Vec::new();
         };
-        let path = uri_to_path(uri).unwrap_or_else(|_| uri.path().trim_start_matches('/').to_string());
+        let path =
+            uri_to_path(uri).unwrap_or_else(|_| uri.path().trim_start_matches('/').to_string());
         let snapshot = index.snapshot();
         let project = snapshot.project();
         let Some(file) = project.files.iter().find(|f| f.path == path) else {
@@ -375,8 +382,14 @@ impl DartLspServer {
                     .as_ref()
                     .map(|span| crate::coordinates::source_span_to_lsp_range(content, span))
                     .unwrap_or_else(|| Range {
-                        start: Position { line: 0, character: 0 },
-                        end: Position { line: 0, character: 0 },
+                        start: Position {
+                            line: 0,
+                            character: 0,
+                        },
+                        end: Position {
+                            line: 0,
+                            character: 0,
+                        },
                     });
                 let severity = match diag.severity {
                     dartscope_core::DiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
@@ -403,7 +416,8 @@ impl DartLspServer {
             .documents
             .iter()
             .map(|(uri, content)| {
-                let path = uri_to_path(uri).unwrap_or_else(|_| uri.path().trim_start_matches('/').to_string());
+                let path = uri_to_path(uri)
+                    .unwrap_or_else(|_| uri.path().trim_start_matches('/').to_string());
                 DartFileInput::new(path, content.clone())
             })
             .collect::<Vec<_>>();
@@ -417,8 +431,12 @@ impl DartLspServer {
 
 fn uri_to_path(uri: &Url) -> Result<String, Url> {
     // Url::to_file_path is platform-specific; we normalize to `/`-separated
-    uri.to_file_path()
-        .map(|path| path.to_string_lossy().replace('\\', "/").trim_start_matches('/').to_string())
+    uri.to_file_path().map(|path| {
+        path.to_string_lossy()
+            .replace('\\', "/")
+            .trim_start_matches('/')
+            .to_string()
+    })
 }
 
 fn path_to_uri(path: &str) -> Url {
@@ -428,7 +446,8 @@ fn path_to_uri(path: &str) -> Url {
     } else {
         format!("/{path}")
     };
-    Url::parse(&format!("file://{normalized}")).unwrap_or_else(|_| Url::parse("file:///tmp.dart").unwrap())
+    Url::parse(&format!("file://{normalized}"))
+        .unwrap_or_else(|_| Url::parse("file:///tmp.dart").unwrap())
 }
 
 #[cfg(test)]
@@ -512,8 +531,14 @@ mod tests {
             },
             content_changes: vec![crate::types::TextDocumentContentChangeEvent {
                 range: Some(Range {
-                    start: Position { line: 0, character: 6 },
-                    end: Position { line: 0, character: 6 },
+                    start: Position {
+                        line: 0,
+                        character: 6,
+                    },
+                    end: Position {
+                        line: 0,
+                        character: 6,
+                    },
                 }),
                 range_length: None,
                 text: "😀".to_string(),

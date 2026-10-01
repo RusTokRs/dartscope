@@ -596,8 +596,7 @@ fn refine_inherited_instance_member(
             name,
             prefix,
         };
-        let resolution =
-            resolve_member_owner_with_resolver(&analysis.project, query, namespace);
+        let resolution = resolve_member_owner_with_resolver(&analysis.project, query, namespace);
         for candidate in resolution.candidates {
             let refinement = refine_direct_member(
                 member_index,
@@ -686,8 +685,7 @@ fn refine_extension_member(
         // A future `on`-type-aware filter can be added once receiver-type inference is available:
         //   if owner_decl.extends.as_deref() != Some(inferred_receiver) { continue; }
         let is_private = member_name.starts_with('_');
-        let same_library =
-            namespace.same_library(source_path, &member.candidate.declaration_path);
+        let same_library = namespace.same_library(source_path, &member.candidate.declaration_path);
         let visible = !is_private || same_library;
         let mut candidate = member.candidate.clone();
         if !visible {

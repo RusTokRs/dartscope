@@ -206,7 +206,9 @@ impl<'de> Deserialize<'de> for DiagnosticSeverity {
             2 => Ok(DiagnosticSeverity::WARNING),
             3 => Ok(DiagnosticSeverity::INFORMATION),
             4 => Ok(DiagnosticSeverity::HINT),
-            _ => Err(serde::de::Error::custom(format!("invalid DiagnosticSeverity {v}"))),
+            _ => Err(serde::de::Error::custom(format!(
+                "invalid DiagnosticSeverity {v}"
+            ))),
         }
     }
 }
@@ -411,7 +413,9 @@ impl<'de> Deserialize<'de> for TextDocumentSyncKind {
             0 => Ok(TextDocumentSyncKind::None),
             1 => Ok(TextDocumentSyncKind::Full),
             2 => Ok(TextDocumentSyncKind::Incremental),
-            _ => Err(serde::de::Error::custom(format!("invalid TextDocumentSyncKind {v}"))),
+            _ => Err(serde::de::Error::custom(format!(
+                "invalid TextDocumentSyncKind {v}"
+            ))),
         }
     }
 }

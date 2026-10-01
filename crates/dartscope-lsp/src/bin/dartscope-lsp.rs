@@ -10,7 +10,8 @@ use std::io::{self, BufRead, Read, Write};
 use dartscope_lsp::DartLspServer;
 use dartscope_lsp::types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentSymbolParams, HoverParams, InitializeParams, ReferenceParams, TextDocumentPositionParams,
+    DocumentSymbolParams, HoverParams, InitializeParams, ReferenceParams,
+    TextDocumentPositionParams,
 };
 use serde_json::{Value, json};
 
@@ -53,12 +54,7 @@ fn main() -> io::Result<()> {
         };
         if let Some(response) = handle_message(&mut server, &msg) {
             let body = serde_json::to_string(&response).unwrap();
-            write!(
-                stdout,
-                "Content-Length: {}\r\n\r\n{}",
-                body.len(),
-                body
-            )?;
+            write!(stdout, "Content-Length: {}\r\n\r\n{}", body.len(), body)?;
             stdout.flush()?;
         }
         if msg.get("method").and_then(|m| m.as_str()) == Some("exit") {
@@ -91,25 +87,25 @@ fn handle_message(server: &mut DartLspServer, msg: &Value) -> Option<Value> {
         "exit" => None,
         "$/cancelRequest" => None,
         "textDocument/didOpen" => {
-            if let Ok(params) =
-                serde_json::from_value::<DidOpenTextDocumentParams>(msg.get("params").cloned().unwrap_or(Value::Null))
-            {
+            if let Ok(params) = serde_json::from_value::<DidOpenTextDocumentParams>(
+                msg.get("params").cloned().unwrap_or(Value::Null),
+            ) {
                 server.did_open(params);
             }
             None
         }
         "textDocument/didChange" => {
-            if let Ok(params) =
-                serde_json::from_value::<DidChangeTextDocumentParams>(msg.get("params").cloned().unwrap_or(Value::Null))
-            {
+            if let Ok(params) = serde_json::from_value::<DidChangeTextDocumentParams>(
+                msg.get("params").cloned().unwrap_or(Value::Null),
+            ) {
                 server.did_change(params);
             }
             None
         }
         "textDocument/didClose" => {
-            if let Ok(params) =
-                serde_json::from_value::<DidCloseTextDocumentParams>(msg.get("params").cloned().unwrap_or(Value::Null))
-            {
+            if let Ok(params) = serde_json::from_value::<DidCloseTextDocumentParams>(
+                msg.get("params").cloned().unwrap_or(Value::Null),
+            ) {
                 server.did_close(params);
             }
             None
@@ -128,7 +124,10 @@ fn handle_message(server: &mut DartLspServer, msg: &Value) -> Option<Value> {
             let params: ReferenceParams =
                 serde_json::from_value(msg.get("params").cloned().unwrap_or(Value::Null)).ok()?;
             let result = server
-                .references(&params.text_document_position.text_document.uri, params.text_document_position.position)
+                .references(
+                    &params.text_document_position.text_document.uri,
+                    params.text_document_position.position,
+                )
                 .ok()
                 .flatten()
                 .unwrap_or_default();
@@ -138,7 +137,10 @@ fn handle_message(server: &mut DartLspServer, msg: &Value) -> Option<Value> {
             let params: HoverParams =
                 serde_json::from_value(msg.get("params").cloned().unwrap_or(Value::Null)).ok()?;
             let result = server
-                .hover(&params.text_document_position_params.text_document.uri, params.text_document_position_params.position)
+                .hover(
+                    &params.text_document_position_params.text_document.uri,
+                    params.text_document_position_params.position,
+                )
                 .ok()
                 .flatten();
             Some(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
