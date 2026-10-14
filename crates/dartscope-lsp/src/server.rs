@@ -208,6 +208,21 @@ impl DartLspServer {
     /// facts; `diagnostics()` returns parser diagnostics first and appends these
     /// entries in deterministic range order. They are cleared when the document
     /// closes.
+    /// The workspace index maintained over the open documents, if any.
+    ///
+    /// Downstream lint adapters use this to run `dartscope-lints` over the same
+    /// snapshot the navigation queries resolve against.
+    pub fn index(&self) -> Option<&DartWorkspaceIndex> {
+        self.index.as_ref()
+    }
+
+    /// The URIs of all currently open documents, sorted for determinism.
+    pub fn open_document_uris(&self) -> Vec<Url> {
+        let mut uris: Vec<Url> = self.documents.keys().cloned().collect();
+        uris.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        uris
+    }
+
     pub fn set_supplemental_diagnostics(&mut self, uri: &Url, diagnostics: Vec<Diagnostic>) {
         if diagnostics.is_empty() {
             self.supplemental.remove(uri);
@@ -602,6 +617,54 @@ impl DartLspServer {
         let analysis = dartscope_parse::analyze_project_with_references(input);
         let index = DartWorkspaceIndex::from_reference_project(analysis);
         self.index = Some(index);
+    }
+}
+
+#[cfg(feature = "lints")]
+impl DartLspServer {
+    /// Runs the configured `dartscope-lints` rules over the open-document
+    /// workspace snapshot and feeds the findings through the supplemental
+    /// diagnostics port, exactly as the downstream adapter contract expects.
+    /// Documents without findings are explicitly cleared.
+    pub fn refresh_lint_diagnostics(&mut self, config: &dartscope_lints::DartLintConfig) {
+        let mut per_uri: HashMap<Url, Vec<Diagnostic>> = HashMap::new();
+        if let Some(index) = &self.index {
+            let snapshot = index.snapshot();
+            let analysis = dartscope_lints::lint_workspace_snapshot(&snapshot, config);
+            for finding in analysis.diagnostics {
+                let uri = path_to_uri(&finding.path);
+                let content = self.documents.get(&uri).map(String::as_str).unwrap_or("");
+                let range = finding
+                    .span
+                    .as_ref()
+                    .map(|span| source_span_to_lsp_range(content, span))
+                    .unwrap_or_else(|| Range {
+                        start: Position {
+                            line: 0,
+                            character: 0,
+                        },
+                        end: Position {
+                            line: 0,
+                            character: 0,
+                        },
+                    });
+                let severity = match finding.severity {
+                    dartscope_core::DiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
+                    dartscope_core::DiagnosticSeverity::Warning => DiagnosticSeverity::WARNING,
+                    dartscope_core::DiagnosticSeverity::Info => DiagnosticSeverity::INFORMATION,
+                };
+                per_uri.entry(uri).or_default().push(Diagnostic {
+                    range,
+                    severity: Some(severity),
+                    code: Some(NumberOrString::String(finding.rule_id.as_str().to_string())),
+                    source: Some("dartscope-lints".to_string()),
+                    message: finding.message,
+                });
+            }
+        }
+        for uri in self.open_document_uris() {
+            self.set_supplemental_diagnostics(&uri, per_uri.remove(&uri).unwrap_or_default());
+        }
     }
 }
 

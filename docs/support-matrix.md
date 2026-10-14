@@ -91,6 +91,11 @@ diagnostics that echoes the client's document version. Index maintenance is per-
 changing a document upserts only that file, closing removes it, and unaffected open documents keep
 their parse and resolution caches.
 
+Built with the optional `lints` feature and started as `dartscope-lsp [root] --lints`, the stdio
+binary drives the adapter itself: after each `didOpen`/`didChange` it runs the all-rules
+`dartscope-lints` configuration over its own index snapshot and publishes the merged set. With
+default features the library keeps its zero-dependency property and the port stays manual.
+
 The bridge never scans the filesystem, never runs `dart` or `flutter`, and does not depend on
 `dartscope-lints`. Lint findings reach the server only through `set_supplemental_diagnostics`, which a
 downstream adapter fills. Completion, formatting, semantic tokens, inlay hints, and workspace-wide

@@ -3,6 +3,11 @@
 //! Reads LSP `Content-Length` framed JSON-RPC from stdin and writes
 //! responses/notifications to stdout. No async runtime, no hidden
 //! filesystem scans — every `textDocument/*` carries its content.
+//!
+//! Usage: `dartscope-lsp [root] [--lints]`. The optional `--lints` flag only
+//! works when the binary is built with the crate's `lints` feature; it runs the
+//! all-rules `dartscope-lints` configuration after every sync event and routes
+//! the findings through the server's supplemental diagnostics port.
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, Read, Write};
@@ -16,7 +21,27 @@ use dartscope_lsp::types::{
 use serde_json::{Value, json};
 
 fn main() -> io::Result<()> {
-    let mut server = DartLspServer::new(".");
+    let mut root = String::from(".");
+    #[cfg(feature = "lints")]
+    let mut with_lints = false;
+    #[cfg(not(feature = "lints"))]
+    let with_lints = false;
+    for arg in std::env::args().skip(1) {
+        match arg.as_str() {
+            "--lints" => {
+                #[cfg(feature = "lints")]
+                {
+                    with_lints = true;
+                }
+                #[cfg(not(feature = "lints"))]
+                {
+                    eprintln!("dartscope-lsp: `--lints` needs the `lints` cargo feature; ignoring");
+                }
+            }
+            other => root = other.to_string(),
+        }
+    }
+    let mut server = DartLspServer::new(root);
     let stdin = io::stdin();
     let mut reader = io::BufReader::new(stdin.lock());
     let mut stdout = io::stdout();
@@ -53,7 +78,7 @@ fn main() -> io::Result<()> {
             Err(_) => continue,
         };
         let is_exit = msg.get("method").and_then(|m| m.as_str()) == Some("exit");
-        for response in handle_message(&mut server, &msg) {
+        for response in handle_message_with_options(&mut server, &msg, with_lints) {
             let body = serde_json::to_string(&response).unwrap_or_else(|_| "null".to_string());
             write!(stdout, "Content-Length: {}\r\n\r\n{}", body.len(), body)?;
             stdout.flush()?;
@@ -73,7 +98,16 @@ fn main() -> io::Result<()> {
 /// Handles one inbound message and returns every outbound message to write,
 /// in order: a response for requests plus any server-initiated notifications
 /// (currently `textDocument/publishDiagnostics`).
+#[cfg(test)]
 fn handle_message(server: &mut DartLspServer, msg: &Value) -> Vec<Value> {
+    handle_message_with_options(server, msg, false)
+}
+
+fn handle_message_with_options(
+    server: &mut DartLspServer,
+    msg: &Value,
+    with_lints: bool,
+) -> Vec<Value> {
     let Some(method) = msg.get("method").and_then(|m| m.as_str()) else {
         return Vec::new();
     };
@@ -94,7 +128,7 @@ fn handle_message(server: &mut DartLspServer, msg: &Value) -> Vec<Value> {
         return Vec::new();
     }
     let params = msg.get("params").cloned().unwrap_or(Value::Null);
-    match method {
+    let outgoing = match method {
         "initialize" => {
             let params: InitializeParams = serde_json::from_value(params).unwrap_or_default();
             let result = match server.initialize(params) {
@@ -208,7 +242,54 @@ fn handle_message(server: &mut DartLspServer, msg: &Value) -> Vec<Value> {
                 Vec::new()
             }
         }
+    };
+    apply_lints_hook(server, msg, method, outgoing, with_lints)
+}
+
+/// Post-sync hook for the `lints` feature: after `didOpen`/`didChange` the
+/// server reruns the lint adapter over its own snapshot and the publish
+/// notification in `outgoing` is regenerated so parser diagnostics and
+/// supplemental lint entries reach the client merged and versioned.
+fn apply_lints_hook(
+    server: &mut DartLspServer,
+    msg: &Value,
+    method: &str,
+    outgoing: Vec<Value>,
+    with_lints: bool,
+) -> Vec<Value> {
+    #[cfg(not(feature = "lints"))]
+    let _ = (&server, msg, method, with_lints);
+    #[cfg(feature = "lints")]
+    {
+        if with_lints && matches!(method, "textDocument/didOpen" | "textDocument/didChange") {
+            server.refresh_lint_diagnostics(&dartscope_lints::DartLintConfig::all_rules());
+            if let Some(uri) = synced_uri(msg) {
+                return outgoing
+                    .into_iter()
+                    .map(|entry| {
+                        if entry.get("method").and_then(Value::as_str)
+                            == Some("textDocument/publishDiagnostics")
+                        {
+                            publish_diagnostics(server, &uri)
+                        } else {
+                            entry
+                        }
+                    })
+                    .collect();
+            }
+        }
     }
+    outgoing
+}
+
+#[cfg(feature = "lints")]
+fn synced_uri(msg: &Value) -> Option<Url> {
+    let uri = msg
+        .get("params")?
+        .get("textDocument")?
+        .get("uri")?
+        .as_str()?;
+    Url::parse(uri).ok()
 }
 
 fn to_result<T: serde::Serialize>(value: T) -> Value {
@@ -449,6 +530,53 @@ mod tests {
             &json!({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{}}),
         );
         assert!(outgoing.is_empty());
+    }
+
+    #[cfg(feature = "lints")]
+    #[test]
+    fn lints_feature_routes_findings_into_publish_diagnostics() {
+        let mut server = DartLspServer::new(".");
+        initialize(&mut server);
+        let open = json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": "file:///lib/a.dart",
+                    "languageId": "dart",
+                    "version": 3,
+                    "text": "part 'missing.dart';\nclass A {}\n"
+                }
+            }
+        });
+        let outgoing = handle_message_with_options(&mut server, &open, true);
+        assert_eq!(outgoing.len(), 1);
+        let diags = outgoing[0]["params"]["diagnostics"].as_array().unwrap();
+        assert!(
+            diags.iter().any(|d| {
+                d["code"] == json!("dartscope.unresolved_part")
+                    && d["source"] == json!("dartscope-lints")
+            }),
+            "expected the lint finding in the published set: {diags:?}"
+        );
+        assert_eq!(outgoing[0]["params"]["version"], json!(3));
+        // Fixing the file clears the supplemental entry on the next publish.
+        let change = json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "textDocument": { "uri": "file:///lib/a.dart", "version": 4 },
+                "contentChanges": [{ "text": "class A {}\n" }]
+            }
+        });
+        let outgoing = handle_message_with_options(&mut server, &change, true);
+        let diags = outgoing[0]["params"]["diagnostics"].as_array().unwrap();
+        assert!(
+            !diags
+                .iter()
+                .any(|d| d["source"] == json!("dartscope-lints"))
+        );
+        assert_eq!(outgoing[0]["params"]["version"], json!(4));
     }
 
     #[test]

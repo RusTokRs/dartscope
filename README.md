@@ -48,8 +48,11 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
   hover/`documentSymbol`/`workspace/symbol` over the workspace index, a spec-shaped
   initialize/shutdown/exit lifecycle, and a minimal stdio binary that echoes the client's document
   version in `publishDiagnostics`. It performs no filesystem or `dart`/`flutter` process I/O, does
-  not depend on `dartscope-lints`, and exposes an explicit supplemental-diagnostics port for
-  downstream lint adapters plus a snapshot-generation staleness signal.
+  not depend on `dartscope-lints` by default, and exposes an explicit supplemental-diagnostics port
+  for downstream lint adapters plus a snapshot-generation staleness signal. The stdio binary takes an
+  optional workspace root argument and a `--lints` flag; built with the crate's optional `lints`
+  feature, that flag wires the all-rules `dartscope-lints` configuration into the port after every
+  sync event.
 - `dartscope` is a thin umbrella crate with feature-gated re-exports.
 
 ## Non-Goals

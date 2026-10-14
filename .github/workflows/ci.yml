@@ -205,6 +205,8 @@ jobs:
         run: python3 tools/check-repository-consistency.py
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Run Clippy for the optional LSP lints feature
+        run: cargo clippy -p dartscope-lsp --features lints --all-targets --locked -- -D warnings
       - name: Build documentation
         env:
           RUSTDOCFLAGS: -D warnings
@@ -228,6 +230,8 @@ jobs:
         run: rustup toolchain install 1.95.0 --profile minimal
       - name: Run workspace tests
         run: cargo test --workspace --locked --quiet
+      - name: Run LSP lints-feature tests
+        run: cargo test -p dartscope-lsp --features lints --locked --quiet
 
   edition_2024:
     name: Edition 2024 (${{ matrix.os }} / ${{ matrix.check.name }})

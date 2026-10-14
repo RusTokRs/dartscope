@@ -1093,7 +1093,7 @@ See `docs/development/reference-scope-resolution.md`.
 
 ### DS-LSP-001: Language Server Foundation
 
-Status: implemented. Priority: P2. Prerequisites: DS-INDEX-005, DS-INDEX-006, DS-CLI-003.
+Status: verified. Priority: P2. Prerequisites: DS-INDEX-005, DS-INDEX-006, DS-CLI-003.
 
 Implemented (2026-09-25):
 
@@ -1129,7 +1129,15 @@ Implemented (2026-10-14, follow-up slice):
     the LSP lifecycle (`-32002` before `initialize`, `-32600` for requests after `shutdown`, a
     non-zero exit status for `exit` without `shutdown`); and hover presents each target as a `dart`
     code block instead of a bare string.
-14. Verified on the exact hosted toolchain (2026-10-14 pull-request runs): the Ubuntu/Windows quality gates
+14. Contract follow-ups closed (2026-10-15): a process-level smoke suite
+    (`crates/dartscope-lsp/tests/stdio.rs`) spawns the real binary over `Content-Length` framing and
+    asserts the full initialize→sync→hover→shutdown→exit conversation, exit-status semantics, and
+    the pre-initialize rejection; the optional `lints` cargo feature wires the stdio binary's
+    `--lints` mode to an all-rules `dartscope-lints` adapter that feeds `set_supplemental_diagnostics`
+    after every sync event and republishes the merged set, with a dedicated feature test and explicit
+    CI steps (`cargo clippy -p dartscope-lsp --features lints`, `cargo test -p dartscope-lsp
+    --features lints`).
+15. Verified on the exact hosted toolchain (2026-10-14 pull-request runs): the Ubuntu/Windows quality gates
     (rustfmt style-edition 2024, repository consistency, `cargo clippy --workspace --all-targets -- -D
     warnings`, rustdoc), both workspace test matrices, the full edition matrix, the macOS arm64 portability
     signal including the release-crate archive count, and the bounded fuzz corpus are green. Repairs along the
@@ -1140,10 +1148,10 @@ Implemented (2026-10-14, follow-up slice):
     rebuild dependent reference caches while formatting-only edits stay no-ops), and never-run unit-test
     expectations re-based onto the ported semantics.
 
-Remaining (follow-up): a process-level editor smoke over the real stdio framing on a fixture project, the
-`dartscope-cli` lint-adapter that feeds `set_supplemental_diagnostics`, semantic tokens, and any
-on-type-aware extension hover refinement. Foundation and the follow-up list above are `implemented`; full
-`verified` requires the remaining acceptance items on the exact hosted toolchain.
+Remaining (follow-up): semantic tokens and any receiver-type-aware extension hover refinement stay
+outside the `0.1` contract; the process-level stdio smoke and the lint adapter shipped as item 14.
+The foundation and the follow-up list above are complete; the hosted-toolchain runs listed under
+item 15 carry the `verified` status.
 
 Acceptance:
 

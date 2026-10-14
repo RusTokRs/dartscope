@@ -54,6 +54,24 @@ pre-1.0.
 
 ### Added
 
+- `dartscope-lsp` `lints` cargo feature: building with it and starting the stdio binary as
+  `dartscope-lsp [root] --lints` runs the all-rules `dartscope-lints` configuration over the
+  server's own workspace snapshot after every `didOpen`/`didChange` and routes the findings
+  through the supplemental-diagnostics port, so published diagnostics merge parser and lint
+  facts in one coherent, versioned set. Default builds keep the zero-dependency property and
+  print a notice when `--lints` is requested without the feature. The binary also accepts an
+  optional positional workspace root.
+- Process-level stdio smoke tests for `dartscope-lsp`: a spawned binary driven over real
+  `Content-Length` framing asserts the initialize→sync→hover→shutdown→exit conversation,
+  exit-status semantics, and pre-initialize request rejection.
+
+### Changed
+
+- `DartLspServer` gained public `index()` and `open_document_uris()` accessors for downstream
+  adapters; DS-LSP-001 is marked verified in the library plan.
+
+### Added (previous round)
+
 - `dartscope-lsp` functional round: per-file incremental index sync (open/change upsert, close
   remove; the first open builds the index and the last close clears it) replaces the full rebuild
   on every keystroke; `publishDiagnostics` now echoes the client's document `version`; hover
