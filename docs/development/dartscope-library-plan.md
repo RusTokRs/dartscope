@@ -137,7 +137,7 @@ Audit scope:
 
 - exact Rust 1.95.0 formatting, workspace/all-feature checks, all-target tests, Clippy, and rustdoc;
 - isolated umbrella features plus the normal Ubuntu and Windows hosted matrices;
-- all nine release archives, normalized packaged manifests, README inclusion, and publish topology;
+- all ten release archives, normalized packaged manifests, README inclusion, and publish topology;
 - RustSec advisory and unused-dependency scans, duplicate dependency reporting, script syntax, and
   repository metadata consistency;
 - release tag/changelog state, executable file modes, workflow invocation behavior, and third-party

@@ -1042,11 +1042,7 @@ fn changed_graphql_operation_names(
 
 fn top_level_declaration_facts(
     file: &DartFileAnalysis,
-) -> Vec<(
-    &str,
-    dartscope_core::DartDeclarationKind,
-    Option<&str>,
-)> {
+) -> Vec<(&str, dartscope_core::DartDeclarationKind, Option<&str>)> {
     file.declarations
         .iter()
         .filter(|declaration| declaration.parent_symbol_id.is_none())

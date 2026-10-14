@@ -184,7 +184,8 @@ jobs:
         run: |
           cargo +1.95.0 package --workspace --locked --allow-dirty --no-verify
           archive_count="$(find target/package -maxdepth 1 -type f -name 'dartscope-*.crate' | wc -l | tr -d ' ')"
-          test "$archive_count" = "9"
+          expected_count="$(grep -c '^[a-z]' tools/release-crates.txt)"
+          test "$archive_count" = "$expected_count"
 
   quality:
     name: Quality gates

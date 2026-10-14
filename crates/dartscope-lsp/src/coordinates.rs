@@ -147,7 +147,7 @@ fn utf16_to_byte_offset(line_content: &str, utf16_offset: usize) -> Option<usize
     for c in line_content.chars() {
         let len = c.len_utf16();
         if utf16_count + len > utf16_offset {
-            // Requested offset is inside a surrogate pair (e.g. middle of emoji) — clamp to char start
+            // Requested offset inside a surrogate pair — clamp to char start
             return Some(byte_offset);
         }
         utf16_count += len;
@@ -159,7 +159,7 @@ fn utf16_to_byte_offset(line_content: &str, utf16_offset: usize) -> Option<usize
     if utf16_count == utf16_offset {
         Some(byte_offset)
     } else {
-        // Character exceeds line length — per LSP spec, positions beyond line length are clamped to line end,
+        // LSP spec clamps positions beyond a line's length to the line end,
         // but for strict conversion we return None to signal out-of-bounds. Caller may clamp.
         None
     }
@@ -169,10 +169,7 @@ fn byte_offset_to_char_column(source: &str, offset: usize) -> usize {
     let offset = offset.min(source.len());
     let offset = floor_char_boundary(source, offset);
     // Find line start
-    let line_start = source[..offset]
-        .rfind('\n')
-        .map(|pos| pos + 1)
-        .unwrap_or(0);
+    let line_start = source[..offset].rfind('\n').map(|pos| pos + 1).unwrap_or(0);
     let column_chars = source[line_start..offset].chars().count();
     column_chars + 1 // 1-indexed
 }
@@ -187,20 +184,50 @@ mod tests {
         let source = "a\nb\nc";
         assert_eq!(
             byte_offset_to_lsp_position(source, 0),
-            Position { line: 0, character: 0 }
+            Position {
+                line: 0,
+                character: 0
+            }
         );
         assert_eq!(
             byte_offset_to_lsp_position(source, 1),
-            Position { line: 0, character: 1 }
+            Position {
+                line: 0,
+                character: 1
+            }
         );
-        assert_eq!(byte_offset_to_lsp_position(source, 2), Position { line: 1, character: 0 });
-        assert_eq!(byte_offset_to_lsp_position(source, 3), Position { line: 1, character: 1 });
         assert_eq!(
-            lsp_position_to_byte_offset(source, Position { line: 0, character: 1 }),
+            byte_offset_to_lsp_position(source, 2),
+            Position {
+                line: 1,
+                character: 0
+            }
+        );
+        assert_eq!(
+            byte_offset_to_lsp_position(source, 3),
+            Position {
+                line: 1,
+                character: 1
+            }
+        );
+        assert_eq!(
+            lsp_position_to_byte_offset(
+                source,
+                Position {
+                    line: 0,
+                    character: 1
+                }
+            ),
             Some(1)
         );
         assert_eq!(
-            lsp_position_to_byte_offset(source, Position { line: 1, character: 0 }),
+            lsp_position_to_byte_offset(
+                source,
+                Position {
+                    line: 1,
+                    character: 0
+                }
+            ),
             Some(2)
         );
     }
@@ -211,29 +238,53 @@ mod tests {
         // "a" + "\r\n" = 3 bytes, line 0 content "a", line 1 content "b"
         assert_eq!(
             byte_offset_to_lsp_position(source, 0),
-            Position { line: 0, character: 0 }
+            Position {
+                line: 0,
+                character: 0
+            }
         );
         assert_eq!(
             byte_offset_to_lsp_position(source, 1),
-            Position { line: 0, character: 1 }
+            Position {
+                line: 0,
+                character: 1
+            }
         );
         // offset 1 is 'a' end, offset 2 is '\r', offset 3 is '\n' — both should map to line 0 end
         assert_eq!(
             byte_offset_to_lsp_position(source, 3),
-            Position { line: 0, character: 1 }
+            Position {
+                line: 0,
+                character: 1
+            }
         );
         assert_eq!(
             byte_offset_to_lsp_position(source, 4),
-            Position { line: 1, character: 0 }
+            Position {
+                line: 1,
+                character: 0
+            }
         );
         assert_eq!(
-            lsp_position_to_byte_offset(source, Position { line: 1, character: 0 }),
+            lsp_position_to_byte_offset(
+                source,
+                Position {
+                    line: 1,
+                    character: 0
+                }
+            ),
             Some(3)
         );
         // byte 3 is after "\r\n"?
-        // Our line_content_by_index: line 0 start 0, content "a" (0..1), line 1 start 3, content "b" (3..4)
+        // line 0: 0..1 "a"; line 1: 3..4 "b"
         assert_eq!(
-            lsp_position_to_byte_offset(source, Position { line: 1, character: 1 }),
+            lsp_position_to_byte_offset(
+                source,
+                Position {
+                    line: 1,
+                    character: 1
+                }
+            ),
             Some(4)
         );
     }
@@ -244,32 +295,62 @@ mod tests {
         // Positions: line 0, char 0 -> 'a', char1 -> start of emoji, char3 -> 'b'
         assert_eq!(
             byte_offset_to_lsp_position(source, 0),
-            Position { line: 0, character: 0 }
+            Position {
+                line: 0,
+                character: 0
+            }
         );
         assert_eq!(
             byte_offset_to_lsp_position(source, 1),
-            Position { line: 0, character: 1 }
+            Position {
+                line: 0,
+                character: 1
+            }
         );
         // after emoji (1+4)
         assert_eq!(
             byte_offset_to_lsp_position(source, 5),
-            Position { line: 0, character: 3 }
+            Position {
+                line: 0,
+                character: 3
+            }
         );
         assert_eq!(
             byte_offset_to_lsp_position(source, 6),
-            Position { line: 0, character: 4 }
+            Position {
+                line: 0,
+                character: 4
+            }
         );
         assert_eq!(
-            lsp_position_to_byte_offset(source, Position { line: 0, character: 1 }),
+            lsp_position_to_byte_offset(
+                source,
+                Position {
+                    line: 0,
+                    character: 1
+                }
+            ),
             Some(1)
         );
         assert_eq!(
-            lsp_position_to_byte_offset(source, Position { line: 0, character: 3 }),
+            lsp_position_to_byte_offset(
+                source,
+                Position {
+                    line: 0,
+                    character: 3
+                }
+            ),
             Some(5)
         );
         // character 2 is inside surrogate pair — clamped to start of emoji
         assert_eq!(
-            lsp_position_to_byte_offset(source, Position { line: 0, character: 2 }),
+            lsp_position_to_byte_offset(
+                source,
+                Position {
+                    line: 0,
+                    character: 2
+                }
+            ),
             Some(1)
         );
     }
@@ -278,11 +359,23 @@ mod tests {
     fn out_of_bounds_returns_none() {
         let source = "ab";
         assert_eq!(
-            lsp_position_to_byte_offset(source, Position { line: 5, character: 0 }),
+            lsp_position_to_byte_offset(
+                source,
+                Position {
+                    line: 5,
+                    character: 0
+                }
+            ),
             None
         );
         assert_eq!(
-            lsp_position_to_byte_offset(source, Position { line: 0, character: 10 }),
+            lsp_position_to_byte_offset(
+                source,
+                Position {
+                    line: 0,
+                    character: 10
+                }
+            ),
             None
         );
     }

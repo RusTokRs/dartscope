@@ -10,9 +10,9 @@ use crate::coordinates::{lsp_position_to_byte_offset, source_span_to_lsp_range};
 use crate::types::{
     Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DocumentSymbol, Hover, HoverContents, InitializeParams,
-    InitializeResult, Location, MarkedString, NumberOrString, Position, Range,
-    ServerCapabilities, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
-    TextDocumentSyncKind, Url, WorkspaceSymbolParams,
+    InitializeResult, Location, MarkedString, NumberOrString, Position, Range, ServerCapabilities,
+    SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    WorkspaceSymbolParams,
 };
 
 /// Maximum number of entries returned by `workspace/symbol`.
@@ -321,10 +321,7 @@ impl DartLspServer {
         }))
     }
 
-    pub fn document_symbols(
-        &self,
-        uri: &Url,
-    ) -> Result<Option<Vec<DocumentSymbol>>, LspError> {
+    pub fn document_symbols(&self, uri: &Url) -> Result<Option<Vec<DocumentSymbol>>, LspError> {
         let Some(content) = self.documents.get(uri) else {
             return Err(LspError::DocumentNotOpen(uri.to_string()));
         };
@@ -364,10 +361,7 @@ impl DartLspServer {
                         .map(|member| {
                             let r = source_span_to_lsp_range(
                                 content,
-                                member
-                                    .declaration_span
-                                    .as_ref()
-                                    .unwrap_or(&member.span),
+                                member.declaration_span.as_ref().unwrap_or(&member.span),
                             );
                             let sel = source_span_to_lsp_range(content, &member.span);
                             DocumentSymbol {
@@ -436,7 +430,13 @@ impl DartLspServer {
             a.name
                 .cmp(&b.name)
                 .then_with(|| a.location.uri.as_str().cmp(b.location.uri.as_str()))
-                .then_with(|| a.location.range.start.line.cmp(&b.location.range.start.line))
+                .then_with(|| {
+                    a.location
+                        .range
+                        .start
+                        .line
+                        .cmp(&b.location.range.start.line)
+                })
                 .then_with(|| {
                     a.location
                         .range
@@ -470,13 +470,17 @@ impl DartLspServer {
                             .as_ref()
                             .map(|span| source_span_to_lsp_range(content, span))
                             .unwrap_or_else(|| Range {
-                                start: Position { line: 0, character: 0 },
-                                end: Position { line: 0, character: 0 },
+                                start: Position {
+                                    line: 0,
+                                    character: 0,
+                                },
+                                end: Position {
+                                    line: 0,
+                                    character: 0,
+                                },
                             });
                         let severity = match diag.severity {
-                            dartscope_core::DiagnosticSeverity::Error => {
-                                DiagnosticSeverity::ERROR
-                            }
+                            dartscope_core::DiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
                             dartscope_core::DiagnosticSeverity::Warning => {
                                 DiagnosticSeverity::WARNING
                             }
@@ -520,7 +524,9 @@ impl DartLspServer {
     /// responses can compare generations to detect that a newer edit superseded
     /// their cached answer instead of assuming a background refresh.
     pub fn snapshot_generation(&self) -> Option<u64> {
-        self.index.as_ref().map(|index| index.snapshot().generation())
+        self.index
+            .as_ref()
+            .map(|index| index.snapshot().generation())
     }
 
     fn rebuild_index(&mut self) {

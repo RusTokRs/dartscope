@@ -58,10 +58,14 @@ pre-1.0.
   umbrella's `lsp` dependency edge, so `--locked` and `check-release-packages.py` accept the workspace.
   `DartWorkspaceResolutionContext::from_snapshot` now receives a borrowed snapshot (it previously
   passed an `Arc` by value), `DartLspServer` no longer relies on a non-existent `Default` impl for the
-  LSP `Diagnostic`, unused `crate::types` imports were removed, and a full workspace `rustfmt`/Clippy
-  pass clears the crate.
+  LSP `Diagnostic`, unused `crate::types` imports were removed, and the whole workspace was
+  normalized with rustfmt style-edition 2024, which also clears the pre-existing red
+  `Check formatting` gate on `main`. `Url::path` no longer relies on `[char; N]` string patterns.
 - `DartLspServer::did_change` rejects inverted or out-of-range incremental edit ranges and falls back
   to a full-content replace instead of panicking in `String::replace_range`.
+- The macOS portability job now derives its expected `.crate` archive count from
+  `tools/release-crates.txt` instead of a hardcoded nine, so adding a release crate no longer
+  requires editing the workflow.
 - Removed an unused direct `serde` dependency and stale lock edge from `dartscope-parse` instead of
   suppressing the unused-dependency gate.
 - Incremental reference caches now invalidate same-name `NotVisible` evidence and sibling-part

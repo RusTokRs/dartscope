@@ -79,7 +79,9 @@ impl Url {
                 }
             };
             // Strip query/fragment
-            let end = path_part.find(['?', '#']).unwrap_or(path_part.len());
+            let end = path_part
+                .find(|c| c == '?' || c == '#')
+                .unwrap_or(path_part.len());
             &path_part[..end]
         } else {
             // Not file://, try to extract path after "://"
@@ -87,7 +89,7 @@ impl Url {
                 let after = &self.0[idx + 3..];
                 if let Some(slash) = after.find('/') {
                     let path = &after[slash..];
-                    let end = path.find(['?', '#']).unwrap_or(path.len());
+                    let end = path.find(|c| c == '?' || c == '#').unwrap_or(path.len());
                     &path[..end]
                 } else {
                     "/"
@@ -206,7 +208,9 @@ impl<'de> Deserialize<'de> for DiagnosticSeverity {
             2 => Ok(DiagnosticSeverity::WARNING),
             3 => Ok(DiagnosticSeverity::INFORMATION),
             4 => Ok(DiagnosticSeverity::HINT),
-            _ => Err(serde::de::Error::custom(format!("invalid DiagnosticSeverity {v}"))),
+            _ => Err(serde::de::Error::custom(format!(
+                "invalid DiagnosticSeverity {v}"
+            ))),
         }
     }
 }
@@ -411,7 +415,9 @@ impl<'de> Deserialize<'de> for TextDocumentSyncKind {
             0 => Ok(TextDocumentSyncKind::None),
             1 => Ok(TextDocumentSyncKind::Full),
             2 => Ok(TextDocumentSyncKind::Incremental),
-            _ => Err(serde::de::Error::custom(format!("invalid TextDocumentSyncKind {v}"))),
+            _ => Err(serde::de::Error::custom(format!(
+                "invalid TextDocumentSyncKind {v}"
+            ))),
         }
     }
 }

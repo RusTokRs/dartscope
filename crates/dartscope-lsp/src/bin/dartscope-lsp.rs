@@ -232,7 +232,10 @@ mod tests {
         let outgoing = handle_message(&mut server, &msg);
         assert_eq!(outgoing.len(), 1);
         let result = &outgoing[0]["result"];
-        assert_eq!(result["capabilities"]["workspaceSymbolProvider"], json!(true));
+        assert_eq!(
+            result["capabilities"]["workspaceSymbolProvider"],
+            json!(true)
+        );
         assert_eq!(result["capabilities"]["textDocumentSync"], json!(2));
         assert_eq!(result["serverInfo"]["name"], json!("dartscope-lsp"));
         assert_eq!(outgoing[0]["id"], json!(1));
@@ -262,12 +265,21 @@ mod tests {
         });
         let outgoing = handle_message(&mut server, &msg);
         assert_eq!(outgoing.len(), 1);
-        assert_eq!(outgoing[0]["method"], json!("textDocument/publishDiagnostics"));
+        assert_eq!(
+            outgoing[0]["method"],
+            json!("textDocument/publishDiagnostics")
+        );
         assert_eq!(
             outgoing[0]["params"]["uri"],
             json!("file:///workspace/lib/main.dart")
         );
-        assert!(outgoing[0]["params"]["diagnostics"].as_array().unwrap().len() >= 1);
+        assert!(
+            outgoing[0]["params"]["diagnostics"]
+                .as_array()
+                .unwrap()
+                .len()
+                >= 1
+        );
     }
 
     #[test]
@@ -293,7 +305,10 @@ mod tests {
         });
         let outgoing = handle_message(&mut server, &close);
         assert_eq!(outgoing.len(), 1);
-        assert_eq!(outgoing[0]["method"], json!("textDocument/publishDiagnostics"));
+        assert_eq!(
+            outgoing[0]["method"],
+            json!("textDocument/publishDiagnostics")
+        );
         assert_eq!(outgoing[0]["params"]["diagnostics"], json!([]));
     }
 
@@ -325,7 +340,10 @@ mod tests {
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0]["name"], json!("PaymentGateway"));
         assert_eq!(symbols[0]["kind"], json!(5));
-        assert_eq!(symbols[0]["location"]["uri"], json!("file:///lib/payments.dart"));
+        assert_eq!(
+            symbols[0]["location"]["uri"],
+            json!("file:///lib/payments.dart")
+        );
     }
 
     #[test]

@@ -19,7 +19,8 @@ The checked-in harness measures four bounded release-mode workloads:
 1. heuristic parsing over a generated declaration and invocation corpus;
 2. project indexing over a generated 600-file import chain;
 3. identifier-reference resolution over the same generated project;
-4. `cargo package --workspace --no-verify` archive generation for all nine release crates.
+4. `cargo package --workspace --no-verify` archive generation for every release crate in
+   `tools/release-crates.txt`.
 
 The Rust harness emits deterministic work units and a digest with each duration. Parse, index, and
 reference timings are compared only when baseline and candidate units and digests match. Aggregate

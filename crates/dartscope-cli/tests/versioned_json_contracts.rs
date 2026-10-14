@@ -1,7 +1,8 @@
 use dartscope::{
-    DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartFileLanguage, DartGraphqlContractAnalysis,
-    DartImport, DartLintAnalysis, DartProjectAnalysis, DartProjectSummary, DartUriGraph,
-    FlutterFileHints, FlutterInventory, JsonContract, SourceSpan, to_json_contract_pretty,
+    DartDeclaration, DartDeclarationKind, DartFileAnalysis, DartFileLanguage,
+    DartGraphqlContractAnalysis, DartImport, DartLintAnalysis, DartProjectAnalysis,
+    DartProjectSummary, DartUriGraph, FlutterFileHints, FlutterInventory, JsonContract, SourceSpan,
+    to_json_contract_pretty,
 };
 
 macro_rules! assert_golden {

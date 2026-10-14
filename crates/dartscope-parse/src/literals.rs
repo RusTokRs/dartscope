@@ -244,10 +244,22 @@ mod tests {
 
     #[test]
     fn single_literal_handles_raw_and_escapes() {
-        assert_eq!(single_string_literal_value(r"'/home'"), Some("/home".to_string()));
-        assert_eq!(single_string_literal_value(r"r'/raw'"), Some("/raw".to_string()));
-        assert_eq!(single_string_literal_value(r"'it\'s'"), Some("it's".to_string()));
-        assert_eq!(single_string_literal_value("\"/a\""), Some("/a".to_string()));
+        assert_eq!(
+            single_string_literal_value(r"'/home'"),
+            Some("/home".to_string())
+        );
+        assert_eq!(
+            single_string_literal_value(r"r'/raw'"),
+            Some("/raw".to_string())
+        );
+        assert_eq!(
+            single_string_literal_value(r"'it\'s'"),
+            Some("it's".to_string())
+        );
+        assert_eq!(
+            single_string_literal_value("\"/a\""),
+            Some("/a".to_string())
+        );
         assert_eq!(single_string_literal_value("'a' 'b'"), None); // adjacent not single
     }
 
@@ -256,7 +268,12 @@ mod tests {
         let (value, end) = string_literals_value("'/a' '/b'", 0).unwrap();
         assert_eq!(value, "/a/b");
         assert_eq!(end, "'/a' '/b'".len());
-        assert_eq!(string_literal_range("r'''a\nb'''", 0).unwrap().content_start, 4);
+        assert_eq!(
+            string_literal_range("r'''a\nb'''", 0)
+                .unwrap()
+                .content_start,
+            4
+        );
     }
 
     #[test]
