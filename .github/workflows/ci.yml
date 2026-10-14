@@ -204,11 +204,15 @@ jobs:
         shell: bash
         run: |
           set +e
-          cargo check --workspace --all-targets --locked > /tmp/probe1.log 2>&1
+          cargo clippy --workspace --all-targets --locked -- -D warnings > /tmp/probe1.log 2>&1
           c1=$?
-          cargo test -p dartscope-parse --features fuzzing --locked --no-run > /tmp/probe2.log 2>&1
+          cargo test --workspace --locked --quiet > /tmp/probe2.log 2>&1
           c2=$?
-          { grep -E '^error' /tmp/probe1.log | head -5; grep -E '^error' /tmp/probe2.log | head -5; } | sed 's/^/::error::/'
+          {
+            grep -E '^error' /tmp/probe1.log | head -6
+            grep -E '^failures:$' -A 20 /tmp/probe2.log | grep -E '^    ' | head -4
+            grep -E '^error' /tmp/probe2.log | head -2
+          } | sed 's/^/::error::/'
           exit $((c1 || c2))
   quality:
     name: Quality gates
