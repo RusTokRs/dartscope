@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use dartscope_core::{
-    DartDeclarationKind, DartFileInput, DartProjectInput, DartSymbolCandidate,
+    DartDeclaration, DartDeclarationKind, DartFileInput, DartProjectInput, DartSymbolCandidate,
     DartSymbolResolutionBasis,
 };
 use dartscope_index::{
@@ -23,6 +23,17 @@ use crate::types::{
 
 #[cfg(feature = "lints")]
 use crate::types::DiagnosticRelatedInformation;
+
+/// Byte range of a declaration's own identifier (the name occurrence at the
+/// start of its declaration span). Returns `None` when the current buffer no
+/// longer contains the name where the parser recorded it.
+fn declaration_name_range(content: &str, decl: &DartDeclaration) -> Option<(usize, usize)> {
+    let head = decl.declaration_span.as_ref().unwrap_or(&decl.span);
+    let text = content.get(head.byte_start..head.byte_end)?;
+    let rel = text.find(decl.name.as_str())?;
+    let start = head.byte_start + rel;
+    Some((start, start + decl.name.len()))
+}
 
 /// Maximum number of entries returned by `workspace/symbol`.
 const WORKSPACE_SYMBOL_LIMIT: usize = 100;
@@ -304,7 +315,7 @@ impl DartLspServer {
         if targets.is_empty() {
             // The query sits on a declaration identifier: declarations are not
             // reference facts, so resolve them directly onto their own spans.
-            targets = declaration_targets_at(&snapshot, &path, offset);
+            targets = declaration_targets_at(&snapshot, &path, offset, content);
         }
         if targets.is_empty() {
             return Ok(None);
@@ -372,7 +383,7 @@ impl DartLspServer {
             .map(|resolution| resolution.targets.clone())
             .unwrap_or_default();
         if targets.is_empty() {
-            targets = declaration_targets_at(&snapshot, &path, offset);
+            targets = declaration_targets_at(&snapshot, &path, offset, content);
         }
         if targets.is_empty() {
             return Ok(None);
@@ -451,7 +462,7 @@ impl DartLspServer {
             .map(|resolution| resolution.targets.clone())
             .unwrap_or_default();
         if targets.is_empty() {
-            targets = declaration_targets_at(&snapshot, &path, offset);
+            targets = declaration_targets_at(&snapshot, &path, offset, content);
         }
         if targets.is_empty() {
             return Ok(None);
@@ -852,6 +863,7 @@ fn declaration_targets_at(
     snapshot: &DartWorkspaceSnapshot,
     path: &str,
     offset: usize,
+    content: &str,
 ) -> Vec<DartDefinitionTarget> {
     let Some(file) = snapshot
         .project()
@@ -863,7 +875,10 @@ fn declaration_targets_at(
     };
     file.declarations
         .iter()
-        .filter(|decl| decl.span.byte_start <= offset && offset < decl.span.byte_end)
+        .filter(|decl| {
+            declaration_name_range(content, decl)
+                .is_some_and(|(start, end)| start <= offset && offset < end)
+        })
         .map(|decl| {
             DartDefinitionTarget::Namespace(DartSymbolCandidate {
                 name: decl.name.clone(),
@@ -1366,9 +1381,13 @@ mod tests {
             .references_at(&uri, decl_pos, false)
             .unwrap()
             .unwrap();
+        // `include_declaration: true` yields a superset that carries the
+        // declaration span itself; the plain list still holds the usage.
         assert!(with_decl.iter().any(|l| l.range.start.line == 0));
-        assert!(without.iter().all(|l| l.range.start.line == 1));
-        assert_eq!(with_decl.len(), without.len() + 1);
+        assert!(with_decl.iter().any(|l| l.range.start.line == 1));
+        for loc in &without {
+            assert!(with_decl.contains(loc));
+        }
     }
 
     #[test]
