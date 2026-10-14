@@ -235,7 +235,7 @@ jobs:
           out=$(cargo test --workspace --locked 2>&1); c=$?
           set -e
           if [ $c -ne 0 ]; then
-            echo "$out" | grep -E "FAILED|panicked at|left:|right:" | head -40 | while IFS= read -r l; do echo "::error::t: $l"; done
+            echo "$out" | grep -E "FAILED|panicked at|left:|right:|DEBUG" | head -40 | while IFS= read -r l; do echo "::error::t: $l"; done
           fi
           exit $c
       - name: Run LSP lints-feature tests

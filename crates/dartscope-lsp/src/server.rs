@@ -528,11 +528,11 @@ impl DartLspServer {
                 }
                 let mut modifiers = SM_DECLARATION;
                 let head = decl.declaration_span.as_ref().unwrap_or(&decl.span);
-                let header = content
-                    .get(head.byte_start.min(content.len())..head.byte_end.min(content.len()))
-                    .unwrap_or("");
-                if header.contains("static ") {
-                    modifiers |= 1 << 1;
+                // Only the text preceding the name counts: a nested member
+                // further down the declaration body must not leak in.
+                let prefix = content.get(head.byte_start.min(start)..start).unwrap_or("");
+                if prefix.contains("static ") {
+                    modifiers |= SM_STATIC;
                 }
                 push_semantic_token(&mut tokens, content, start, end, token_type, modifiers);
             }
@@ -1833,7 +1833,24 @@ mod tests {
         // `c.bump` and `c.value` resolve onto the members of that class.
         let bump = content.rfind("bump").unwrap();
         let pos = byte_offset_to_lsp_position(content, bump);
-        let locs = server.definition(&uri, pos).unwrap().unwrap();
+        let snapshot = server.index().unwrap().snapshot();
+        let recv = receiver_type_targets_at(&snapshot, "lib/r.dart", content, bump);
+        let locs = server.definition(&uri, pos).unwrap();
+        assert!(
+            locs.is_some(),
+            "DEBUG bindings={:?} recv={:?}",
+            snapshot
+                .lexical_bindings()
+                .iter()
+                .map(|b| (
+                    b.name.clone(),
+                    b.scope_span.byte_start,
+                    b.scope_span.byte_end
+                ))
+                .collect::<Vec<_>>(),
+            recv.len()
+        );
+        let locs = locs.unwrap();
         assert_eq!(locs[0].range.start.line, 2);
         let value = content.rfind("c.value").unwrap() + 2;
         let pos = byte_offset_to_lsp_position(content, value);
