@@ -257,7 +257,7 @@ fn environment_flags_enable_the_undefined_define_check() {
     assert!(!json.contains("undefined_define"), "stdout: {json}");
 
     // The check appears in the help and the config accepts an environment table.
-    let help = run(&["--help"]);
+    let help = run_os([OsString::from("lint"), OsString::from("--help")]);
     assert_text_success(&help, "dartscope lint <project>");
     assert!(stdout(&help).contains("--env <key=value>"));
     let config = project.path().join("dartscope-lint.toml");
