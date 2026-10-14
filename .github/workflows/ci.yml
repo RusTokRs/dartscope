@@ -204,10 +204,12 @@ jobs:
         shell: bash
         run: |
           set +e
-          cargo check --workspace --all-targets --locked > /tmp/probe.log 2>&1
-          code=$?
-          grep -E '^error' /tmp/probe.log | head -9 | sed 's/^/::error::/'
-          exit $code
+          cargo check --workspace --all-targets --locked > /tmp/probe1.log 2>&1
+          c1=$?
+          cargo test -p dartscope-parse --features fuzzing --locked --no-run > /tmp/probe2.log 2>&1
+          c2=$?
+          { grep -E '^error' /tmp/probe1.log | head -5; grep -E '^error' /tmp/probe2.log | head -5; } | sed 's/^/::error::/'
+          exit $((c1 || c2))
   quality:
     name: Quality gates
     needs: workflow_policy
