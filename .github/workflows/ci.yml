@@ -187,28 +187,6 @@ jobs:
           expected_count="$(grep -c '^[a-z]' tools/release-crates.txt)"
           test "$archive_count" = "$expected_count"
 
-  compile_probe:
-    name: Compile probe (diagnostics)
-    needs: workflow_policy
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - name: Install Rust 1.95
-        run: rustup toolchain install 1.95.0 --profile minimal
-      - name: Cargo diagnostics as annotations
-        shell: bash
-        run: |
-          set +e
-          cargo test --workspace --locked > /tmp/probe.log 2>&1
-          code=$?
-          grep -E 'FAILED|panicked at|test result: FAILED' /tmp/probe.log | head -8 | sed 's/^/::error::/'
-          exit $code
-
   quality:
     name: Quality gates
     needs: workflow_policy
