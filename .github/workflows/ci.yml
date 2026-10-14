@@ -229,7 +229,25 @@ jobs:
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal
       - name: Run workspace tests
-        run: cargo test --workspace --locked --quiet
+        run: cargo test --workspace --locked --quiet || true
+      - name: Workspace tests verdict
+        shell: bash
+        run: |
+          set +e
+          out=$(cargo test --workspace --locked 2>&1); c=$?
+          set -e
+          if [ $c -ne 0 ]; then
+            echo "$out" | grep -E "FAILED|panicked at|assertion|test result: FAILED" | head -40 | while IFS= read -r l; do echo "::error::$l"; done
+          fi
+          exit $c
+      - name: DEBUG umbrella all-features check
+        shell: bash
+        run: |
+          set +e
+          out=$(cargo check -p dartscope --all-features --locked 2>&1); c=$?
+          set -e
+          echo "$out" | grep -A8 "^error" | head -60 | while IFS= read -r l; do echo "::error::umb: $l"; done
+          exit $c
       - name: Run LSP lints-feature tests
         run: cargo test -p dartscope-lsp --features lints --locked --quiet
 
