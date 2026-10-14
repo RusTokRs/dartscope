@@ -66,6 +66,7 @@ pub struct DartLspServer {
 
 impl DartLspServer {
     pub fn new(root: impl Into<String>) -> Self {
+        #[cfg_attr(not(feature = "lints"), allow(unused_mut))]
         let mut server = Self {
             root: root.into(),
             root_url: None,
