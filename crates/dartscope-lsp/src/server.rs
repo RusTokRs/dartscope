@@ -767,8 +767,7 @@ impl DartLspServer {
             });
         }
         for edits in changes.values_mut() {
-            edits
-                .sort_by_key(|edit| (edit.range.start.line, edit.range.start.character));
+            edits.sort_by_key(|edit| (edit.range.start.line, edit.range.start.character));
             edits.dedup();
         }
         if changes.is_empty() {
