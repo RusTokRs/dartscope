@@ -52,6 +52,17 @@ pre-1.0.
   inputs, deep directory trees, platform path separators, and supported symlink cases.
 - `dartscope-cli` project traversal now uses a `VecDeque` breadth-first queue with per-directory sorted `entries` so `max_pending_directories` and `max_directory_entries` diagnostics are lexicographically deterministic.
 
+### Added
+
+- `dartscope-lsp` functional round: per-file incremental index sync (open/change upsert, close
+  remove; the first open builds the index and the last close clears it) replaces the full rebuild
+  on every keystroke; `publishDiagnostics` now echoes the client's document `version`; hover
+  renders resolved targets as `dart` code blocks (`LanguageString`) instead of bare text; and the
+  stdio transport enforces the LSP lifecycle: requests before `initialize` answer
+  `ServerNotInitialized` (`-32002`), requests after `shutdown` answer `InvalidRequest` (`-32600`),
+  an `exit` without `shutdown` terminates with a non-zero status, and `initialize` clears the
+  shutdown flag so the server instance can be restarted in-process.
+
 ### Fixed
 
 - Completed the `dartscope-lsp` slice: `Cargo.lock` now carries the `dartscope-lsp` package and the

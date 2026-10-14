@@ -81,10 +81,15 @@ schemas until separately registered.
 ## LSP Bridge
 
 `dartscope-lsp` is an optional, feature-gated editor bridge, not part of the default umbrella features.
-The `0.1` contract covers the initialize/initialized/shutdown/exit lifecycle, full and incremental
-`didChange` synchronization over the open document set, UTF-16 positions for LF, CRLF, and surrogate
-pairs, and index-backed `definition`, `references`, `hover`, `documentSymbol`, and bounded
-`workspace/symbol` results, plus `textDocument/publishDiagnostics` for parser diagnostics.
+The `0.1` contract covers the initialize/initialized/shutdown/exit lifecycle — requests arriving
+before `initialize` answer `ServerNotInitialized`, requests after `shutdown` answer `InvalidRequest`,
+and an `exit` without a preceding `shutdown` exits non-zero — full and incremental `didChange`
+synchronization over the open document set, UTF-16 positions for LF, CRLF, and surrogate pairs, and
+index-backed `definition`, `references`, `hover` (rendered as `dart` code blocks), `documentSymbol`,
+and bounded `workspace/symbol` results, plus `textDocument/publishDiagnostics` for parser
+diagnostics that echoes the client's document version. Index maintenance is per-file: opening or
+changing a document upserts only that file, closing removes it, and unaffected open documents keep
+their parse and resolution caches.
 
 The bridge never scans the filesystem, never runs `dart` or `flutter`, and does not depend on
 `dartscope-lints`. Lint findings reach the server only through `set_supplemental_diagnostics`, which a

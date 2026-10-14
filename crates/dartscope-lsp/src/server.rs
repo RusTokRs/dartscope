@@ -10,9 +10,9 @@ use crate::coordinates::{lsp_position_to_byte_offset, source_span_to_lsp_range};
 use crate::types::{
     Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DocumentSymbol, Hover, HoverContents, InitializeParams,
-    InitializeResult, Location, MarkedString, NumberOrString, Position, Range, ServerCapabilities,
-    SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
-    WorkspaceSymbolParams,
+    InitializeResult, LanguageString, Location, MarkedString, NumberOrString, Position, Range,
+    ServerCapabilities, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
+    TextDocumentSyncKind, Url, WorkspaceSymbolParams,
 };
 
 /// Maximum number of entries returned by `workspace/symbol`.
@@ -32,10 +32,12 @@ pub enum LspError {
 ///
 /// The server does not touch the filesystem: `root` is the LSP workspace root
 /// (e.g. `file:///workspace`), and every `textDocument/*` notification carries
-/// the full or incremental content. The server rebuilds a `DartWorkspaceIndex`
-/// from the current open documents on every change (the incremental index itself
-/// is reused internally). All positions are converted via `crate::coordinates`
-/// so LF, CRLF and UTF-16 surrogate pairs round-trip.
+/// the full or incremental content. A `DartWorkspaceIndex` is maintained
+/// incrementally: the first document builds it from all currently open content,
+/// later sync events are applied as per-file upserts and removals so unaffected
+/// documents keep their cached parse and resolution facts, and an empty document
+/// set clears the index again. All positions are converted via
+/// `crate::coordinates` so LF, CRLF and UTF-16 surrogate pairs round-trip.
 ///
 /// Lint integration is explicit: this crate never depends on `dartscope-lints`.
 /// A downstream adapter runs the configured lint analysis and feeds the results
@@ -45,9 +47,11 @@ pub struct DartLspServer {
     root: String,
     root_url: Option<Url>,
     documents: HashMap<Url, String>,
+    document_versions: HashMap<Url, i32>,
     supplemental: HashMap<Url, Vec<Diagnostic>>,
     index: Option<DartWorkspaceIndex>,
     initialized: bool,
+    shutdown: bool,
 }
 
 impl DartLspServer {
@@ -56,9 +60,11 @@ impl DartLspServer {
             root: root.into(),
             root_url: None,
             documents: HashMap::new(),
+            document_versions: HashMap::new(),
             supplemental: HashMap::new(),
             index: None,
             initialized: false,
+            shutdown: false,
         }
     }
 
@@ -72,6 +78,7 @@ impl DartLspServer {
             self.root = root_path;
         }
         self.initialized = true;
+        self.shutdown = false;
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -98,7 +105,24 @@ impl DartLspServer {
         if !self.initialized {
             return Err(LspError::NotInitialized);
         }
+        self.shutdown = true;
         Ok(())
+    }
+
+    /// `true` once `initialize` succeeded.
+    pub fn is_initialized(&self) -> bool {
+        self.initialized
+    }
+
+    /// `true` once `shutdown` succeeded; the stdio transport answers further
+    /// requests with `InvalidRequest` until the client sends `exit`.
+    pub fn is_shutdown(&self) -> bool {
+        self.shutdown
+    }
+
+    /// The latest client-reported document `version`, if any sync event carried one.
+    pub fn document_version(&self, uri: &Url) -> Option<i32> {
+        self.document_versions.get(uri).copied()
     }
 
     /// The normalized workspace root path used for every index input.
@@ -117,9 +141,15 @@ impl DartLspServer {
 
     pub fn did_open(&mut self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
+        let version = params.text_document.version;
         let text = params.text_document.text;
-        self.documents.insert(uri, text);
-        self.rebuild_index();
+        self.document_versions.insert(uri.clone(), version);
+        self.documents.insert(uri.clone(), text.clone());
+        if self.index.is_some() {
+            self.upsert_document(&uri, &text);
+        } else {
+            self.rebuild_index();
+        }
     }
 
     pub fn did_change(&mut self, params: DidChangeTextDocumentParams) {
@@ -149,15 +179,27 @@ impl DartLspServer {
                 new_text = change.text;
             }
         }
-        self.documents.insert(uri, new_text);
-        self.rebuild_index();
+        self.document_versions
+            .insert(uri.clone(), params.text_document.version);
+        self.documents.insert(uri.clone(), new_text.clone());
+        if self.index.is_some() {
+            self.upsert_document(&uri, &new_text);
+        } else {
+            self.rebuild_index();
+        }
     }
 
     pub fn did_close(&mut self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri;
+        let path = document_path(&uri);
         self.documents.remove(&uri);
+        self.document_versions.remove(&uri);
         self.supplemental.remove(&uri);
-        self.rebuild_index();
+        if self.documents.is_empty() {
+            self.index = None;
+        } else if let Some(index) = &mut self.index {
+            index.remove_file(&path);
+        }
     }
 
     /// Replaces externally supplied diagnostics for one document, e.g. configured
@@ -308,7 +350,10 @@ impl DartLspServer {
                     (binding.name.as_str(), format!("{:?}", binding.kind))
                 }
             };
-            contents.push(MarkedString::String(format!("{kind} {name}")));
+            contents.push(MarkedString::LanguageString(LanguageString {
+                language: "dart".to_string(),
+                value: format!("{kind} {name}"),
+            }));
         }
         let range = resolution
             .references
@@ -526,6 +571,18 @@ impl DartLspServer {
         self.index
             .as_ref()
             .map(|index| index.snapshot().generation())
+    }
+
+    /// Feeds one document's new content through the index's per-file upsert so
+    /// unaffected open documents keep their cached parse and resolution facts.
+    fn upsert_document(&mut self, uri: &Url, text: &str) {
+        if let Some(index) = &mut self.index {
+            let analysis = dartscope_parse::analyze_file_with_references(DartFileInput::new(
+                document_path(uri),
+                text.to_string(),
+            ));
+            index.upsert_file_with_references(analysis);
+        }
     }
 
     fn rebuild_index(&mut self) {
@@ -838,8 +895,15 @@ mod tests {
         let hover = server.hover(&uri, pos).unwrap();
         assert!(hover.is_some());
         let hover = hover.unwrap();
-        match hover.contents {
-            HoverContents::Array(arr) => assert!(!arr.is_empty()),
+        match &hover.contents {
+            HoverContents::Array(arr) => {
+                assert!(!arr.is_empty());
+                let MarkedString::LanguageString(block) = &arr[0] else {
+                    panic!("expected a dart code block");
+                };
+                assert_eq!(block.language, "dart");
+                assert!(block.value.contains("Foo"));
+            }
             _ => panic!("expected array"),
         }
     }
@@ -853,5 +917,84 @@ mod tests {
         assert_eq!(symbols[0].name, "Foo");
         let children = symbols[0].children.clone().unwrap_or_default();
         assert!(children.iter().any(|child| child.name == "bar"));
+    }
+
+    #[test]
+    fn sync_events_track_document_version() {
+        let (mut server, uri) = open_server("file:///lib/v.dart", "class V {}\n");
+        assert_eq!(server.document_version(&uri), Some(1));
+        server.did_change(DidChangeTextDocumentParams {
+            text_document: crate::types::VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 5,
+            },
+            content_changes: vec![crate::types::TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "class V { int m = 1; }\n".to_string(),
+            }],
+        });
+        assert_eq!(server.document_version(&uri), Some(5));
+        server.did_close(DidCloseTextDocumentParams {
+            text_document: crate::types::TextDocumentIdentifier { uri: uri.clone() },
+        });
+        assert_eq!(server.document_version(&uri), None);
+    }
+
+    #[test]
+    fn shutdown_flag_tracks_lifecycle() {
+        let mut server = DartLspServer::new("/tmp");
+        assert!(server.shutdown().is_err());
+        server.initialize(InitializeParams::default()).unwrap();
+        assert!(!server.is_shutdown());
+        server.shutdown().unwrap();
+        assert!(server.is_shutdown());
+        server.initialize(InitializeParams::default()).unwrap();
+        assert!(!server.is_shutdown());
+    }
+
+    #[test]
+    fn closing_one_document_keeps_the_other_documents_resolvable() {
+        let mut server = DartLspServer::new(".");
+        server.initialize(InitializeParams::default()).unwrap();
+        let a_uri = Url::parse("file:///lib/a.dart").unwrap();
+        let b_uri = Url::parse("file:///lib/b.dart").unwrap();
+        let a_content = "import 'b.dart';\nvoid useB() { B(); }\n";
+        server.did_open(DidOpenTextDocumentParams {
+            text_document: crate::types::TextDocumentItem {
+                uri: a_uri.clone(),
+                language_id: "dart".to_string(),
+                version: 1,
+                text: a_content.to_string(),
+            },
+        });
+        server.did_open(DidOpenTextDocumentParams {
+            text_document: crate::types::TextDocumentItem {
+                uri: b_uri.clone(),
+                language_id: "dart".to_string(),
+                version: 1,
+                text: "class B {}\n".to_string(),
+            },
+        });
+        let pos = byte_offset_to_lsp_position(a_content, a_content.find("B();").unwrap());
+        let locs = server.definition(&a_uri, pos).unwrap();
+        assert!(locs.is_some());
+        assert_eq!(locs.unwrap()[0].uri.as_str(), "file:///lib/b.dart");
+        server.did_close(DidCloseTextDocumentParams {
+            text_document: crate::types::TextDocumentIdentifier { uri: b_uri.clone() },
+        });
+        // `a.dart` stays open and queryable; the removed target is now unresolved.
+        let locs = server.definition(&a_uri, pos).unwrap();
+        assert!(locs.is_none_or(|found| found.is_empty()));
+        assert!(
+            server
+                .workspace_symbols(&WorkspaceSymbolParams {
+                    query: "use".to_string(),
+                    work_done_progress_params: Default::default(),
+                    partial_result_params: Default::default(),
+                })
+                .iter()
+                .any(|symbol| symbol.name == "useB")
+        );
     }
 }

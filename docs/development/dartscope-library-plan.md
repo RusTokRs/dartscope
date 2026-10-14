@@ -1123,7 +1123,13 @@ Implemented (2026-10-14, follow-up slice):
     supplemental entries merged in range order, cleared when the document closes).
 12. Added `snapshot_generation()` as the stale-snapshot signal, `root()`/`root_url()` accessors, and sorted
     document input so the rebuilt index snapshot does not depend on `HashMap` iteration order.
-13. Verified on the exact hosted toolchain (2026-10-14 pull-request runs): the Ubuntu/Windows quality gates
+13. Review round (same date): sync events now drive the workspace index as per-file upserts/removals
+    (first open builds it, last close clears it) instead of a full rebuild on every keystroke;
+    `publishDiagnostics` echoes the client-reported document version; the stdio transport enforces
+    the LSP lifecycle (`-32002` before `initialize`, `-32600` for requests after `shutdown`, a
+    non-zero exit status for `exit` without `shutdown`); and hover presents each target as a `dart`
+    code block instead of a bare string.
+14. Verified on the exact hosted toolchain (2026-10-14 pull-request runs): the Ubuntu/Windows quality gates
     (rustfmt style-edition 2024, repository consistency, `cargo clippy --workspace --all-targets -- -D
     warnings`, rustdoc), both workspace test matrices, the full edition matrix, the macOS arm64 portability
     signal including the release-crate archive count, and the bounded fuzz corpus are green. Repairs along the

@@ -44,11 +44,12 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
   codes, deterministic discovery, versioned JSON for every analysis command, and a configured lint
   command with SARIF 2.1.0 output.
 - `dartscope-lsp` is the optional Language Server Protocol bridge: UTF-16 ↔ UTF-8 coordinate
-  conversion, incremental document sync, definition/references/hover/`documentSymbol`/
-  `workspace/symbol` over the workspace index, and a minimal stdio binary. It performs no filesystem
-  or `dart`/`flutter` process I/O, does not depend on `dartscope-lints`, and exposes an explicit
-  supplemental-diagnostics port for downstream lint adapters plus a snapshot-generation staleness
-  signal.
+  conversion, incremental document sync backed by per-file index upserts, definition/references/
+  hover/`documentSymbol`/`workspace/symbol` over the workspace index, a spec-shaped
+  initialize/shutdown/exit lifecycle, and a minimal stdio binary that echoes the client's document
+  version in `publishDiagnostics`. It performs no filesystem or `dart`/`flutter` process I/O, does
+  not depend on `dartscope-lints`, and exposes an explicit supplemental-diagnostics port for
+  downstream lint adapters plus a snapshot-generation staleness signal.
 - `dartscope` is a thin umbrella crate with feature-gated re-exports.
 
 ## Non-Goals

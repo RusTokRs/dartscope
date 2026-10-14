@@ -59,6 +59,11 @@ fn main() -> io::Result<()> {
             stdout.flush()?;
         }
         if is_exit {
+            // The LSP exit notification asks for a zero exit code only after a
+            // successful shutdown; an abrupt exit leaves the status non-zero.
+            if !server.is_shutdown() {
+                std::process::exit(1);
+            }
             break;
         }
     }
@@ -73,6 +78,21 @@ fn handle_message(server: &mut DartLspServer, msg: &Value) -> Vec<Value> {
         return Vec::new();
     };
     let id = msg.get("id").cloned();
+    if !server.is_initialized() && method != "initialize" {
+        // Requests before `initialize` are answered with the protocol error; stray
+        // notifications are dropped instead of mutating server state.
+        if id.is_some() {
+            return vec![error_response(id, -32002, "ServerNotInitialized")];
+        }
+        return Vec::new();
+    }
+    if server.is_shutdown() {
+        // After `shutdown` the server stays alive for the `exit` notification only.
+        if id.is_some() {
+            return vec![error_response(id, -32600, "InvalidRequest")];
+        }
+        return Vec::new();
+    }
     let params = msg.get("params").cloned().unwrap_or(Value::Null);
     match method {
         "initialize" => {
@@ -199,14 +219,22 @@ fn response(id: Option<Value>, result: Value) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "result": result })
 }
 
+fn error_response(id: Option<Value>, code: i64, message: &str) -> Value {
+    json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
+}
+
 fn publish_diagnostics(server: &DartLspServer, uri: &Url) -> Value {
+    let mut params = json!({
+        "uri": uri,
+        "diagnostics": server.diagnostics(uri)
+    });
+    if let Some(version) = server.document_version(uri) {
+        params["version"] = json!(version);
+    }
     json!({
         "jsonrpc": "2.0",
         "method": "textDocument/publishDiagnostics",
-        "params": {
-            "uri": uri,
-            "diagnostics": server.diagnostics(uri)
-        }
+        "params": params
     })
 }
 
@@ -359,5 +387,83 @@ mod tests {
         assert_eq!(outgoing[0]["result"], Value::Null);
         let msg = json!({ "jsonrpc": "2.0", "method": "window/logMessage", "params": {} });
         assert!(handle_message(&mut server, &msg).is_empty());
+    }
+
+    #[test]
+    fn requests_before_initialize_get_not_initialized_error() {
+        let mut server = DartLspServer::new(".");
+        let outgoing = handle_message(
+            &mut server,
+            &json!({"jsonrpc":"2.0","id":1,"method":"textDocument/definition","params":{}}),
+        );
+        assert_eq!(outgoing.len(), 1);
+        assert_eq!(outgoing[0]["error"]["code"], json!(-32002));
+        // Notifications without an id are dropped instead of mutating server state.
+        let outgoing = handle_message(
+            &mut server,
+            &json!({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{
+                "textDocument": {
+                    "uri": "file:///lib/x.dart",
+                    "languageId": "dart",
+                    "version": 1,
+                    "text": "class X {}"
+                }
+            }}),
+        );
+        assert!(outgoing.is_empty());
+    }
+
+    #[test]
+    fn after_shutdown_requests_are_rejected_until_exit() {
+        let mut server = DartLspServer::new(".");
+        handle_message(
+            &mut server,
+            &json!({
+                "jsonrpc":"2.0","id":1,"method":"initialize",
+                "params":{"rootUri":"file:///workspace"}
+            }),
+        );
+        let outgoing = handle_message(
+            &mut server,
+            &json!({"jsonrpc":"2.0","id":2,"method":"shutdown"}),
+        );
+        assert_eq!(outgoing.len(), 1);
+        assert!(outgoing[0].get("error").is_none());
+        let outgoing = handle_message(
+            &mut server,
+            &json!({"jsonrpc":"2.0","id":3,"method":"textDocument/hover","params":{}}),
+        );
+        assert_eq!(outgoing[0]["error"]["code"], json!(-32600));
+        let outgoing = handle_message(
+            &mut server,
+            &json!({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{}}),
+        );
+        assert!(outgoing.is_empty());
+    }
+
+    #[test]
+    fn publish_diagnostics_carries_document_version() {
+        let mut server = DartLspServer::new(".");
+        handle_message(
+            &mut server,
+            &json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}),
+        );
+        let outgoing = handle_message(
+            &mut server,
+            &json!({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{
+                "textDocument": {
+                    "uri": "file:///lib/v.dart",
+                    "languageId": "dart",
+                    "version": 7,
+                    "text": "class V { new(); }"
+                }
+            }}),
+        );
+        assert_eq!(outgoing.len(), 1);
+        assert_eq!(
+            outgoing[0]["method"],
+            json!("textDocument/publishDiagnostics")
+        );
+        assert_eq!(outgoing[0]["params"]["version"], json!(7));
     }
 }
