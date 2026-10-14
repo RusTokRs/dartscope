@@ -1725,6 +1725,23 @@ mod tests {
         assert!(decoded.contains(&(1, 13, 5, TK_PROPERTY, SM_DECLARATION | SM_STATIC)));
         assert!(decoded.contains(&(2, 16, 1, TK_PARAMETER, SM_DECLARATION)));
         assert!(decoded.contains(&(3, 21, 5, TK_PROPERTY, 0)));
+        {
+            let snap = server.index().unwrap().snapshot();
+            let facts: Vec<_> = snap
+                .identifier_references()
+                .iter()
+                .filter(|r| r.source_path == "lib/t.dart")
+                .map(|r| {
+                    (
+                        r.name.clone(),
+                        format!("{:?}", r.kind),
+                        r.span.byte_start,
+                        r.span.byte_end,
+                    )
+                })
+                .collect();
+            panic!("DEBUG facts={facts:?} decoded={decoded:?}");
+        }
         // Delta encoding requires ascending document order.
         assert!(
             decoded
@@ -1834,22 +1851,40 @@ mod tests {
         let bump = content.rfind("bump").unwrap();
         let pos = byte_offset_to_lsp_position(content, bump);
         let snapshot = server.index().unwrap().snapshot();
-        let recv = receiver_type_targets_at(&snapshot, "lib/r.dart", content, bump);
-        let locs = server.definition(&uri, pos).unwrap();
-        assert!(
-            locs.is_some(),
-            "DEBUG bindings={:?} recv={:?}",
-            snapshot
+        {
+            let word = identifier_range_at(content, bump);
+            let before_len = word.map(|(start, _)| content[..start].trim_end().len());
+            let dot = before_len.map(|p| content.as_bytes()[p] == b'.');
+            let receiver = before_len
+                .and_then(|p| preceding_identifier(content, p))
+                .map(|(x, y)| content[x..y].to_string());
+            let declared = snapshot
                 .lexical_bindings()
+                .first()
+                .and_then(|binding| {
+                    preceding_identifier(content, binding.declaration_span.byte_start)
+                })
+                .map(|(x, y)| content[x..y].to_string());
+            let decls: Vec<_> = snapshot
+                .project()
+                .files
                 .iter()
-                .map(|b| (
-                    b.name.clone(),
-                    b.scope_span.byte_start,
-                    b.scope_span.byte_end
-                ))
-                .collect::<Vec<_>>(),
-            recv.len()
-        );
+                .flat_map(|f| f.declarations.iter())
+                .map(|d| {
+                    (
+                        d.name.clone(),
+                        format!("{:?}", d.kind),
+                        d.symbol_id.clone(),
+                        d.parent_symbol_id.clone(),
+                        d.span.byte_start,
+                        d.span.byte_end,
+                    )
+                })
+                .collect();
+            panic!(
+                "DEBUG recv word={word:?} dot={dot:?} receiver={receiver:?} declared={declared:?} decls={decls:?}"
+            );
+        }
         let locs = locs.unwrap();
         assert_eq!(locs[0].range.start.line, 2);
         let value = content.rfind("c.value").unwrap() + 2;
