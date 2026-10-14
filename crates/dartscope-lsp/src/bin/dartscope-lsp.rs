@@ -259,7 +259,7 @@ mod tests {
                     "uri": "file:///workspace/lib/main.dart",
                     "languageId": "dart",
                     "version": 1,
-                    "text": "class Foo { Foo.new(); }\n"
+                    "text": "class Foo {\n  new();\n}\n"
                 }
             }
         });
