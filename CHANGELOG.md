@@ -61,6 +61,11 @@ pre-1.0.
   LSP `Diagnostic`, unused `crate::types` imports were removed, and the whole workspace was
   normalized with rustfmt style-edition 2024, which also clears the pre-existing red
   `Check formatting` gate on `main`. `Url::path` no longer relies on `[char; N]` string patterns.
+- `crates/dartscope-parse/src/pubspec_yaml_marked.rs`: repaired the mapping-entry branch that the
+  merge introduced with stray backslash escapes around two string literals and a `continue` outside
+  any loop, which made `dartscope-parse` (and therefore the whole workspace) fail to compile and
+  `rustfmt` fail to parse. The defensive path is now an `else if let`/`else` chain and the error
+  diagnostic flows through the shared deduplicating flush at the end of `push_node`.
 - `DartLspServer::did_change` rejects inverted or out-of-range incremental edit ranges and falls back
   to a full-content replace instead of panicking in `String::replace_range`.
 - The macOS portability job now derives its expected `.crate` archive count from

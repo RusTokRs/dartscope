@@ -239,15 +239,7 @@ impl<'a> Receiver<'a> {
                             ));
                         }
                         *pending_key = Some(node);
-                    } else {
-                        let Some(key_node) = pending_key.take() else {
-                            new_diagnostics.push(DartDiagnostic::error(
-                                \"pubspec_invalid_yaml\",
-                                \"pubspec YAML mapping is malformed: missing key for value\",
-                                Some(node.span.clone()),
-                            ));
-                            continue;
-                        };
+                    } else if let Some(key_node) = pending_key.take() {
                         if let NodeKind::Scalar(key) = key_node.kind {
                             entries.push(Entry {
                                 key,
@@ -255,6 +247,12 @@ impl<'a> Receiver<'a> {
                                 value: node,
                             });
                         }
+                    } else {
+                        new_diagnostics.push(DartDiagnostic::error(
+                            "pubspec_invalid_yaml",
+                            "pubspec YAML mapping is malformed: missing key for value",
+                            Some(node.span.clone()),
+                        ));
                     }
                 }
             }
