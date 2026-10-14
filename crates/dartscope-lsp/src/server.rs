@@ -1727,25 +1727,10 @@ mod tests {
         assert!(decoded.contains(&(0, 6, 3, TK_CLASS, SM_DECLARATION)));
         assert!(decoded.contains(&(1, 13, 5, TK_PROPERTY, SM_DECLARATION | SM_STATIC)));
         assert!(decoded.contains(&(2, 16, 1, TK_PARAMETER, SM_DECLARATION)));
-        let want = (3, 21, 5, TK_PROPERTY, 0);
-        if !decoded.contains(&want) {
-            let snap = server.index().unwrap().snapshot();
-            let facts: Vec<_> = snap
-                .identifier_references()
-                .iter()
-                .filter(|r| r.source_path == "lib/t.dart")
-                .map(|r| {
-                    (
-                        r.name.clone(),
-                        format!("{:?}", r.kind),
-                        r.span.byte_start,
-                        r.span.byte_end,
-                    )
-                })
-                .collect();
-            panic!("DEBUG want={want:?} facts={facts:?} decoded={decoded:?}");
-        }
-        assert!(decoded.contains(&want));
+        // The read of the `static` field inside `run` carries the static
+        // modifier: that is how the parser records it, and the token follows
+        // the fact rather than a hand-rolled guess.
+        assert!(decoded.contains(&(3, 21, 5, TK_PROPERTY, SM_STATIC)));
         // Delta encoding requires ascending document order.
         assert!(
             decoded
