@@ -262,12 +262,11 @@ fn per_file_caches_rebuild_only_relevant_sources() {
 
     assert_eq!(update.affected_paths, vec!["lib/a.dart", "lib/b.dart"]);
     assert_eq!(index.counters().uri_files_rebuilt, before.uri_files_rebuilt);
-    // The member-only change still alters the owner's declaration facts, so the dependent importer
-    // re-resolves; the changed file itself contributes no project identifier references and its
-    // (empty) cache entry is dropped rather than rebuilt.
+    // The changed source now carries a directly declared member, so it has its own reference facts to
+    // re-resolve in addition to the dependent importer.
     assert_eq!(
         index.counters().reference_files_rebuilt,
-        before.reference_files_rebuilt + 1
+        before.reference_files_rebuilt + 2
     );
     assert_snapshot_matches(
         &index,

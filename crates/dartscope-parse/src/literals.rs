@@ -278,8 +278,9 @@ mod tests {
 
     #[test]
     fn dollar_in_identifier_does_not_break_raw_detection() {
-        // `foo$r'bar'` should NOT be a raw string because `$` is identifier continue
-        assert!(find_string_literal_start("foo$r'bar'", 0).is_none());
+        // `$` continues the identifier, so the glued `r` is not a raw prefix; the quote at index 5
+        // still opens an ordinary literal.
+        assert_eq!(find_string_literal_start("foo$r'bar'", 0), Some(5));
         // `foo r'bar'` after space IS a raw string
         assert_eq!(find_string_literal_start("foo r'bar'", 3), Some(4));
     }

@@ -31,7 +31,7 @@ fn main() -> io::Result<()> {
             if n == 0 {
                 return Ok(());
             }
-            let trimmed = line.trim_end_matches(|c| c == '\r' || c == '\n');
+            let trimmed = line.trim_end_matches(['\r', '\n']);
             if trimmed.is_empty() {
                 break;
             }
@@ -274,11 +274,10 @@ mod tests {
             json!("file:///workspace/lib/main.dart")
         );
         assert!(
-            outgoing[0]["params"]["diagnostics"]
+            !outgoing[0]["params"]["diagnostics"]
                 .as_array()
                 .unwrap()
-                .len()
-                >= 1
+                .is_empty()
         );
     }
 
