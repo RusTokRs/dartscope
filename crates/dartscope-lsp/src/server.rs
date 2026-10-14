@@ -1428,6 +1428,11 @@ fn push_semantic_token(
     }
     tokens
         .entry((range.start.line, range.start.character))
+        // Same-position tokens keep the first writer's type (declarations are
+        // recorded before reference facts) but union their modifiers: `static`
+        // reaches a field name through its declaration-header OR the paired
+        // `*Static` reference fact, whichever the parser produced.
+        .and_modify(|entry| entry.1 |= modifiers)
         .or_insert((token_type, modifiers, length));
 }
 
