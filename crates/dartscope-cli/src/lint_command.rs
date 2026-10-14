@@ -5,7 +5,7 @@ use dartscope::{
     analyze_project, lint_project, to_json_contract_pretty,
 };
 use serde::Deserialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::{CliError, CliOutput, EXIT_FINDINGS, collect_project_input, input_limits};
 
@@ -27,7 +27,21 @@ pub(super) fn execute(path: &str, arguments: &[String]) -> Result<CliOutput, Cli
         return Err(CliError::project(message));
     }
 
-    let engine_config = config.engine_config();
+    let mut engine_config = config.engine_config();
+    for (key, value) in options.env {
+        engine_config.environment.insert(key, value);
+    }
+    // Providing a compilation environment is an explicit request for the
+    // define-use check: enable the rule even when the config file omits it.
+    if !engine_config.environment.is_empty()
+        && !engine_config
+            .enabled_rules
+            .contains(&DartLintRuleId::UndefinedDefine)
+    {
+        engine_config
+            .enabled_rules
+            .push(DartLintRuleId::UndefinedDefine);
+    }
     let analysis = lint_project(&project, &engine_config);
     let exit_code = if config.failure_threshold.is_failure(&analysis) {
         EXIT_FINDINGS
@@ -73,6 +87,7 @@ struct LintOptions {
     config_path: Option<String>,
     format: LintOutputFormat,
     deny_warnings: bool,
+    env: Vec<(String, String)>,
 }
 
 impl LintOptions {
@@ -111,6 +126,13 @@ impl LintOptions {
                     }
                     options.deny_warnings = true;
                     index += 1;
+                }
+                "--env" => {
+                    let value = arguments.get(index + 1).ok_or_else(|| {
+                        CliError::usage("missing value for --env; expected --env key=value")
+                    })?;
+                    options.env.push(super::parse_environment_entry(value)?);
+                    index += 2;
                 }
                 argument => {
                     return Err(CliError::usage(format!(
@@ -156,6 +178,7 @@ struct LintFileConfig {
     layer_boundaries: Vec<DartLayerBoundary>,
     naming: DartNamingRuleConfig,
     orphan_files: DartOrphanFileRuleConfig,
+    environment: BTreeMap<String, String>,
 }
 
 impl Default for LintFileConfig {
@@ -169,6 +192,7 @@ impl Default for LintFileConfig {
             layer_boundaries: Vec::new(),
             naming: DartNamingRuleConfig::default(),
             orphan_files: DartOrphanFileRuleConfig::default(),
+            environment: BTreeMap::new(),
         }
     }
 }
@@ -182,6 +206,11 @@ impl LintFileConfig {
             )));
         }
 
+        if self.environment.keys().any(|key| key.trim().is_empty()) {
+            return Err(CliError::configuration(format!(
+                "environment define names cannot be empty in {path}"
+            )));
+        }
         reject_duplicates(self.enabled_rules.iter().copied(), "enabled rule", path)?;
         reject_duplicates(
             self.severity_overrides
@@ -233,6 +262,7 @@ impl LintFileConfig {
             layer_boundaries: self.layer_boundaries.clone(),
             naming: self.naming.clone(),
             orphan_files: self.orphan_files.clone(),
+            environment: self.environment.clone(),
         }
     }
 }

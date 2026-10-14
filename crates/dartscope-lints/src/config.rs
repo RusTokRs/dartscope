@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use dartscope_core::DiagnosticSeverity;
 use serde::{Deserialize, Serialize};
 
@@ -12,17 +14,20 @@ pub enum DartLintRuleId {
     NamingConvention,
     #[serde(rename = "dartscope.unresolved_part")]
     UnresolvedPart,
+    #[serde(rename = "dartscope.undefined_define")]
+    UndefinedDefine,
     #[serde(rename = "dartscope.orphan_file")]
     OrphanFile,
 }
 
 impl DartLintRuleId {
     /// Every built-in rule in deterministic execution order.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::ForbiddenImport,
         Self::LayerBoundary,
         Self::NamingConvention,
         Self::UnresolvedPart,
+        Self::UndefinedDefine,
         Self::OrphanFile,
     ];
 
@@ -32,6 +37,7 @@ impl DartLintRuleId {
             Self::LayerBoundary => "dartscope.layer_boundary",
             Self::NamingConvention => "dartscope.naming_convention",
             Self::UnresolvedPart => "dartscope.unresolved_part",
+            Self::UndefinedDefine => "dartscope.undefined_define",
             Self::OrphanFile => "dartscope.orphan_file",
         }
     }
@@ -43,6 +49,7 @@ impl DartLintRuleId {
             Self::LayerBoundary => "layer_boundary",
             Self::NamingConvention => "naming_convention",
             Self::UnresolvedPart => "unresolved_part",
+            Self::UndefinedDefine => "undefined_define",
             Self::OrphanFile => "orphan_file",
         }
     }
@@ -54,6 +61,7 @@ impl DartLintRuleId {
             Self::LayerBoundary => "Layer boundary",
             Self::NamingConvention => "Naming convention",
             Self::UnresolvedPart => "Unresolved part",
+            Self::UndefinedDefine => "Undefined Dart define",
             Self::OrphanFile => "Orphan file",
         }
     }
@@ -70,6 +78,9 @@ impl DartLintRuleId {
             }
             Self::UnresolvedPart => {
                 "Reports part directives that do not resolve to a valid part file."
+            }
+            Self::UndefinedDefine => {
+                "Reports fromEnvironment reads whose environment entry is neither provided nor defaulted."
             }
             Self::OrphanFile => "Reports files unreachable from configured project entry points.",
         }
@@ -155,6 +166,11 @@ pub struct DartLintConfig {
     pub naming: DartNamingRuleConfig,
     #[serde(default)]
     pub orphan_files: DartOrphanFileRuleConfig,
+    /// Provided Dart compilation-environment entries (`--define NAME=VALUE`
+    /// in the Dart tooling; `--env NAME=VALUE` on the DartScope CLI). The
+    /// `undefined_define` rule is inert while this map is empty.
+    #[serde(default)]
+    pub environment: BTreeMap<String, String>,
 }
 
 impl DartLintConfig {

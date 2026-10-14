@@ -67,6 +67,9 @@ fn lint_with_context(
             DartLintRuleId::UnresolvedPart => {
                 rules::unresolved_parts::run(context, config, &mut diagnostics)
             }
+            DartLintRuleId::UndefinedDefine => {
+                rules::undefined_defines::run(context, config, &mut diagnostics)
+            }
             DartLintRuleId::OrphanFile => {
                 rules::orphan_files::run(context, config, &mut diagnostics)
             }
