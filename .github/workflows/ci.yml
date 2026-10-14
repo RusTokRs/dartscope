@@ -208,12 +208,13 @@ jobs:
           c1=$?
           cargo test --workspace --locked --quiet > /tmp/probe2.log 2>&1
           c2=$?
+          cargo test -p dartscope-index --lib per_file_caches_rebuild_only_relevant_sources > /tmp/probe3.log 2>&1
+          c3=$?
           {
-            grep -E '^error' /tmp/probe1.log | head -6
-            grep -E '^failures:$' -A 20 /tmp/probe2.log | grep -E '^    ' | head -4
-            grep -E '^error' /tmp/probe2.log | head -2
+            grep -E '^error' /tmp/probe1.log -A 3 | grep -E '^error|-->' | head -8
+            grep -E 'panicked|left:|right:' /tmp/probe3.log | head -3
           } | sed 's/^/::error::/'
-          exit $((c1 || c2))
+          exit $((c1 || c2 || c3))
   quality:
     name: Quality gates
     needs: workflow_policy
