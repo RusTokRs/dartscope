@@ -327,7 +327,7 @@ impl DartLspServer {
         };
         let snapshot = index.snapshot();
         let path = document_path(uri);
-        let targets = self.resolve_targets(&snapshot, &path, content, offset);
+        let (targets, _) = self.resolve_targets(&snapshot, &path, content, offset);
         if targets.is_empty() {
             return Ok(None);
         }
@@ -385,7 +385,7 @@ impl DartLspServer {
         };
         let snapshot = index.snapshot();
         let path = document_path(uri);
-        let targets = self.resolve_targets(&snapshot, &path, content, offset);
+        let (targets, _) = self.resolve_targets(&snapshot, &path, content, offset);
         if targets.is_empty() {
             return Ok(None);
         }
@@ -453,7 +453,7 @@ impl DartLspServer {
         path: &str,
         content: &str,
         offset: usize,
-    ) -> Vec<DartDefinitionTarget> {
+    ) -> (Vec<DartDefinitionTarget>, Option<Range>) {
         let query = DartDefinitionQuery::new(path.to_string(), offset);
         let ctx = DartWorkspaceResolutionContext::from_snapshot(snapshot);
         let batch = ctx.find_definitions(&[query]);
@@ -462,6 +462,13 @@ impl DartLspServer {
             .first()
             .map(|resolution| resolution.targets.clone())
             .unwrap_or_default();
+        // The exact occurrence range for hover, when the query hit a
+        // reference fact (the fallback paths have none and stay range-less).
+        let occurrence = batch
+            .resolutions
+            .first()
+            .and_then(|resolution| resolution.references.first())
+            .map(|reference| source_span_to_lsp_range(content, &reference.span));
         if targets.is_empty() {
             targets = declaration_targets_at(snapshot, path, offset, content);
         }
@@ -470,7 +477,7 @@ impl DartLspServer {
             // receiver type is lexically visible in the same document.
             targets = receiver_type_targets_at(snapshot, path, content, offset);
         }
-        targets
+        (targets, occurrence)
     }
 
     /// LSP `textDocument/semanticTokens/full`: identifier highlights derived
@@ -616,6 +623,7 @@ impl DartLspServer {
         let path = document_path(uri);
         if self
             .resolve_targets(&snapshot, &path, content, offset)
+            .0
             .is_empty()
         {
             return Ok(None);
@@ -681,7 +689,7 @@ impl DartLspServer {
         };
         let snapshot = index.snapshot();
         let path = document_path(uri);
-        let targets = self.resolve_targets(&snapshot, &path, content, offset);
+        let (targets, _) = self.resolve_targets(&snapshot, &path, content, offset);
         if targets.is_empty() {
             return Ok(None);
         }
@@ -759,10 +767,8 @@ impl DartLspServer {
             });
         }
         for edits in changes.values_mut() {
-            edits.sort_by(|a, b| {
-                (a.range.start.line, a.range.start.character)
-                    .cmp(&(b.range.start.line, b.range.start.character))
-            });
+            edits
+                .sort_by_key(|edit| (edit.range.start.line, edit.range.start.character));
             edits.dedup();
         }
         if changes.is_empty() {
@@ -785,7 +791,7 @@ impl DartLspServer {
         };
         let snapshot = index.snapshot();
         let path = document_path(uri);
-        let targets = self.resolve_targets(&snapshot, &path, content, offset);
+        let (targets, occurrence) = self.resolve_targets(&snapshot, &path, content, offset);
         if targets.is_empty() {
             return Ok(None);
         }
@@ -805,14 +811,9 @@ impl DartLspServer {
                 value: format!("{kind} {name}"),
             }));
         }
-        let range = batch
-            .resolutions
-            .first()
-            .and_then(|resolution| resolution.references.first())
-            .map(|reference| source_span_to_lsp_range(content, &reference.span));
         Ok(Some(Hover {
             contents: HoverContents::Array(contents),
-            range,
+            range: occurrence,
         }))
     }
 
@@ -1374,6 +1375,8 @@ fn reference_token_type(
     Some(match kind {
         R::InvocationTarget => (TK_FUNCTION, 0),
         R::ConstructorTarget => (TK_CLASS, 0),
+        R::MemberDeclarationInstance => (TK_METHOD, 0),
+        R::MemberDeclarationStatic => (TK_METHOD, SM_STATIC),
         R::MemberInvocationInstance => (TK_METHOD, 0),
         R::MemberInvocationStatic => (TK_METHOD, SM_STATIC),
         R::MemberOperatorDeclaration | R::MemberOperatorInvocationInstance => (TK_METHOD, 0),
@@ -1498,13 +1501,11 @@ fn receiver_type_targets_at(
             owner = Some((file.path.as_str(), decl));
         }
     }
-    let (owner_path, owner) = owner;
-    let Some(owner_symbol) = owner.and_then(|(_, decl)| decl.symbol_id.as_deref()) else {
+    let Some((owner_path, owner)) = owner else {
         return Vec::new();
     };
-    let owner_path = match owner {
-        Some((path, _)) => path,
-        None => return Vec::new(),
+    let Some(owner_symbol) = owner.symbol_id.as_deref() else {
+        return Vec::new();
     };
     let member_decl = snapshot
         .project()
@@ -1724,7 +1725,7 @@ mod tests {
         assert!(decoded.contains(&(0, 6, 3, TK_CLASS, SM_DECLARATION)));
         assert!(decoded.contains(&(1, 13, 5, TK_PROPERTY, SM_DECLARATION | SM_STATIC)));
         assert!(decoded.contains(&(2, 16, 1, TK_PARAMETER, SM_DECLARATION)));
-        assert!(decoded.contains(&(3, 22, 5, TK_PROPERTY, 0)));
+        assert!(decoded.contains(&(3, 21, 5, TK_PROPERTY, 0)));
         // Delta encoding requires ascending document order.
         assert!(
             decoded
