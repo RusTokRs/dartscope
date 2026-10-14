@@ -229,15 +229,7 @@ jobs:
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal
       - name: Run workspace tests
-        shell: bash
-        run: |
-          set +e
-          out=$(cargo test --workspace --locked 2>&1); c=$?
-          set -e
-          if [ $c -ne 0 ]; then
-            echo "$out" | grep -E "FAILED|panicked at|left:|right:|assertion" | head -40 | while IFS= read -r l; do echo "::error::t: $l"; done
-          fi
-          exit $c
+        run: cargo test --workspace --locked --quiet
       - name: Run LSP lints-feature tests
         run: cargo test -p dartscope-lsp --features lints --locked --quiet
 

@@ -9,6 +9,20 @@ pre-1.0.
 
 ### Added
 
+- `dartscope-lsp` full-document `textDocument/semanticTokens`: identifier tokens derived from the same
+  index facts navigation uses (declarations, reference facts, lexical bindings), delta-encoded against
+  the advertised legend, with `declaration`/`static` modifiers unioned at shared positions.
+- `dartscope-lsp` `textDocument/prepareRename` and `textDocument/rename`: renames rewrite the resolved
+  declaration name and every proven usage across the open documents, emit identifier-only edits, and
+  validate the new name against reserved words and in-scope declaration collisions.
+- `dartscope-lsp` receiver-type-aware resolution: qualified member accesses in `definition`, `hover`,
+  and `references` resolve when the receiver is a lexically visible typed parameter or local binding
+  and the declared type names exactly one class-like declaration in the open workspace.
+- `dartscope.undefined_define` lint rule plus the `dartscope lint --env <key=value>` flag and the
+  TOML `[environment]` table: `X.fromEnvironment("name")` reads without a `defaultValue` are reported
+  when the name is not in the provided compilation environment; the rule is inert while no entries are
+  configured.
+
 - Ten publishable Rust crates covering normalized Dart analysis, parsing, package and URI
   resolution, project indexing, optional lint rules, Flutter conventions, versioned JSON contracts,
   an optional LSP bridge, a thin umbrella API, and the `dartscope` CLI.

@@ -29,7 +29,7 @@ The supported commands are:
 | `graphql-contracts` | project directory | repeatable `--env key=value` | `dartscope.graphql-contracts` |
 | `uri-graph` | project directory | repeatable `--env key=value` | `dartscope.uri-graph` |
 | `flutter-inventory` | project directory | none | `dartscope.flutter-inventory` |
-| `lint` | project directory | `--config`, `--format`, `--deny-warnings` | `dartscope.lint-analysis` or SARIF 2.1.0 |
+| `lint` | project directory | `--config`, `--format`, `--deny-warnings`, repeatable `--env key=value` | `dartscope.lint-analysis` or SARIF 2.1.0 |
 
 ## Exit codes
 

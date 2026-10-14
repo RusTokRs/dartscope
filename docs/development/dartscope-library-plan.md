@@ -971,6 +971,13 @@ Foundation implemented (2026-07-17):
 17. **P1 fixed:** the corrected apply diagnostic wrote the reviewed baseline patcher into the repository
     as an untracked file, and `git reset --hard` did not remove it. Final cleanup now removes generated
     diagnostic helpers explicitly before staging and verifies the resulting workflow/tool inventory.
+18. **P2 completion (2026-10-14):** the deferred editor capabilities landed — full-document semantic
+    tokens from index facts with the published legend, `prepareRename`/`rename` over the open workspace
+    (identifier-span edits, reserved-word and collision validation), and receiver-type-aware member
+    resolution for lexically typed receiver bindings in `definition`, `hover`, and `references`. Dart
+    environment defines reached the deterministic lint layer as `dartscope.undefined_define` with
+    `--env`/`[environment]` provisioning; index-level receiver inference (field receivers, extension
+    selection, implicit constructors) remains an explicit DS-INDEX-006 follow-up.
 
 Verification completed (2026-07-18):
 
@@ -1157,8 +1164,9 @@ Implemented (2026-10-14, follow-up slice):
     rebuild dependent reference caches while formatting-only edits stay no-ops), and never-run unit-test
     expectations re-based onto the ported semantics.
 
-Remaining (follow-up): semantic tokens and any receiver-type-aware extension hover refinement stay
-outside the `0.1` contract; the process-level stdio smoke and the lint adapter shipped as item 14.
+Semantic tokens, rename, and binding-typed receiver resolution shipped as item 18; receiver-type-aware
+extension selection and field-receiver inference stay outside the `0.1` contract; the process-level
+stdio smoke and the lint adapter shipped as item 14.
 The foundation and the follow-up list above are complete; the hosted-toolchain runs listed under
 item 15 carry the `verified` status.
 
@@ -1485,7 +1493,9 @@ operator targets, constructor/direct-member navigation, lexical variable read/wr
 inherited instance members via `extends`/`with`/`mixin on`, and extension member fallback without receiver
 inference are now implemented and covered. The remaining bounded slices are on-type-aware extension selection,
 implicit constructor selection, receiver-type inference, and local-function lexical bindings; each one requires
-its own fixtures and compatibility note before it enters public output. `DS-COMPAT-001` remains research.
+its own fixtures and compatibility note before it enters public output. Since 2026-10-14 the LSP bridge
+additionally resolves `receiver.member` accesses for lexically visible, explicitly typed parameter and local
+bindings (open-workspace only); that projection consumes existing facts and adds none. `DS-COMPAT-001` remains research.
 
 The 2026-09-25 review (see `docs/development/audit-findings-2026-09-25.md`) identified the conservative
 backend's hand-written lexical scanning as the largest architectural risk: independent character classes had

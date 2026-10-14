@@ -85,11 +85,14 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
   pre-1.0 contracts, so breaking changes require a new schema major and a migration note.
 - `dartscope-lsp` serves only the open editor buffer set: there is no workspace-wide filesystem scan,
   `workspace/symbol` matches top-level declaration names by case-insensitive substring against a bounded
-  result list, completion/formatting/semantic-token requests return honest empty results, and lint
+  result list, completion and formatting requests return honest empty results, and lint
   findings reach the editor only through a downstream adapter that calls
   `DartLspServer::set_supplemental_diagnostics` (the binary's `--lints` mode is that adapter).
   Definition, hover, and references resolve from declaration identifiers too, and `references` honors
-  `includeDeclaration`.
+  `includeDeclaration`. Full-document semantic tokens and `prepareRename`/`rename` are supported: the
+  rename rewrites the declaration name and every resolved usage across the open documents, validating
+  the new name conservatively. Qualified member accesses resolve when the receiver is a typed local
+  binding.
 
 To connect an editor, point the client at the stdio binary; the optional first argument overrides the
 workspace root:

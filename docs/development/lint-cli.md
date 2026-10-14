@@ -16,7 +16,7 @@ non-symlink-following walker as other project commands, analyzes normalized fact
 ## Command
 
 ```text
-dartscope lint <project> [--config <path>] [--format <json|sarif>] [--deny-warnings]
+dartscope lint <project> [--config <path>] [--format <json|sarif>] [--deny-warnings] [--env <key=value>]...
 ```
 
 - No configuration path means `DartLintConfig::default()`: no rules are enabled and the command is
@@ -25,6 +25,9 @@ dartscope lint <project> [--config <path>] [--format <json|sarif>] [--deny-warni
 - `--format sarif` emits SARIF 2.1.0 with rule metadata, normalized artifact paths, exact available
   source regions, severities, and related-path evidence.
 - `--deny-warnings` overrides the configured failure threshold for that invocation.
+- `--env <key=value>` provides one Dart compilation-environment entry (repeatable). Supplying any
+  entry also enables the `dartscope.undefined_define` rule for that invocation; the TOML
+  `[environment]` table seeds the same map, and CLI entries win over file entries.
 - Findings at the threshold still produce structured stdout and exit code `4`; stderr remains empty.
 
 ## TOML Configuration Version 1

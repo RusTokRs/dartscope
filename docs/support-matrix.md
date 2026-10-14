@@ -103,9 +103,16 @@ per the 3.17 spec, and `didSave` revalidates and applies `includeText` payloads.
 | `hover` | `dart` code blocks per resolved target; declaration fallback included |
 | `documentSymbol` | one nesting level; `detail` carries the declaration-kind label; enum children are `EnumMember` |
 | `workspace/symbol` | open documents only, top-level names, bounded to 100 |
-| anything else | honest `null` results; completion, formatting, semantic tokens, and rename are outside the contract | Index maintenance is per-file: opening or
+| `semanticTokens/full` | full-document identifier tokens derived from index facts (declarations, reference facts, lexical bindings); the legend in `initialize` defines types `class`..`constructor` and modifiers `declaration`/`static`; multi-line ranges are omitted and `range` requests answer `null` |
+| `prepareRename` / `rename` | open-workspace rename: every resolved usage plus the declaration identifier is edited across open documents; edits only ever replace the name span; the new name must be a non-reserved Dart identifier and must not collide with existing declarations in the affected scopes; a rename is complete exactly when all referencing files are open |
+| anything else | honest `null` results; completion and formatting are outside the contract | Index maintenance is per-file: opening or
 changing a document upserts only that file, closing removes it, and unaffected open documents keep
 their parse and resolution caches.
+
+Qualified member accesses resolve from `definition`, `hover`, and `references` when the receiver is a
+lexically visible parameter or local binding whose declared type names exactly one class-like
+declaration in the open workspace; anything weaker (field receivers, inferred types, ambiguous names)
+stays unresolved.
 
 Built with the optional `lints` feature and started as `dartscope-lsp [root] --lints`, the stdio
 binary drives the adapter itself: after each `didOpen`/`didChange` it runs the all-rules
