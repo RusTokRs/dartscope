@@ -232,6 +232,15 @@ jobs:
         run: cargo test --workspace --locked --quiet
       - name: Run LSP lints-feature tests
         run: cargo test -p dartscope-lsp --features lints --locked --quiet
+      - name: DEBUG lsp error dump
+        shell: bash
+        run: |
+          set +e
+          out=$(cargo check -p dartscope-lsp --all-targets --locked 2>&1); c1=$?
+          out2=$(cargo check -p dartscope-lsp --features lints --all-targets --locked 2>&1); c2=$?
+          set -e
+          { echo "$out" | grep -A10 "^error" | head -60; echo "$out2" | grep -A10 "^error" | head -60; } | while IFS= read -r l; do echo "::error::$l"; done
+          echo "DEBUG done $c1 $c2"
 
   edition_2024:
     name: Edition 2024 (${{ matrix.os }} / ${{ matrix.check.name }})
