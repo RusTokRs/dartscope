@@ -229,9 +229,7 @@ jobs:
       - name: Install Rust 1.95
         run: rustup toolchain install 1.95.0 --profile minimal
       - name: Run workspace tests
-        run: cargo test --workspace --locked --quiet
-      - name: Run LSP lints-feature tests
-        run: cargo test -p dartscope-lsp --features lints --locked --quiet
+        run: cargo test --workspace --locked --quiet || true
       - name: DEBUG lsp error dump
         shell: bash
         run: |
@@ -241,6 +239,10 @@ jobs:
           set -e
           { echo "$out" | grep -A10 "^error" | head -60; echo "$out2" | grep -A10 "^error" | head -60; } | while IFS= read -r l; do echo "::error::$l"; done
           echo "DEBUG done $c1 $c2"
+      - name: Run workspace tests (again, blocking)
+        run: cargo test --workspace --locked --quiet
+      - name: Run LSP lints-feature tests
+        run: cargo test -p dartscope-lsp --features lints --locked --quiet
 
   edition_2024:
     name: Edition 2024 (${{ matrix.os }} / ${{ matrix.check.name }})
