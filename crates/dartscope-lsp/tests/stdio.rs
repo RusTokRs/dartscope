@@ -49,7 +49,7 @@ fn spawn_server() -> std::process::Child {
         .expect("spawn dartscope-lsp")
 }
 
-fn message_with_id<'a>(messages: &'a [Value], id: i64) -> &'a Value {
+fn message_with_id(messages: &[Value], id: i64) -> &Value {
     messages
         .iter()
         .find(|msg| msg.get("id").and_then(Value::as_i64) == Some(id))

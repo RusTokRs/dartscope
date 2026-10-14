@@ -204,17 +204,7 @@ jobs:
       - name: Check repository consistency
         run: python3 tools/check-repository-consistency.py
       - name: Run Clippy
-        run: |
-          set +e
-          output=$(cargo clippy --workspace --all-targets --locked -- -D warnings 2>&1)
-          code=$?
-          set -e
-          if [ $code -ne 0 ]; then
-            echo "$output" | grep -E "^(error|warning)" | head -30 | while IFS= read -r line; do echo "::error::$line"; done
-            echo "$output" | sed -n '/^error\[/{n;p}' | head -20 | while IFS= read -r line; do echo "::error::after: $line"; done
-            echo "$output" | grep -E "help: |--> " | head -40 | while IFS= read -r line; do echo "::error::ctx: $line"; done
-          fi
-          exit $code
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Run Clippy for the optional LSP lints feature
         run: cargo clippy -p dartscope-lsp --features lints --all-targets --locked -- -D warnings
       - name: Build documentation
