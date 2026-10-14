@@ -94,18 +94,23 @@ not suppress a complexity warning merely to finish the feature.
 
 ## Current Next Step
 
-Unqualified same-owner member navigation is implemented and verified: parser-side
-`unqualified_member_references` emits invocation/read/write facts only when the enclosing callable
-supplies one exact owner symbol ID, the owner directly declares a matching method, field, getter, or
-setter, and no visible lexical binding, parameter, local function, or enclosing-owner member shadows
-the spelling. Continue `DS-INDEX-006` with the next bounded, evidence-gated slice: inherited-member or
-extension selection for an exact owner type, or local-function lexical bindings. Each slice must arrive
-with nearby-shadowing fixtures, exact spans, an explicit compatibility note, and full-build versus
-immutable-snapshot parity. Keep arbitrary receiver inference, cascades, null-aware access, dynamic
-dispatch, patterns, and flow-sensitive behavior behind later focused slices.
+`DS-LSP-001` is implemented through the 2026-10-14 follow-up slice: the tenth crate is registered in
+`Cargo.lock` and the umbrella `lsp` feature, the server compiles against real index APIs, wire JSON uses
+the `lsp-types` 0.97 camelCase shape, `workspace/symbol`, `textDocument/publishDiagnostics`,
+`set_supplemental_diagnostics` (the dependency-free lint port), and `snapshot_generation` staleness evidence
+exist with focused unit tests. The next bounded LSP slices are a process-level stdio editor smoke on a
+fixture project and a `dartscope-cli` lint adapter that feeds configured `dartscope-lints` findings into
+`set_supplemental_diagnostics`.
 
-Separately, the 2026-09-25 review consolidated Dart identifier scanning into
-`crates/dartscope-parse/src/identifiers.rs` after finding that thirteen local character classes had
-truncated every name containing `$`. The same consolidation for numeric literals, string escapes, and
-metadata handling is the highest-value next architectural slice; details and evidence are in
-`docs/development/audit-findings-2026-09-25.md`.
+`DS-INDEX-006` progress now covers unqualified same-owner member facts, direct inherited instance members
+via `extends`/`with`/`mixin on`, and extension member fallback without receiver inference. Continue it with
+the next bounded, evidence-gated slice: on-type-aware extension selection, implicit constructor selection,
+receiver-type inference, or local-function lexical bindings. Each slice must arrive with nearby-shadowing
+fixtures, exact spans, an explicit compatibility note, and full-build versus immutable-snapshot parity.
+Keep arbitrary cascades, null-aware access, dynamic dispatch, patterns, and flow-sensitive behavior behind
+later focused slices.
+
+The scanner consolidation recommended by the 2026-09-25 review is complete: identifier rules live in
+`crates/dartscope-parse/src/identifiers.rs`, string and numeric literal rules in `literals.rs`, and
+annotation rules in `metadata.rs`, all shared by the lexical masker, declaration inventory, and invocation
+argument scans. Language-version-aware parsing is now the follow-on slice that builds on them.

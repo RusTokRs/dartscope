@@ -43,6 +43,12 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
 - `dartscope-cli` exposes the stable process boundary with help, version output, documented exit
   codes, deterministic discovery, versioned JSON for every analysis command, and a configured lint
   command with SARIF 2.1.0 output.
+- `dartscope-lsp` is the optional Language Server Protocol bridge: UTF-16 ↔ UTF-8 coordinate
+  conversion, incremental document sync, definition/references/hover/`documentSymbol`/
+  `workspace/symbol` over the workspace index, and a minimal stdio binary. It performs no filesystem
+  or `dart`/`flutter` process I/O, does not depend on `dartscope-lints`, and exposes an explicit
+  supplemental-diagnostics port for downstream lint adapters plus a snapshot-generation staleness
+  signal.
 - `dartscope` is a thin umbrella crate with feature-gated re-exports.
 
 ## Non-Goals
@@ -73,6 +79,11 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
   currently produce explicit diagnostics instead of heuristic symbols.
 - CLI JSON uses named v1 envelopes and deterministic golden fixtures. Payload fields remain
   pre-1.0 contracts, so breaking changes require a new schema major and a migration note.
+- `dartscope-lsp` serves only the open editor buffer set: there is no workspace-wide filesystem scan,
+  `workspace/symbol` matches top-level declaration names by case-insensitive substring against a bounded
+  result list, completion/formatting/semantic-token requests return honest empty results, and lint
+  findings reach the editor only through a downstream adapter that calls
+  `DartLspServer::set_supplemental_diagnostics`.
 
 `dartscope-parse` also exposes an object-safe `DartParser` contract for callers that
 need a different source-only parser backend. The built-in `HeuristicDartParser` remains
@@ -117,7 +128,7 @@ with all features. See
 
 ## Release And Support
 
-All nine crates carry crates.io-ready metadata and versioned internal dependencies. The release gate
+All ten crates carry crates.io-ready metadata and versioned internal dependencies. The release gate
 builds every `.crate` archive in dependency order without publishing it. Development now follows the
 audited `0.2` roadmap, while workspace manifests remain on unreleased `0.1.0` until the exact release
 tag is created. See the [0.1 support matrix](docs/support-matrix.md),

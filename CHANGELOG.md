@@ -9,9 +9,9 @@ pre-1.0.
 
 ### Added
 
-- Nine publishable Rust crates covering normalized Dart analysis, parsing, package and URI
+- Ten publishable Rust crates covering normalized Dart analysis, parsing, package and URI
   resolution, project indexing, optional lint rules, Flutter conventions, versioned JSON contracts,
-  a thin umbrella API, and the `dartscope` CLI.
+  an optional LSP bridge, a thin umbrella API, and the `dartscope` CLI.
 - Conservative source-only Dart and Flutter analysis with exact spans, diagnostics, capability
   metadata, namespace and reference resolution, GraphQL contract linking, and package-aware Flutter
   catalogs.
@@ -41,6 +41,8 @@ pre-1.0.
 - `extension on T` declarations now retain their `on` type in `DartDeclaration.extends` for future on-type-aware extension selection.
 - Populated v1 golden fixtures (`file-analysis-populated-v1.json` / `project-analysis-populated-v1.json`) with one file, one import and one declaration to catch regressions inside entry objects.
 - New optional crate `dartscope-lsp` with UTF-16 ↔ UTF-8 coordinate conversion (LF, CRLF, surrogate pairs), incremental `DartLspServer` (initialize, didOpen/didChange/didClose, definition, references, hover, documentSymbol, diagnostics) and a minimal stdio binary `dartscope-lsp`.
+- `dartscope-lsp` `workspace/symbol` (bounded, deterministic `SymbolInformation` block over open documents), `textDocument/publishDiagnostics` pushed by the stdio binary after every sync event and cleared on close, `set_supplemental_diagnostics` as the explicit downstream lint port (the crate keeps zero dependency on `dartscope-lints`), and `snapshot_generation` staleness evidence with `root`/`root_url` accessors.
+- LSP wire JSON now uses the `lsp-types` 0.97 camelCase shape (`rootUri`, `serverInfo`, `textDocumentSync`, `workDoneProgressOptions`, …) for the capabilities and parameter envelopes.
 
 ### Changed
 
@@ -52,6 +54,14 @@ pre-1.0.
 
 ### Fixed
 
+- Completed the `dartscope-lsp` slice: `Cargo.lock` now carries the `dartscope-lsp` package and the
+  umbrella's `lsp` dependency edge, so `--locked` and `check-release-packages.py` accept the workspace.
+  `DartWorkspaceResolutionContext::from_snapshot` now receives a borrowed snapshot (it previously
+  passed an `Arc` by value), `DartLspServer` no longer relies on a non-existent `Default` impl for the
+  LSP `Diagnostic`, unused `crate::types` imports were removed, and a full workspace `rustfmt`/Clippy
+  pass clears the crate.
+- `DartLspServer::did_change` rejects inverted or out-of-range incremental edit ranges and falls back
+  to a full-content replace instead of panicking in `String::replace_range`.
 - Removed an unused direct `serde` dependency and stale lock edge from `dartscope-parse` instead of
   suppressing the unused-dependency gate.
 - Incremental reference caches now invalidate same-name `NotVisible` evidence and sibling-part

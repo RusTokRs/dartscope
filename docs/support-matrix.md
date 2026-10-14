@@ -77,3 +77,17 @@ Eight CLI command families use named v1 JSON envelopes, including `dartscope.lin
 The lint command can alternatively emit SARIF 2.1.0. These are pre-1.0 contracts: incompatible changes
 require a new schema major and a migration note. Library-only reference outputs are not command-facing
 schemas until separately registered.
+
+## LSP Bridge
+
+`dartscope-lsp` is an optional, feature-gated editor bridge, not part of the default umbrella features.
+The `0.1` contract covers the initialize/initialized/shutdown/exit lifecycle, full and incremental
+`didChange` synchronization over the open document set, UTF-16 positions for LF, CRLF, and surrogate
+pairs, and index-backed `definition`, `references`, `hover`, `documentSymbol`, and bounded
+`workspace/symbol` results, plus `textDocument/publishDiagnostics` for parser diagnostics.
+
+The bridge never scans the filesystem, never runs `dart` or `flutter`, and does not depend on
+`dartscope-lints`. Lint findings reach the server only through `set_supplemental_diagnostics`, which a
+downstream adapter fills. Completion, formatting, semantic tokens, inlay hints, and workspace-wide
+background indexing are outside the `0.1` LSP contract, and every unhandled request returns an honest
+empty result.

@@ -423,14 +423,6 @@ pub enum TextDocumentSyncCapability {
     Options(TextDocumentSyncOptions),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct TextDocumentSyncOptions {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub open_close: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub change: Option<TextDocumentSyncKind>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum OneOf<L, R> {
@@ -439,18 +431,21 @@ pub enum OneOf<L, R> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct DefinitionOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work_done_progress_options: Option<WorkDoneProgressOptions>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct ReferenceOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work_done_progress_options: Option<WorkDoneProgressOptions>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct DocumentSymbolOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work_done_progress_options: Option<WorkDoneProgressOptions>,
@@ -459,9 +454,28 @@ pub struct DocumentSymbolOptions {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkDoneProgressOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work_done_progress: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TextDocumentSyncOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub open_close: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub change: Option<TextDocumentSyncKind>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceSymbolOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub work_done_progress_options: Option<WorkDoneProgressOptions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolve_provider: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -472,12 +486,14 @@ pub enum HoverProviderCapability {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct HoverOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work_done_progress_options: Option<WorkDoneProgressOptions>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct ServerCapabilities {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_document_sync: Option<TextDocumentSyncCapability>,
@@ -489,6 +505,8 @@ pub struct ServerCapabilities {
     pub hover_provider: Option<HoverProviderCapability>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub document_symbol_provider: Option<OneOf<bool, DocumentSymbolOptions>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_symbol_provider: Option<OneOf<bool, WorkspaceSymbolOptions>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -499,6 +517,7 @@ pub struct ServerInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InitializeResult {
     pub capabilities: ServerCapabilities,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -510,6 +529,7 @@ pub struct InitializeResult {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InitializeParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub root_uri: Option<Url>,
@@ -623,6 +643,34 @@ pub struct HoverParams {
 pub struct DocumentSymbolParams {
     #[serde(rename = "textDocument")]
     pub text_document: TextDocumentIdentifier,
+    #[serde(flatten)]
+    pub work_done_progress_params: WorkDoneProgressParams,
+    #[serde(flatten)]
+    pub partial_result_params: PartialResultParams,
+}
+
+// ---------------------------------------------------------------------------
+// Workspace symbols
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SymbolInformation {
+    pub name: String,
+    pub kind: SymbolKind,
+    pub location: Location,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub container_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<SymbolTag>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deprecated: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceSymbolParams {
+    pub query: String,
     #[serde(flatten)]
     pub work_done_progress_params: WorkDoneProgressParams,
     #[serde(flatten)]

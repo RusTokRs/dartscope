@@ -185,48 +185,106 @@ mod tests {
     #[test]
     fn byte_offset_round_trips_lf() {
         let source = "a\nb\nc";
-        assert_eq!(byte_offset_to_lsp_position(source, 0), Position { line: 0, character: 0 });
-        assert_eq!(byte_offset_to_lsp_position(source, 1), Position { line: 0, character: 1 });
+        assert_eq!(
+            byte_offset_to_lsp_position(source, 0),
+            Position { line: 0, character: 0 }
+        );
+        assert_eq!(
+            byte_offset_to_lsp_position(source, 1),
+            Position { line: 0, character: 1 }
+        );
         assert_eq!(byte_offset_to_lsp_position(source, 2), Position { line: 1, character: 0 });
         assert_eq!(byte_offset_to_lsp_position(source, 3), Position { line: 1, character: 1 });
-        assert_eq!(lsp_position_to_byte_offset(source, Position { line: 0, character: 1 }), Some(1));
-        assert_eq!(lsp_position_to_byte_offset(source, Position { line: 1, character: 0 }), Some(2));
+        assert_eq!(
+            lsp_position_to_byte_offset(source, Position { line: 0, character: 1 }),
+            Some(1)
+        );
+        assert_eq!(
+            lsp_position_to_byte_offset(source, Position { line: 1, character: 0 }),
+            Some(2)
+        );
     }
 
     #[test]
     fn handles_crlf() {
         let source = "a\r\nb\r\nc";
         // "a" + "\r\n" = 3 bytes, line 0 content "a", line 1 content "b"
-        assert_eq!(byte_offset_to_lsp_position(source, 0), Position { line: 0, character: 0 });
-        assert_eq!(byte_offset_to_lsp_position(source, 1), Position { line: 0, character: 1 });
+        assert_eq!(
+            byte_offset_to_lsp_position(source, 0),
+            Position { line: 0, character: 0 }
+        );
+        assert_eq!(
+            byte_offset_to_lsp_position(source, 1),
+            Position { line: 0, character: 1 }
+        );
         // offset 1 is 'a' end, offset 2 is '\r', offset 3 is '\n' — both should map to line 0 end
-        assert_eq!(byte_offset_to_lsp_position(source, 3), Position { line: 0, character: 1 });
-        assert_eq!(byte_offset_to_lsp_position(source, 4), Position { line: 1, character: 0 });
-        assert_eq!(lsp_position_to_byte_offset(source, Position { line: 1, character: 0 }), Some(3));
+        assert_eq!(
+            byte_offset_to_lsp_position(source, 3),
+            Position { line: 0, character: 1 }
+        );
+        assert_eq!(
+            byte_offset_to_lsp_position(source, 4),
+            Position { line: 1, character: 0 }
+        );
+        assert_eq!(
+            lsp_position_to_byte_offset(source, Position { line: 1, character: 0 }),
+            Some(3)
+        );
         // byte 3 is after "\r\n"?
         // Our line_content_by_index: line 0 start 0, content "a" (0..1), line 1 start 3, content "b" (3..4)
-        assert_eq!(lsp_position_to_byte_offset(source, Position { line: 1, character: 1 }), Some(4));
+        assert_eq!(
+            lsp_position_to_byte_offset(source, Position { line: 1, character: 1 }),
+            Some(4)
+        );
     }
 
     #[test]
     fn handles_emoji_2_utf16_units() {
         let source = "a😀b"; // 'a' 1 byte, '😀' 4 bytes, 2 utf16 units, 'b' 1 byte
         // Positions: line 0, char 0 -> 'a', char1 -> start of emoji, char3 -> 'b'
-        assert_eq!(byte_offset_to_lsp_position(source, 0), Position { line: 0, character: 0 });
-        assert_eq!(byte_offset_to_lsp_position(source, 1), Position { line: 0, character: 1 });
-        assert_eq!(byte_offset_to_lsp_position(source, 5), Position { line: 0, character: 3 }); // after emoji (1+4)
-        assert_eq!(byte_offset_to_lsp_position(source, 6), Position { line: 0, character: 4 });
-        assert_eq!(lsp_position_to_byte_offset(source, Position { line: 0, character: 1 }), Some(1));
-        assert_eq!(lsp_position_to_byte_offset(source, Position { line: 0, character: 3 }), Some(5));
+        assert_eq!(
+            byte_offset_to_lsp_position(source, 0),
+            Position { line: 0, character: 0 }
+        );
+        assert_eq!(
+            byte_offset_to_lsp_position(source, 1),
+            Position { line: 0, character: 1 }
+        );
+        // after emoji (1+4)
+        assert_eq!(
+            byte_offset_to_lsp_position(source, 5),
+            Position { line: 0, character: 3 }
+        );
+        assert_eq!(
+            byte_offset_to_lsp_position(source, 6),
+            Position { line: 0, character: 4 }
+        );
+        assert_eq!(
+            lsp_position_to_byte_offset(source, Position { line: 0, character: 1 }),
+            Some(1)
+        );
+        assert_eq!(
+            lsp_position_to_byte_offset(source, Position { line: 0, character: 3 }),
+            Some(5)
+        );
         // character 2 is inside surrogate pair — clamped to start of emoji
-        assert_eq!(lsp_position_to_byte_offset(source, Position { line: 0, character: 2 }), Some(1));
+        assert_eq!(
+            lsp_position_to_byte_offset(source, Position { line: 0, character: 2 }),
+            Some(1)
+        );
     }
 
     #[test]
     fn out_of_bounds_returns_none() {
         let source = "ab";
-        assert_eq!(lsp_position_to_byte_offset(source, Position { line: 5, character: 0 }), None);
-        assert_eq!(lsp_position_to_byte_offset(source, Position { line: 0, character: 10 }), None);
+        assert_eq!(
+            lsp_position_to_byte_offset(source, Position { line: 5, character: 0 }),
+            None
+        );
+        assert_eq!(
+            lsp_position_to_byte_offset(source, Position { line: 0, character: 10 }),
+            None
+        );
     }
 
     #[test]
