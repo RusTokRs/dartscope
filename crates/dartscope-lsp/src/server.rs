@@ -844,6 +844,65 @@ impl DartLspServer {
     }
 }
 
+/// Resolve a query offset that sits on a declaration identifier onto that
+/// declaration itself. The parser deliberately does not emit reference facts
+/// for declarations, so `find_definitions` cannot answer such queries; the
+/// workspace snapshot's declaration inventory can, conservatively and exactly.
+fn declaration_targets_at(
+    snapshot: &DartWorkspaceSnapshot,
+    path: &str,
+    offset: usize,
+) -> Vec<DartDefinitionTarget> {
+    let Some(file) = snapshot
+        .project()
+        .files
+        .iter()
+        .find(|file| file.path == path)
+    else {
+        return Vec::new();
+    };
+    file.declarations
+        .iter()
+        .filter(|decl| decl.span.byte_start <= offset && offset < decl.span.byte_end)
+        .map(|decl| {
+            DartDefinitionTarget::Namespace(DartSymbolCandidate {
+                name: decl.name.clone(),
+                kind: decl.kind,
+                symbol_id: decl.symbol_id.clone(),
+                declaration_path: path.to_string(),
+                declaration_span: decl
+                    .declaration_span
+                    .clone()
+                    .unwrap_or_else(|| decl.span.clone()),
+                basis: DartSymbolResolutionBasis::SameFile,
+            })
+        })
+        .collect()
+}
+
+/// Short human label for one declaration kind, used as the `detail` column of
+/// document symbols.
+fn declaration_kind_label(kind: DartDeclarationKind) -> &'static str {
+    use DartDeclarationKind as D;
+    match kind {
+        D::Class => "class",
+        D::Mixin => "mixin",
+        D::Enum => "enum",
+        D::Extension => "extension",
+        D::ExtensionType => "extension type",
+        D::Typedef => "typedef",
+        D::Function => "function",
+        D::Variable => "variable",
+        D::Method => "method",
+        D::Constructor => "constructor",
+        D::Field => "field",
+        D::Getter => "getter",
+        D::Setter => "setter",
+        D::Operator => "operator",
+        D::LocalVariable => "local variable",
+    }
+}
+
 fn top_level_symbol_kind(kind: dartscope_core::DartDeclarationKind) -> SymbolKind {
     use dartscope_core::DartDeclarationKind as D;
     match kind {
