@@ -682,7 +682,7 @@ mod tests {
                 }
             }}),
         );
-        let query = |include: bool| {
+        let mut query = |include: bool| {
             handle_message(
                 &mut server,
                 &json!({"jsonrpc":"2.0","id":3,"method":"textDocument/references","params":{
