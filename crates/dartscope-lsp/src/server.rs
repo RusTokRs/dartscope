@@ -82,7 +82,6 @@ impl DartLspServer {
                 hover_provider: Some(crate::types::HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(crate::types::OneOf::Left(true)),
                 workspace_symbol_provider: Some(crate::types::OneOf::Left(true)),
-                ..Default::default()
             },
             server_info: Some(crate::types::ServerInfo {
                 name: "dartscope-lsp".to_string(),
@@ -577,14 +576,12 @@ fn document_path(uri: &Url) -> String {
 fn uri_to_path(uri: &Url) -> Result<String, Url> {
     // Url::to_file_path is platform-specific; we normalize to `/`-separated
     // relative paths because the in-memory index keys files that way.
-    uri.to_file_path()
-        .map(|path| {
-            path.to_string_lossy()
-                .replace('\\', "/")
-                .trim_start_matches('/')
-                .to_string()
-        })
-        .map_err(|_| uri.clone())
+    let path = uri.to_file_path().ok_or_else(|| uri.clone())?;
+    Ok(path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .trim_start_matches('/')
+        .to_string())
 }
 
 fn path_to_uri(path: &str) -> Url {

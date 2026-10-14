@@ -79,9 +79,7 @@ impl Url {
                 }
             };
             // Strip query/fragment
-            let end = path_part
-                .find(|c| c == '?' || c == '#')
-                .unwrap_or(path_part.len());
+            let end = path_part.find(['?', '#']).unwrap_or(path_part.len());
             &path_part[..end]
         } else {
             // Not file://, try to extract path after "://"
@@ -89,7 +87,7 @@ impl Url {
                 let after = &self.0[idx + 3..];
                 if let Some(slash) = after.find('/') {
                     let path = &after[slash..];
-                    let end = path.find(|c| c == '?' || c == '#').unwrap_or(path.len());
+                    let end = path.find(['?', '#']).unwrap_or(path.len());
                     &path[..end]
                 } else {
                     "/"
@@ -100,17 +98,17 @@ impl Url {
         }
     }
 
-    pub fn to_file_path(&self) -> Result<PathBuf, ()> {
+    pub fn to_file_path(&self) -> Option<PathBuf> {
         // Only for file://
         if !self.0.starts_with("file://") {
-            return Err(());
+            return None;
         }
         let raw = self.path();
         let decoded = percent_decode(raw);
         // On windows, file:///C:/a -> C:/a, file:///C%3A/... etc. We normalize to unix for tests.
         // Strip leading '/' for windows drive letter case? Keep as-is for unix.
         // For unix, decoded already like "/lib/main.dart"
-        Ok(PathBuf::from(decoded))
+        Some(PathBuf::from(decoded))
     }
 }
 
