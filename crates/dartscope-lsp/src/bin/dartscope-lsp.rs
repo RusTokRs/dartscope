@@ -557,7 +557,7 @@ mod tests {
         });
         let outgoing = handle_message(&mut server, &msg);
         let data = outgoing[0]["result"]["data"].as_array().unwrap().clone();
-        assert!(!data.is_empty() && data.len() % 5 == 0);
+        assert!(!data.is_empty() && data.len().is_multiple_of(5));
         // Decode the delta encoding: the class declaration token must be at
         // 0:6 with type `class` (index 0) and the declaration modifier.
         let mut line = 0u32;
