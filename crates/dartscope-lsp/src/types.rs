@@ -12,7 +12,7 @@ use std::path::PathBuf;
 // Url (file://)
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Url(pub String);
 
 impl Hash for Url {
@@ -523,6 +523,10 @@ pub struct ServerCapabilities {
     pub document_symbol_provider: Option<OneOf<bool, DocumentSymbolOptions>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_symbol_provider: Option<OneOf<bool, WorkspaceSymbolOptions>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub semantic_tokens_provider: Option<SemanticTokensOptions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rename_provider: Option<OneOf<bool, RenameOptions>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -703,4 +707,92 @@ pub struct WorkspaceSymbolParams {
     pub work_done_progress_params: WorkDoneProgressParams,
     #[serde(flatten)]
     pub partial_result_params: PartialResultParams,
+}
+
+// ---------------------------------------------------------------------------
+// Semantic tokens
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticTokensLegend {
+    pub token_types: Vec<String>,
+    pub token_modifiers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticTokensOptions {
+    pub legend: SemanticTokensLegend,
+    /// Full document tokens only; `range` requests are answered with `null`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range: Option<bool>,
+    pub full: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub work_done_progress_options: Option<WorkDoneProgressOptions>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SemanticTokensParams {
+    #[serde(rename = "textDocument")]
+    pub text_document: TextDocumentIdentifier,
+    #[serde(flatten)]
+    pub work_done_progress_params: WorkDoneProgressParams,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticTokens {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_id: Option<String>,
+    pub data: Vec<u32>,
+}
+
+// ---------------------------------------------------------------------------
+// Rename
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prepare_provider: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub work_done_progress_options: Option<WorkDoneProgressOptions>,
+}
+
+/// `prepareRename` result: the exact word range plus the current name so
+/// editors can preselect it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareRenameResult {
+    pub range: Range,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameParams {
+    #[serde(flatten)]
+    pub text_document_position: TextDocumentPositionParams,
+    #[serde(flatten)]
+    pub work_done_progress_params: WorkDoneProgressParams,
+    pub new_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextEdit {
+    pub range: Range,
+    pub new_text: String,
+}
+
+/// Rename edits cover open documents only — the index never scans the
+/// filesystem, so closed files cannot be rewritten honestly.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceEdit {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changes: Option<std::collections::BTreeMap<Url, Vec<TextEdit>>>,
 }

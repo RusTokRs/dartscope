@@ -16,7 +16,8 @@ use dartscope_lsp::DartLspServer;
 use dartscope_lsp::types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DidSaveTextDocumentParams, DocumentSymbolParams, HoverParams, InitializeParams,
-    ReferenceParams, TextDocumentPositionParams, Url, WorkspaceSymbolParams,
+    ReferenceParams, RenameParams, SemanticTokensParams, TextDocumentPositionParams, Url,
+    WorkspaceSymbolParams,
 };
 use serde_json::{Value, json};
 
@@ -247,6 +248,46 @@ fn handle_message_with_options(
                 .map_or(Value::Null, to_result);
             vec![response(id, result)]
         }
+        "textDocument/semanticTokens/full" => {
+            let result = serde_json::from_value::<SemanticTokensParams>(params)
+                .ok()
+                .and_then(|params| {
+                    server
+                        .semantic_tokens(&params.text_document.uri)
+                        .ok()
+                        .flatten()
+                })
+                .map_or(Value::Null, to_result);
+            vec![response(id, result)]
+        }
+        "textDocument/prepareRename" => {
+            let result = serde_json::from_value::<TextDocumentPositionParams>(params)
+                .ok()
+                .and_then(|params| {
+                    server
+                        .prepare_rename(&params.text_document.uri, params.position)
+                        .ok()
+                        .flatten()
+                })
+                .map_or(Value::Null, to_result);
+            vec![response(id, result)]
+        }
+        "textDocument/rename" => {
+            // Rename failures are real errors (the editor surfaces the
+            // message), not silent nulls: an applied-on-empty edit would
+            // look like success to the client.
+            match serde_json::from_value::<RenameParams>(params) {
+                Ok(params) => {
+                    let uri = params.text_document_position.text_document.uri.clone();
+                    let position = params.text_document_position.position;
+                    match server.rename(&uri, position, &params.new_name) {
+                        Ok(edit) => vec![response(id, to_result(edit))],
+                        Err(error) => vec![error_response(id, -32602, &error.to_string())],
+                    }
+                }
+                Err(_) => vec![response(id, Value::Null)],
+            }
+        }
         _ => {
             // Honest empty result for unsupported requests with an id.
             if id.is_some() {
@@ -371,6 +412,18 @@ mod tests {
             json!(true)
         );
         assert_eq!(result["capabilities"]["textDocumentSync"], json!(2));
+        assert_eq!(
+            result["capabilities"]["semanticTokensProvider"]["full"],
+            json!(true)
+        );
+        assert_eq!(
+            result["capabilities"]["semanticTokensProvider"]["legend"]["tokenModifiers"],
+            json!(["declaration", "static"])
+        );
+        assert_eq!(
+            result["capabilities"]["renameProvider"]["prepareProvider"],
+            json!(true)
+        );
         assert_eq!(result["serverInfo"]["name"], json!("dartscope-lsp"));
         assert_eq!(outgoing[0]["id"], json!(1));
     }
@@ -479,6 +532,87 @@ mod tests {
             symbols[0]["location"]["uri"],
             json!("file:///lib/payments.dart")
         );
+    }
+
+    #[test]
+    fn semantic_tokens_and_rename_round_trip_on_the_wire() {
+        let mut server = DartLspServer::new(".");
+        initialize(&mut server);
+        let open = json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {"textDocument": {
+                "uri": "file:///lib/w.dart",
+                "languageId": "dart",
+                "version": 1,
+                "text": "class Widget {\n  static const label = 1;\n}\nvoid go() { Widget(); }\n"
+            }}
+        });
+        handle_message(&mut server, &open);
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "textDocument/semanticTokens/full",
+            "params": {"textDocument": {"uri": "file:///lib/w.dart"}}
+        });
+        let outgoing = handle_message(&mut server, &msg);
+        let data = outgoing[0]["result"]["data"].as_array().unwrap().clone();
+        assert!(!data.is_empty() && data.len() % 5 == 0);
+        // Decode the delta encoding: the class declaration token must be at
+        // 0:6 with type `class` (index 0) and the declaration modifier.
+        let mut line = 0u32;
+        let mut start = 0u32;
+        let mut saw_class_decl = false;
+        let mut saw_static_property = false;
+        for chunk in data.chunks(5) {
+            let delta_line = chunk[0].as_u64().unwrap() as u32;
+            let delta_start = chunk[1].as_u64().unwrap() as u32;
+            let token_type = chunk[3].as_u64().unwrap() as u32;
+            let modifiers = chunk[4].as_u64().unwrap() as u32;
+            line += delta_line;
+            start = if delta_line == 0 {
+                start + delta_start
+            } else {
+                delta_start
+            };
+            if line == 0 && start == 6 && token_type == 0 && modifiers == 1 {
+                saw_class_decl = true;
+            }
+            if line == 1 && token_type == 7 && modifiers == 3 {
+                saw_static_property = true;
+            }
+        }
+        assert!(saw_class_decl);
+        assert!(saw_static_property);
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": 8,
+            "method": "textDocument/rename",
+            "params": {
+                "textDocument": {"uri": "file:///lib/w.dart"},
+                "position": {"line": 3, "character": 13},
+                "newName": "Gadget"
+            }
+        });
+        let outgoing = handle_message(&mut server, &msg);
+        let edits = outgoing[0]["result"]["changes"]["file:///lib/w.dart"]
+            .as_array()
+            .unwrap()
+            .clone();
+        assert_eq!(edits.len(), 2, "declaration name + usage: {edits:?}");
+        assert!(edits.iter().all(|e| e["newText"] == json!("Gadget")));
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "textDocument/rename",
+            "params": {
+                "textDocument": {"uri": "file:///lib/w.dart"},
+                "position": {"line": 3, "character": 13},
+                "newName": "class"
+            }
+        });
+        let outgoing = handle_message(&mut server, &msg);
+        assert_eq!(outgoing[0]["error"]["code"], json!(-32602));
     }
 
     #[test]

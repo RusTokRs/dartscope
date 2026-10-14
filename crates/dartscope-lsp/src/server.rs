@@ -1,10 +1,10 @@
 //! Minimal LSP server over `DartWorkspaceIndex`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use dartscope_core::{
-    DartDeclaration, DartDeclarationKind, DartFileInput, DartProjectInput, DartSymbolCandidate,
-    DartSymbolResolutionBasis,
+    DartDeclaration, DartDeclarationKind, DartFileInput, DartIdentifierReferenceKind,
+    DartLexicalBindingKind, DartProjectInput, DartSymbolCandidate, DartSymbolResolutionBasis,
 };
 use dartscope_index::{
     DartDefinitionQuery, DartDefinitionTarget, DartWorkspaceIndex, DartWorkspaceResolutionContext,
@@ -17,8 +17,10 @@ use crate::types::{
     Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentSymbol, Hover, HoverContents,
     InitializeParams, InitializeResult, LanguageString, Location, MarkedString, NumberOrString,
-    Position, Range, ServerCapabilities, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
-    TextDocumentSyncKind, Url, WorkspaceSymbolParams,
+    Position, PrepareRenameResult, Range, RenameOptions, SemanticTokens, SemanticTokensLegend,
+    SemanticTokensOptions, ServerCapabilities, SymbolInformation, SymbolKind,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
+    WorkspaceSymbolParams,
 };
 
 #[cfg(feature = "lints")]
@@ -46,6 +48,8 @@ pub enum LspError {
     InvalidPosition,
     #[error("not initialized")]
     NotInitialized,
+    #[error("invalid rename name: {0}")]
+    InvalidName(String),
 }
 
 /// In-memory LSP server with incremental document sync and index-backed navigation.
@@ -117,6 +121,25 @@ impl DartLspServer {
                 hover_provider: Some(crate::types::HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(crate::types::OneOf::Left(true)),
                 workspace_symbol_provider: Some(crate::types::OneOf::Left(true)),
+                semantic_tokens_provider: Some(SemanticTokensOptions {
+                    legend: SemanticTokensLegend {
+                        token_types: SEMANTIC_TOKEN_TYPES
+                            .iter()
+                            .map(|token_type| (*token_type).to_string())
+                            .collect(),
+                        token_modifiers: SEMANTIC_TOKEN_MODIFIERS
+                            .iter()
+                            .map(|modifier| (*modifier).to_string())
+                            .collect(),
+                    },
+                    range: Some(false),
+                    full: true,
+                    work_done_progress_options: None,
+                }),
+                rename_provider: Some(crate::types::OneOf::Right(RenameOptions {
+                    prepare_provider: Some(true),
+                    work_done_progress_options: None,
+                })),
             },
             server_info: Some(crate::types::ServerInfo {
                 name: "dartscope-lsp".to_string(),
@@ -304,19 +327,7 @@ impl DartLspServer {
         };
         let snapshot = index.snapshot();
         let path = document_path(uri);
-        let query = DartDefinitionQuery::new(path.clone(), offset);
-        let ctx = DartWorkspaceResolutionContext::from_snapshot(&snapshot);
-        let batch = ctx.find_definitions(&[query]);
-        let mut targets = batch
-            .resolutions
-            .first()
-            .map(|resolution| resolution.targets.clone())
-            .unwrap_or_default();
-        if targets.is_empty() {
-            // The query sits on a declaration identifier: declarations are not
-            // reference facts, so resolve them directly onto their own spans.
-            targets = declaration_targets_at(&snapshot, &path, offset, content);
-        }
+        let targets = self.resolve_targets(&snapshot, &path, content, offset);
         if targets.is_empty() {
             return Ok(None);
         }
@@ -374,20 +385,11 @@ impl DartLspServer {
         };
         let snapshot = index.snapshot();
         let path = document_path(uri);
-        let query = DartDefinitionQuery::new(path.clone(), offset);
-        let ctx = DartWorkspaceResolutionContext::from_snapshot(&snapshot);
-        let batch = ctx.find_definitions(&[query]);
-        let mut targets = batch
-            .resolutions
-            .first()
-            .map(|resolution| resolution.targets.clone())
-            .unwrap_or_default();
-        if targets.is_empty() {
-            targets = declaration_targets_at(&snapshot, &path, offset, content);
-        }
+        let targets = self.resolve_targets(&snapshot, &path, content, offset);
         if targets.is_empty() {
             return Ok(None);
         }
+        let ctx = DartWorkspaceResolutionContext::from_snapshot(&snapshot);
         let refs = ctx.find_references(&targets);
         let mut locations = Vec::new();
         for result in refs.results {
@@ -441,6 +443,336 @@ impl DartLspServer {
         Ok(Some(locations))
     }
 
+    /// Resolve the definition targets for a query position: index resolution
+    /// first, then the declaration-name fallback. Shared by `definition`,
+    /// `references`, `hover`, and the rename entry points so all of them agree
+    /// on which symbol the position points at.
+    fn resolve_targets(
+        &self,
+        snapshot: &DartWorkspaceSnapshot,
+        path: &str,
+        content: &str,
+        offset: usize,
+    ) -> Vec<DartDefinitionTarget> {
+        let query = DartDefinitionQuery::new(path.to_string(), offset);
+        let ctx = DartWorkspaceResolutionContext::from_snapshot(snapshot);
+        let batch = ctx.find_definitions(&[query]);
+        let mut targets = batch
+            .resolutions
+            .first()
+            .map(|resolution| resolution.targets.clone())
+            .unwrap_or_default();
+        if targets.is_empty() {
+            targets = declaration_targets_at(snapshot, path, offset, content);
+        }
+        if targets.is_empty() {
+            // Receiver-type-aware fallback for qualified member accesses whose
+            // receiver type is lexically visible in the same document.
+            targets = receiver_type_targets_at(snapshot, path, content, offset);
+        }
+        targets
+    }
+
+    /// LSP `textDocument/semanticTokens/full`: identifier highlights derived
+    /// purely from index facts (declaration names, reference facts, and
+    /// lexical bindings). No syntax-tree access; a token is emitted only
+    /// where a recorded span resolves inside the current buffer.
+    pub fn semantic_tokens(&self, uri: &Url) -> Result<Option<SemanticTokens>, LspError> {
+        let Some(content) = self.documents.get(uri) else {
+            return Err(LspError::DocumentNotOpen(uri.to_string()));
+        };
+        let Some(index) = &self.index else {
+            return Ok(None);
+        };
+        let snapshot = index.snapshot();
+        let path = document_path(uri);
+        let mut tokens: BTreeMap<(u32, u32), (u32, u32, u32)> = BTreeMap::new();
+        let declarations = snapshot
+            .project()
+            .files
+            .iter()
+            .find(|file| file.path == path)
+            .map(|file| &file.declarations);
+        let mut kind_by_symbol: BTreeMap<&str, DartDeclarationKind> = BTreeMap::new();
+        if let Some(declarations) = declarations {
+            for decl in declarations {
+                if let Some(symbol_id) = &decl.symbol_id {
+                    kind_by_symbol.insert(symbol_id, decl.kind);
+                }
+            }
+        }
+        // Declarations carry the `declaration` modifier (and `static` when the
+        // recorded header text contains the keyword); enum members refine to
+        // the `enumMember` token type.
+        if let Some(declarations) = declarations {
+            for decl in declarations {
+                let Some((start, end)) = declaration_name_range(content, decl) else {
+                    continue;
+                };
+                let mut token_type = declaration_token_type(decl.kind);
+                if decl.kind == DartDeclarationKind::Field
+                    && decl
+                        .parent_symbol_id
+                        .as_deref()
+                        .and_then(|parent| kind_by_symbol.get(parent))
+                        .is_some_and(|kind| *kind == DartDeclarationKind::Enum)
+                {
+                    token_type = TK_ENUM_MEMBER;
+                }
+                let mut modifiers = SM_DECLARATION;
+                let head = decl.declaration_span.as_ref().unwrap_or(&decl.span);
+                let header = content
+                    .get(head.byte_start.min(content.len())..head.byte_end.min(content.len()))
+                    .unwrap_or("");
+                if header.contains("static ") {
+                    modifiers |= 1 << 1;
+                }
+                push_semantic_token(&mut tokens, content, start, end, token_type, modifiers);
+            }
+        }
+        let mut parameter_names: BTreeSet<&str> = BTreeSet::new();
+        for binding in snapshot
+            .lexical_bindings()
+            .iter()
+            .filter(|binding| binding.source_path == path)
+        {
+            let token_type = match binding.kind {
+                DartLexicalBindingKind::Parameter => {
+                    parameter_names.insert(binding.name.as_str());
+                    TK_PARAMETER
+                }
+                DartLexicalBindingKind::LocalVariable => TK_VARIABLE,
+            };
+            push_semantic_token(
+                &mut tokens,
+                content,
+                binding.declaration_span.byte_start,
+                binding.declaration_span.byte_end,
+                token_type,
+                SM_DECLARATION,
+            );
+        }
+        for reference in snapshot
+            .identifier_references()
+            .iter()
+            .filter(|reference| reference.source_path == path)
+        {
+            let Some((token_type, modifiers)) =
+                reference_token_type(reference.kind, &reference.name, &parameter_names)
+            else {
+                continue;
+            };
+            push_semantic_token(
+                &mut tokens,
+                content,
+                reference.span.byte_start,
+                reference.span.byte_end,
+                token_type,
+                modifiers,
+            );
+        }
+        let mut data = Vec::with_capacity(tokens.len() * 5);
+        let (mut prev_line, mut prev_start) = (0u32, 0u32);
+        for ((line, start), (token_type, modifiers, length)) in tokens {
+            data.extend_from_slice(&[
+                line - prev_line,
+                if line == prev_line {
+                    start - prev_start
+                } else {
+                    start
+                },
+                length,
+                token_type,
+                modifiers,
+            ]);
+            prev_line = line;
+            prev_start = start;
+        }
+        Ok(Some(SemanticTokens {
+            result_id: None,
+            data,
+        }))
+    }
+
+    /// LSP `textDocument/prepareRename`: resolves the symbol at the position
+    /// and returns the exact word range plus the current name as the
+    /// placeholder. Positions that resolve to nothing return `null`, which
+    /// editors render as "cannot rename here".
+    pub fn prepare_rename(
+        &self,
+        uri: &Url,
+        position: Position,
+    ) -> Result<Option<PrepareRenameResult>, LspError> {
+        let Some(content) = self.documents.get(uri) else {
+            return Err(LspError::DocumentNotOpen(uri.to_string()));
+        };
+        let Some(offset) = lsp_position_to_byte_offset(content, position) else {
+            return Err(LspError::InvalidPosition);
+        };
+        let Some(index) = &self.index else {
+            return Ok(None);
+        };
+        let snapshot = index.snapshot();
+        let path = document_path(uri);
+        if self
+            .resolve_targets(&snapshot, &path, content, offset)
+            .is_empty()
+        {
+            return Ok(None);
+        }
+        let Some((start, end)) = identifier_range_at(content, offset) else {
+            return Ok(None);
+        };
+        let range = source_span_to_lsp_range(
+            content,
+            &dartscope_core::SourceSpan {
+                byte_start: start,
+                byte_end: end,
+                start_line: 0,
+                start_column: 1,
+                end_line: 0,
+                end_column: 1,
+            },
+        );
+        Ok(Some(PrepareRenameResult {
+            range,
+            placeholder: Some(content[start..end].to_string()),
+        }))
+    }
+
+    /// LSP `textDocument/rename`: replaces the resolved symbol's name at
+    /// every occurrence the index can prove — the declaration span plus all
+    /// references that resolve to the same target, across the open
+    /// documents. Validation is deliberately conservative: the new name must
+    /// be a valid non-reserved Dart identifier and must not collide with an
+    /// existing declaration (workspace-wide for top-level symbols, per-file
+    /// for members). Occurrences in files the editor has not opened are
+    /// outside the index contract, so a rename is complete exactly when all
+    /// referencing files are open.
+    pub fn rename(
+        &self,
+        uri: &Url,
+        position: Position,
+        new_name: &str,
+    ) -> Result<Option<WorkspaceEdit>, LspError> {
+        if !is_valid_dart_name(new_name) {
+            return Err(LspError::InvalidName(format!(
+                "{new_name:?} is not a Dart identifier"
+            )));
+        }
+        if DART_RESERVED_WORDS.contains(&new_name) {
+            return Err(LspError::InvalidName(format!(
+                "{new_name:?} is a reserved word"
+            )));
+        }
+        let Some(content) = self.documents.get(uri) else {
+            return Err(LspError::DocumentNotOpen(uri.to_string()));
+        };
+        let Some(offset) = lsp_position_to_byte_offset(content, position) else {
+            return Err(LspError::InvalidPosition);
+        };
+        if let Some((start, end)) = identifier_range_at(content, offset)
+            && &content[start..end] == new_name
+        {
+            return Ok(Some(WorkspaceEdit::default()));
+        }
+        let Some(index) = &self.index else {
+            return Ok(None);
+        };
+        let snapshot = index.snapshot();
+        let path = document_path(uri);
+        let targets = self.resolve_targets(&snapshot, &path, content, offset);
+        if targets.is_empty() {
+            return Ok(None);
+        }
+        let top_level = targets.iter().any(|target| match target {
+            DartDefinitionTarget::Namespace(candidate) => snapshot
+                .project()
+                .files
+                .iter()
+                .flat_map(|file| file.declarations.iter())
+                .any(|decl| {
+                    decl.parent_symbol_id.is_none() && decl.symbol_id == candidate.symbol_id
+                }),
+            DartDefinitionTarget::Lexical(_) => false,
+        });
+        // Conservative collision guard: the new name must not be used by any
+        // declaration in this file, and — for top-level symbols — by no
+        // top-level declaration anywhere in the open workspace. Local
+        // declarations never collide: shadowing is well-defined in Dart.
+        for file in snapshot.project().files.iter() {
+            for decl in &file.declarations {
+                if decl.kind == DartDeclarationKind::LocalVariable || decl.name != new_name {
+                    continue;
+                }
+                let collides = file.path == path || (top_level && decl.parent_symbol_id.is_none());
+                if collides {
+                    return Err(LspError::InvalidName(format!(
+                        "{new_name:?} is already declared in {}",
+                        file.path
+                    )));
+                }
+            }
+        }
+        // Occurrences are the resolved reference facts plus each target's own
+        // declaration name span. Replacements only ever cover the identifier:
+        // a rename must never rewrite the surrounding declaration header,
+        // so the recorded span is re-searched for the exact name.
+        let ctx = DartWorkspaceResolutionContext::from_snapshot(&snapshot);
+        let refs = ctx.find_references(&targets);
+        let mut changes: BTreeMap<Url, Vec<TextEdit>> = BTreeMap::new();
+        for result in refs.results {
+            for reference in result.references {
+                let ref_uri = path_to_uri(&reference.source_path);
+                let Some(ref_content) = self.documents.get(&ref_uri) else {
+                    continue;
+                };
+                changes.entry(ref_uri).or_default().push(TextEdit {
+                    range: source_span_to_lsp_range(ref_content, &reference.span),
+                    new_text: new_name.to_string(),
+                });
+            }
+        }
+        for target in &targets {
+            let (target_path, span, name) = match target {
+                DartDefinitionTarget::Namespace(candidate) => (
+                    candidate.declaration_path.as_str(),
+                    &candidate.declaration_span,
+                    candidate.name.as_str(),
+                ),
+                DartDefinitionTarget::Lexical(binding) => (
+                    binding.source_path.as_str(),
+                    &binding.declaration_span,
+                    binding.name.as_str(),
+                ),
+            };
+            let target_uri = path_to_uri(target_path);
+            let Some(target_content) = self.documents.get(&target_uri) else {
+                continue;
+            };
+            let Some(range) = declaration_span_name_range(target_content, name, span) else {
+                continue;
+            };
+            changes.entry(target_uri).or_default().push(TextEdit {
+                range,
+                new_text: new_name.to_string(),
+            });
+        }
+        for edits in changes.values_mut() {
+            edits.sort_by(|a, b| {
+                (a.range.start.line, a.range.start.character)
+                    .cmp(&(b.range.start.line, b.range.start.character))
+            });
+            edits.dedup();
+        }
+        if changes.is_empty() {
+            return Ok(Some(WorkspaceEdit::default()));
+        }
+        Ok(Some(WorkspaceEdit {
+            changes: Some(changes),
+        }))
+    }
+
     pub fn hover(&self, uri: &Url, position: Position) -> Result<Option<Hover>, LspError> {
         let Some(content) = self.documents.get(uri) else {
             return Err(LspError::DocumentNotOpen(uri.to_string()));
@@ -453,17 +785,7 @@ impl DartLspServer {
         };
         let snapshot = index.snapshot();
         let path = document_path(uri);
-        let query = DartDefinitionQuery::new(path.clone(), offset);
-        let ctx = DartWorkspaceResolutionContext::from_snapshot(&snapshot);
-        let batch = ctx.find_definitions(&[query]);
-        let mut targets = batch
-            .resolutions
-            .first()
-            .map(|resolution| resolution.targets.clone())
-            .unwrap_or_default();
-        if targets.is_empty() {
-            targets = declaration_targets_at(&snapshot, &path, offset, content);
-        }
+        let targets = self.resolve_targets(&snapshot, &path, content, offset);
         if targets.is_empty() {
             return Ok(None);
         }
@@ -855,6 +1177,366 @@ impl DartLspServer {
     }
 }
 
+/// Semantic token legend published in the server capabilities. The legend
+/// order defines the indexes used in the `textDocument/semanticTokens` data
+/// encoding; extend only at the end to stay wire-compatible with caches.
+const SEMANTIC_TOKEN_TYPES: &[&str] = &[
+    "class",
+    "enum",
+    "mixin",
+    "extension",
+    "type",
+    "parameter",
+    "variable",
+    "property",
+    "enumMember",
+    "function",
+    "method",
+    "constructor",
+];
+const SEMANTIC_TOKEN_MODIFIERS: &[&str] = &["declaration", "static"];
+const TK_CLASS: u32 = 0;
+const TK_ENUM: u32 = 1;
+const TK_MIXIN: u32 = 2;
+const TK_EXTENSION: u32 = 3;
+const TK_TYPE: u32 = 4;
+const TK_PARAMETER: u32 = 5;
+const TK_VARIABLE: u32 = 6;
+const TK_PROPERTY: u32 = 7;
+const TK_ENUM_MEMBER: u32 = 8;
+const TK_FUNCTION: u32 = 9;
+const TK_METHOD: u32 = 10;
+const TK_CONSTRUCTOR: u32 = 11;
+const SM_DECLARATION: u32 = 1 << 0;
+const SM_STATIC: u32 = 1 << 1;
+
+/// Reserved words that cannot be used as a Dart declaration name.
+const DART_RESERVED_WORDS: &[&str] = &[
+    "abstract",
+    "as",
+    "assert",
+    "async",
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "covariant",
+    "default",
+    "deferred",
+    "do",
+    "dynamic",
+    "else",
+    "enum",
+    "export",
+    "extends",
+    "extension",
+    "external",
+    "factory",
+    "false",
+    "final",
+    "finally",
+    "for",
+    "get",
+    "hide",
+    "if",
+    "implements",
+    "import",
+    "in",
+    "interface",
+    "is",
+    "late",
+    "library",
+    "mixin",
+    "new",
+    "null",
+    "on",
+    "operator",
+    "part",
+    "required",
+    "rethrow",
+    "return",
+    "set",
+    "show",
+    "static",
+    "super",
+    "switch",
+    "sync",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typedef",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
+];
+
+fn is_valid_dart_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first == '_' || first == '$' || first.is_alphabetic())
+        && chars.all(|c| c == '_' || c == '$' || c.is_alphanumeric())
+}
+
+fn identifier_cont_byte(byte: u8) -> bool {
+    matches!(
+        byte,
+        b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'$'
+    ) || byte >= 0x80
+}
+
+/// Byte range of the Dart identifier containing (or adjacent to) `offset`.
+/// Non-ASCII UTF-8 bytes count as continuations; this is an editor
+/// affordance tokenizer, while the validity of any *new* name is checked
+/// separately and strictly by [`is_valid_dart_name`].
+fn identifier_range_at(content: &str, offset: usize) -> Option<(usize, usize)> {
+    let bytes = content.as_bytes();
+    let at = offset.min(bytes.len());
+    let mut start = at;
+    while start > 0 && identifier_cont_byte(bytes[start - 1]) {
+        start -= 1;
+    }
+    let mut end = at;
+    while end < bytes.len() && identifier_cont_byte(bytes[end]) {
+        end += 1;
+    }
+    if start == end {
+        return None;
+    }
+    Some((start, end))
+}
+
+/// Identifier immediately before `end` (skipping whitespace), if any.
+fn preceding_identifier(content: &str, end: usize) -> Option<(usize, usize)> {
+    let head = content.get(..end)?.trim_end();
+    let mut start = head.len();
+    while start > 0 && identifier_cont_byte(content.as_bytes()[start - 1]) {
+        start -= 1;
+    }
+    if start == head.len() {
+        return None;
+    }
+    Some((start, head.len()))
+}
+
+/// LSP range of `name` inside a (possibly header-wide) recorded declaration
+/// span. Rename edits use this so only the identifier is rewritten.
+fn declaration_span_name_range(
+    content: &str,
+    name: &str,
+    span: &dartscope_core::SourceSpan,
+) -> Option<Range> {
+    let text = content.get(span.byte_start.min(content.len())..span.byte_end.min(content.len()))?;
+    let rel = text.find(name)?;
+    let byte_start = span.byte_start + rel;
+    Some(source_span_to_lsp_range(
+        content,
+        &dartscope_core::SourceSpan {
+            byte_start,
+            byte_end: byte_start + name.len(),
+            start_line: 0,
+            start_column: 1,
+            end_line: 0,
+            end_column: 1,
+        },
+    ))
+}
+
+fn declaration_token_type(kind: DartDeclarationKind) -> u32 {
+    use DartDeclarationKind as D;
+    match kind {
+        D::Class => TK_CLASS,
+        D::Enum => TK_ENUM,
+        D::Mixin => TK_MIXIN,
+        D::Extension | D::ExtensionType => TK_EXTENSION,
+        D::Typedef => TK_TYPE,
+        D::Function => TK_FUNCTION,
+        D::Variable | D::LocalVariable => TK_VARIABLE,
+        D::Method | D::Operator => TK_METHOD,
+        D::Constructor => TK_CONSTRUCTOR,
+        D::Field | D::Getter | D::Setter => TK_PROPERTY,
+    }
+}
+
+fn reference_token_type(
+    kind: DartIdentifierReferenceKind,
+    name: &str,
+    parameters: &BTreeSet<&str>,
+) -> Option<(u32, u32)> {
+    use DartIdentifierReferenceKind as R;
+    Some(match kind {
+        R::InvocationTarget => (TK_FUNCTION, 0),
+        R::ConstructorTarget => (TK_CLASS, 0),
+        R::MemberInvocationInstance => (TK_METHOD, 0),
+        R::MemberInvocationStatic => (TK_METHOD, SM_STATIC),
+        R::MemberOperatorDeclaration | R::MemberOperatorInvocationInstance => (TK_METHOD, 0),
+        R::MemberPropertyDeclarationInstance
+        | R::MemberPropertyReadInstance
+        | R::MemberPropertyWriteInstance => (TK_PROPERTY, 0),
+        R::MemberPropertyDeclarationStatic
+        | R::MemberPropertyReadStatic
+        | R::MemberPropertyWriteStatic => (TK_PROPERTY, SM_STATIC),
+        R::TypeAnnotation | R::ParameterType | R::ReturnType | R::VariableType => (TK_CLASS, 0),
+        R::VariableRead | R::VariableWrite => {
+            if parameters.contains(name) {
+                (TK_PARAMETER, 0)
+            } else {
+                (TK_VARIABLE, 0)
+            }
+        }
+    })
+}
+
+/// Record one semantic token, dropping ranges the LSP encoding cannot
+/// express (multi-line) or zero-length spans produced by buffer drift.
+/// First writer for a position wins, so declaration evidence takes priority
+/// over reference facts on the same span.
+fn push_semantic_token(
+    tokens: &mut BTreeMap<(u32, u32), (u32, u32, u32)>,
+    content: &str,
+    byte_start: usize,
+    byte_end: usize,
+    token_type: u32,
+    modifiers: u32,
+) {
+    let range = source_span_to_lsp_range(
+        content,
+        &dartscope_core::SourceSpan {
+            byte_start,
+            byte_end,
+            start_line: 0,
+            start_column: 1,
+            end_line: 0,
+            end_column: 1,
+        },
+    );
+    if range.start.line != range.end.line {
+        return;
+    }
+    let length = range.end.character.saturating_sub(range.start.character);
+    if length == 0 {
+        return;
+    }
+    tokens
+        .entry((range.start.line, range.start.character))
+        .or_insert((token_type, modifiers, length));
+}
+
+/// Receiver-type-aware resolution for qualified member accesses
+/// (`receiver.member`) — the bounded LSP-side slice of DS-INDEX-006
+/// receiver typing. It never invents types: the receiver must resolve to a
+/// lexically visible parameter or local binding whose declared type is the
+/// identifier token directly before the binding name, that type name must
+/// match exactly one class-like declaration in the open workspace, and the
+/// member must be directly declared on it. Anything weaker (field receivers,
+/// inferred types, ambiguous names) stays unresolved rather than guessed.
+fn receiver_type_targets_at(
+    snapshot: &DartWorkspaceSnapshot,
+    path: &str,
+    content: &str,
+    offset: usize,
+) -> Vec<DartDefinitionTarget> {
+    let Some((member_start, member_end)) = identifier_range_at(content, offset) else {
+        return Vec::new();
+    };
+    let Some(before) = content.get(..member_start).map(str::trim_end) else {
+        return Vec::new();
+    };
+    if content.as_bytes().get(before.len()) != Some(&b'.') {
+        return Vec::new();
+    }
+    let Some((receiver_start, receiver_end)) = preceding_identifier(content, before.len()) else {
+        return Vec::new();
+    };
+    let receiver = &content[receiver_start..receiver_end];
+    if receiver == "this" || receiver == "super" {
+        return Vec::new();
+    }
+    let member = &content[member_start..member_end];
+    let Some(binding) = snapshot.lexical_bindings().iter().find(|binding| {
+        binding.source_path == path
+            && binding.name == receiver
+            && binding.scope_span.byte_start <= offset
+            && offset < binding.scope_span.byte_end
+    }) else {
+        return Vec::new();
+    };
+    let head = binding.declaration_span.byte_start;
+    let Some((type_start, type_end)) = preceding_identifier(content, head) else {
+        return Vec::new();
+    };
+    let type_name = &content[type_start..type_end];
+    if DART_RESERVED_WORDS.contains(&type_name) {
+        return Vec::new();
+    }
+    let mut owner: Option<(&str, &DartDeclaration)> = None;
+    for file in snapshot.project().files.iter() {
+        for decl in &file.declarations {
+            if decl.parent_symbol_id.is_some()
+                || decl.name != type_name
+                || !matches!(
+                    decl.kind,
+                    DartDeclarationKind::Class
+                        | DartDeclarationKind::Enum
+                        | DartDeclarationKind::Mixin
+                        | DartDeclarationKind::Extension
+                        | DartDeclarationKind::ExtensionType
+                )
+            {
+                continue;
+            }
+            if owner.is_some() {
+                return Vec::new(); // ambiguous type name: refuse to guess
+            }
+            owner = Some((file.path.as_str(), decl));
+        }
+    }
+    let (owner_path, owner) = owner;
+    let Some(owner_symbol) = owner.and_then(|(_, decl)| decl.symbol_id.as_deref()) else {
+        return Vec::new();
+    };
+    let owner_path = match owner {
+        Some((path, _)) => path,
+        None => return Vec::new(),
+    };
+    let member_decl = snapshot
+        .project()
+        .files
+        .iter()
+        .find(|file| file.path == owner_path)
+        .and_then(|file| {
+            file.declarations.iter().find(|decl| {
+                decl.parent_symbol_id.as_deref() == Some(owner_symbol) && decl.name == member
+            })
+        });
+    let Some(member_decl) = member_decl else {
+        return Vec::new();
+    };
+    let declaration_span = member_decl
+        .declaration_span
+        .clone()
+        .unwrap_or_else(|| member_decl.span.clone());
+    vec![DartDefinitionTarget::Namespace(DartSymbolCandidate {
+        name: member_decl.name.clone(),
+        kind: member_decl.kind,
+        symbol_id: member_decl.symbol_id.clone(),
+        declaration_path: owner_path.to_string(),
+        declaration_span,
+        basis: if owner_path == path {
+            DartSymbolResolutionBasis::SameFile
+        } else {
+            DartSymbolResolutionBasis::DirectImport
+        },
+    })]
+}
+
 /// Resolve a query offset that sits on a declaration identifier onto that
 /// declaration itself. The parser deliberately does not emit reference facts
 /// for declarations, so `find_definitions` cannot answer such queries; the
@@ -995,6 +1677,177 @@ mod tests {
         let result = server.initialize(params).unwrap();
         assert!(result.capabilities.definition_provider.is_some());
         assert!(result.capabilities.workspace_symbol_provider.is_some());
+        let tokens = result.capabilities.semantic_tokens_provider.unwrap();
+        assert!(tokens.full);
+        assert_eq!(tokens.range, Some(false));
+        assert!(
+            tokens
+                .legend
+                .token_types
+                .contains(&"enumMember".to_string())
+        );
+        assert_eq!(
+            tokens.legend.token_modifiers,
+            vec!["declaration".to_string(), "static".to_string()]
+        );
+        match result.capabilities.rename_provider {
+            Some(crate::types::OneOf::Right(options)) => {
+                assert_eq!(options.prepare_provider, Some(true))
+            }
+            other => panic!("expected rename options, got {other:?}"),
+        }
+    }
+
+    fn decode_semantic_tokens(data: &[u32]) -> Vec<(u32, u32, u32, u32, u32)> {
+        let mut out = Vec::new();
+        let (mut line, mut start) = (0u32, 0u32);
+        for chunk in data.chunks_exact(5) {
+            line += chunk[0];
+            start = if chunk[0] == 0 {
+                start + chunk[1]
+            } else {
+                chunk[1]
+            };
+            out.push((line, start, chunk[2], chunk[3], chunk[4]));
+        }
+        out
+    }
+
+    #[test]
+    fn semantic_tokens_cover_declarations_bindings_and_usages() {
+        let content = "class Foo {\n  static int count = 0;\n  int twice(int x) { return x + x; }\n  void run() { print(count); }\n}\n";
+        let (server, uri) = open_server("file:///lib/t.dart", content);
+        let tokens = server.semantic_tokens(&uri).unwrap().unwrap();
+        let decoded = decode_semantic_tokens(&tokens.data);
+        // class declaration, static field declaration, parameter, and the
+        // property usage inside `run` (without the declaration modifier).
+        assert!(decoded.contains(&(0, 6, 3, TK_CLASS, SM_DECLARATION)));
+        assert!(decoded.contains(&(1, 13, 5, TK_PROPERTY, SM_DECLARATION | SM_STATIC)));
+        assert!(decoded.contains(&(2, 16, 1, TK_PARAMETER, SM_DECLARATION)));
+        assert!(decoded.contains(&(3, 22, 5, TK_PROPERTY, 0)));
+        // Delta encoding requires ascending document order.
+        assert!(
+            decoded
+                .windows(2)
+                .all(|w| (w[0].0, w[0].1) <= (w[1].0, w[1].1))
+        );
+    }
+
+    #[test]
+    fn semantic_tokens_on_unopened_document_is_an_error() {
+        let mut server = DartLspServer::new(".");
+        server.initialize(InitializeParams::default()).unwrap();
+        let uri = Url::parse("file:///lib/none.dart").unwrap();
+        assert!(matches!(
+            server.semantic_tokens(&uri),
+            Err(LspError::DocumentNotOpen(_))
+        ));
+    }
+
+    #[test]
+    fn rename_replaces_name_spans_across_open_documents() {
+        let mut server = DartLspServer::new(".");
+        server.initialize(InitializeParams::default()).unwrap();
+        let a_uri = Url::parse("file:///lib/a.dart").unwrap();
+        let b_uri = Url::parse("file:///lib/b.dart").unwrap();
+        let a_content = "class Alpha {}\nvoid use() { Alpha(); }\n";
+        server.did_open(DidOpenTextDocumentParams {
+            text_document: crate::types::TextDocumentItem {
+                uri: a_uri.clone(),
+                language_id: "dart".to_string(),
+                version: 1,
+                text: a_content.to_string(),
+            },
+        });
+        server.did_open(DidOpenTextDocumentParams {
+            text_document: crate::types::TextDocumentItem {
+                uri: b_uri.clone(),
+                language_id: "dart".to_string(),
+                version: 1,
+                text: "import 'a.dart';\nvoid go() { Alpha(); }\n".to_string(),
+            },
+        });
+        let decl_pos = byte_offset_to_lsp_position(a_content, a_content.find("Alpha").unwrap());
+        let edit = server.rename(&a_uri, decl_pos, "Omega").unwrap().unwrap();
+        let changes = edit.changes.expect("edits produced");
+        let a_edits = &changes[&a_uri];
+        assert_eq!(a_edits.len(), 2, "declaration name + local usage");
+        assert_eq!(
+            a_edits[0].range,
+            Range {
+                start: Position {
+                    line: 0,
+                    character: 6
+                },
+                end: Position {
+                    line: 0,
+                    character: 11
+                },
+            }
+        );
+        assert!(a_edits.iter().all(|e| e.new_text == "Omega"));
+        let b_edits = &changes[&b_uri];
+        assert_eq!(b_edits.len(), 1);
+        assert_eq!(b_edits[0].range.start.line, 1);
+        // `prepareRename` reports the word under a usage position.
+        let usage = a_content.find("Alpha(); }").unwrap();
+        let usage_pos = byte_offset_to_lsp_position(a_content, usage);
+        let prepared = server.prepare_rename(&a_uri, usage_pos).unwrap().unwrap();
+        assert_eq!(prepared.placeholder.as_deref(), Some("Alpha"));
+        assert_eq!(prepared.range.start.character, 13);
+    }
+
+    #[test]
+    fn rename_validates_the_new_name() {
+        let content = "class Alpha {}\nvoid use() { Alpha(); }\n";
+        let (server, uri) = open_server("file:///lib/v.dart", content);
+        let pos = byte_offset_to_lsp_position(content, content.find("Alpha").unwrap());
+        assert!(matches!(
+            server.rename(&uri, pos, "1bad"),
+            Err(LspError::InvalidName(_))
+        ));
+        assert!(matches!(
+            server.rename(&uri, pos, "class"),
+            Err(LspError::InvalidName(_))
+        ));
+        assert!(matches!(
+            server.rename(&uri, pos, "use"),
+            Err(LspError::InvalidName(_))
+        ));
+        // Renaming to the current name is an honest no-op edit.
+        let same = server.rename(&uri, pos, "Alpha").unwrap().unwrap();
+        assert!(same.changes.is_none());
+        // Positions that resolve to nothing produce no edit at all.
+        let blank = Position {
+            line: 0,
+            character: 0,
+        };
+        assert!(server.rename(&uri, blank, "Fresh").unwrap().is_none());
+    }
+
+    #[test]
+    fn receiver_typed_member_access_resolves_to_the_declared_member() {
+        let content = "class Counter {\n  int value = 0;\n  int bump() { return 1; }\n}\nint measure(Counter c) { return c.bump() + c.value; }\n";
+        let (server, uri) = open_server("file:///lib/r.dart", content);
+        // The receiver `c` is a parameter whose declared type is `Counter`:
+        // `c.bump` and `c.value` resolve onto the members of that class.
+        let bump = content.rfind("bump").unwrap();
+        let pos = byte_offset_to_lsp_position(content, bump);
+        let locs = server.definition(&uri, pos).unwrap().unwrap();
+        assert_eq!(locs[0].range.start.line, 2);
+        let value = content.rfind("c.value").unwrap() + 2;
+        let pos = byte_offset_to_lsp_position(content, value);
+        let locs = server.definition(&uri, pos).unwrap().unwrap();
+        assert_eq!(locs[0].range.start.line, 1);
+        // Hover keeps the declaration-kind label for the resolved member.
+        let hover = server.hover(&uri, pos).unwrap().unwrap();
+        let HoverContents::Array(parts) = &hover.contents else {
+            panic!("expected array");
+        };
+        let MarkedString::LanguageString(block) = &parts[0] else {
+            panic!("expected language string");
+        };
+        assert!(block.value.contains("value"), "{}", block.value);
     }
 
     #[test]
