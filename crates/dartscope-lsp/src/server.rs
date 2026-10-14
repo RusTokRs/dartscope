@@ -14,12 +14,15 @@ use thiserror::Error;
 
 use crate::coordinates::{lsp_position_to_byte_offset, source_span_to_lsp_range};
 use crate::types::{
-    Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-    DocumentSymbol, Hover, HoverContents, InitializeParams, InitializeResult, LanguageString,
-    Location, MarkedString, NumberOrString, Position, Range, ServerCapabilities, SymbolInformation,
-    SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkspaceSymbolParams,
+    Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentSymbol, Hover, HoverContents,
+    InitializeParams, InitializeResult, LanguageString, Location, MarkedString, NumberOrString,
+    Position, Range, ServerCapabilities, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
+    TextDocumentSyncKind, Url, WorkspaceSymbolParams,
 };
+
+#[cfg(feature = "lints")]
+use crate::types::DiagnosticRelatedInformation;
 
 /// Maximum number of entries returned by `workspace/symbol`.
 const WORKSPACE_SYMBOL_LIMIT: usize = 100;
@@ -66,8 +69,7 @@ pub struct DartLspServer {
 
 impl DartLspServer {
     pub fn new(root: impl Into<String>) -> Self {
-        #[cfg_attr(not(feature = "lints"), allow(unused_mut))]
-        let mut server = Self {
+        Self {
             root: root.into(),
             root_url: None,
             documents: HashMap::new(),
@@ -76,13 +78,11 @@ impl DartLspServer {
             index: None,
             initialized: false,
             shutdown: false,
-        };
-        #[cfg(feature = "lints")]
-        {
-            server.lint_cache = None;
-            server.last_workspace_update = None;
+            #[cfg(feature = "lints")]
+            lint_cache: None,
+            #[cfg(feature = "lints")]
+            last_workspace_update: None,
         }
-        server
     }
 
     pub fn initialize(&mut self, params: InitializeParams) -> Result<InitializeResult, LspError> {
@@ -1286,10 +1286,7 @@ mod tests {
         });
         // `a.dart` stays open and queryable; the removed target is now unresolved.
         let locs = server.definition(&a_uri, pos).unwrap();
-        assert!(
-            locs.is_none_or(|found| found.is_empty()),
-            "DEBUG locs={locs:?}"
-        );
+        assert!(locs.is_none_or(|found| found.is_empty()));
         assert!(
             server
                 .workspace_symbols(&WorkspaceSymbolParams {
