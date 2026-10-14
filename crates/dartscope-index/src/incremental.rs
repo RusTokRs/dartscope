@@ -1056,12 +1056,42 @@ fn top_level_declaration_facts(
         .collect()
 }
 
+fn member_declaration_facts(
+    file: &DartFileAnalysis,
+) -> Vec<(&str, dartscope_core::DartDeclarationKind, Option<&str>)> {
+    file.declarations
+        .iter()
+        .filter(|declaration| declaration.parent_symbol_id.is_some())
+        .map(|declaration| {
+            (
+                declaration.name.as_str(),
+                declaration.kind,
+                declaration.parent_symbol_id.as_deref(),
+            )
+        })
+        .collect()
+}
+
 fn changed_top_level_declaration_names(
     old: Option<&DartFileAnalysis>,
     new: Option<&DartFileAnalysis>,
 ) -> BTreeSet<String> {
-    let old_facts = old.map(top_level_declaration_facts).unwrap_or_default();
-    let new_facts = new.map(top_level_declaration_facts).unwrap_or_default();
+    let old_facts = old
+        .map(|file| {
+            (
+                top_level_declaration_facts(file),
+                member_declaration_facts(file),
+            )
+        })
+        .unwrap_or_default();
+    let new_facts = new
+        .map(|file| {
+            (
+                top_level_declaration_facts(file),
+                member_declaration_facts(file),
+            )
+        })
+        .unwrap_or_default();
     if old_facts == new_facts {
         return BTreeSet::new();
     }

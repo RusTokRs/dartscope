@@ -66,6 +66,16 @@ pre-1.0.
   any loop, which made `dartscope-parse` (and therefore the whole workspace) fail to compile and
   `rustfmt` fail to parse. The defensive path is now an `else if let`/`else` chain and the error
   diagnostic flows through the shared deduplicating flush at the end of `push_node`.
+- `NumberOrString` and `SymbolTag` now derive `PartialEq`/`Eq` (and `Copy`), so
+  `SymbolInformation`/`DocumentSymbol` comparisons compile; the `dartscope-lsp` library and its unit
+  tests build cleanly (`E0277`/`E0369`).
+- Index upserts invalidate dependent reference caches when member declarations change: the span-
+  invariant per-file fingerprint now covers member facts in addition to top-level declarations, so
+  adding a member to a class rebuilds importers that reference the owner while formatting-only edits
+  still no-op (`per_file_caches_rebuild_only_relevant_sources`).
+- Removed the dead `is_identifier_byte` shim and the unused `StringLiteralRange` re-export from
+  `dartscope-parse`'s `lexical.rs`, and collapsed a nested `if` in `dartscope-index` member
+  resolution, satisfying `cargo clippy --workspace --all-targets -- -D warnings`.
 - `DartLspServer::did_change` rejects inverted or out-of-range incremental edit ranges and falls back
   to a full-content replace instead of panicking in `String::replace_range`.
 - The macOS portability job now derives its expected `.crate` archive count from
