@@ -1885,7 +1885,7 @@ mod tests {
                 "DEBUG recv word={word:?} dot={dot:?} receiver={receiver:?} declared={declared:?} decls={decls:?}"
             );
         }
-        let locs = locs.unwrap();
+        let locs = server.definition(&uri, pos).unwrap().unwrap();
         assert_eq!(locs[0].range.start.line, 2);
         let value = content.rfind("c.value").unwrap() + 2;
         let pos = byte_offset_to_lsp_position(content, value);
