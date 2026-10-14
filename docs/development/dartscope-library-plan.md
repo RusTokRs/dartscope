@@ -96,7 +96,7 @@ cross-platform audit.
 
 | Area | Status | Evidence in repository |
 | --- | --- | --- |
-| Rust workspace and ten crates | verified | root `Cargo.toml`; exact Rust 1.95.0 Linux/Windows quality, test, edition, and feature matrix passed |
+| Rust workspace and ten crates | verified | root `Cargo.toml`; exact Rust 1.95.0 Linux/Windows quality, test, edition, and feature matrix, macOS arm64 portability signal, and bounded fuzz corpus passed |
 | Core normalized model | implemented | declarations, generic invocations, spans, diagnostics, and compatibility projections; pre-1.0 migration work remains |
 | File and pubspec analysis | in_progress | heuristic declarations and generic invocations plus marked `yaml-rust2` pubspec backend; unit and project fixtures |
 | Package config v2 and package URI resolution | in_progress | `dartscope-resolve`, resolver fixtures, and project URI integration tests |
@@ -1123,6 +1123,16 @@ Implemented (2026-10-14, follow-up slice):
     supplemental entries merged in range order, cleared when the document closes).
 12. Added `snapshot_generation()` as the stale-snapshot signal, `root()`/`root_url()` accessors, and sorted
     document input so the rebuilt index snapshot does not depend on `HashMap` iteration order.
+13. Verified on the exact hosted toolchain (2026-10-14 pull-request runs): the Ubuntu/Windows quality gates
+    (rustfmt style-edition 2024, repository consistency, `cargo clippy --workspace --all-targets -- -D
+    warnings`, rustdoc), both workspace test matrices, the full edition matrix, the macOS arm64 portability
+    signal including the release-crate archive count, and the bounded fuzz corpus are green. Repairs along the
+    way: the `dartscope-parse` mapping branch the merge had committed with stray escapes and an
+    out-of-loop `continue` (which had made `main` red for compile, lint, doc, and format gates), the missing
+    `PartialEq`/`Eq` derivations on `SymbolTag`/`NumberOrString`, a workspace-wide formatting normalization,
+    member-declaration facts now part of the span-invariant invalidation fingerprint (so member changes
+    rebuild dependent reference caches while formatting-only edits stay no-ops), and never-run unit-test
+    expectations re-based onto the ported semantics.
 
 Remaining (follow-up): a process-level editor smoke over the real stdio framing on a fixture project, the
 `dartscope-cli` lint-adapter that feeds `set_supplemental_diagnostics`, semantic tokens, and any
