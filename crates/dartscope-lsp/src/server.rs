@@ -629,25 +629,32 @@ mod tests {
     fn did_open_and_definition_round_trip() {
         let content = "class Foo { void bar() {} }\nvoid main() { Foo().bar(); }";
         let (server, uri) = open_server("file:///lib/main.dart", content);
-        let offset = content.find("Foo().bar").unwrap() + "Foo().".len();
+        // Definition resolves unqualified reference facts; member accesses such as `.bar` stay
+        // unresolved by design (v1 performs no receiver-type inference).
+        let offset = content.find("Foo()").unwrap();
         let pos = byte_offset_to_lsp_position(content, offset);
         let locs = server.definition(&uri, pos).unwrap();
         assert!(locs.is_some());
         let locs = locs.unwrap();
         assert!(!locs.is_empty());
+        assert_eq!(locs[0].uri.path(), "/lib/main.dart");
     }
 
     #[test]
     fn diagnostics_published_for_unsupported_syntax() {
-        // Dart 3.13 concise constructor triggers a diagnostic.
-        let (server, uri) = open_server("file:///lib/main.dart", "class Foo { Foo.new(); }");
+        // The Dart 3.13 concise-constructor member form triggers a parser diagnostic.
+        let (server, uri) = open_server("file:///lib/main.dart", "class Foo {\n  new();\n}\n");
         let diags = server.diagnostics(&uri);
         assert!(!diags.is_empty());
+        assert!(diags.iter().any(|diag| diag.code
+            == Some(NumberOrString::String(
+                "unsupported_concise_constructor".to_string()
+            ))));
     }
 
     #[test]
     fn supplemental_diagnostics_merge_after_parser_facts() {
-        let (mut server, uri) = open_server("file:///lib/a.dart", "class A { A.new(); }");
+        let (mut server, uri) = open_server("file:///lib/a.dart", "class A {\n  new();\n}\n");
         let parser_count = server.diagnostics(&uri).len();
         assert!(parser_count > 0);
         server.set_supplemental_diagnostics(
@@ -825,8 +832,8 @@ mod tests {
         let content = "class Foo { void bar() {} }\nvoid main() { Foo().bar(); }";
         let (server, uri) = open_server("file:///lib/main.dart", content);
         // Hover resolves through the same reference facts as `definition`,
-        // so the query sits on the call-site occurrence of `bar`.
-        let offset = content.find("Foo().bar").unwrap() + "Foo().".len();
+        // so the query sits on the call-site occurrence of the resolvable `Foo`.
+        let offset = content.find("Foo()").unwrap();
         let pos = byte_offset_to_lsp_position(content, offset);
         let hover = server.hover(&uri, pos).unwrap();
         assert!(hover.is_some());

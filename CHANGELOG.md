@@ -73,6 +73,11 @@ pre-1.0.
   invariant per-file fingerprint now covers member facts in addition to top-level declarations, so
   adding a member to a class rebuilds importers that reference the owner while formatting-only edits
   still no-op (`per_file_caches_rebuild_only_relevant_sources`).
+- Aligned the never-run `dartscope-lsp` unit tests with the ported semantics: `definition`/`hover`
+  queries now sit on the resolvable unqualified `Foo` occurrence (member accesses stay unresolved
+  without receiver inference), the unsupported-syntax diagnostics use the `new();` concise form that
+  the declaration inventory reports, and `handles_crlf` re-bases its offset arithmetic (the `\r`
+  and `\n` bytes of `a\r\nb\r\nc` map to the clamped end of the preceding line).
 - The never-executed `dollar_in_identifier_does_not_break_raw_detection` test asserted no literal
   start for `foo$r'bar'`; the scanner contract (and pre-merge behavior) is that the glued `r` loses
   its raw-prefix status while the following quote still opens an ordinary literal, so the test now

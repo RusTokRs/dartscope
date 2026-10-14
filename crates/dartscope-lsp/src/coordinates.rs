@@ -250,19 +250,28 @@ mod tests {
                 character: 1
             }
         );
-        // offset 1 is 'a' end, offset 2 is '\r', offset 3 is '\n' — both should map to line 0 end
+        // Offsets 1 and 2 sit at the closing quote of the first line break and clamp to the end
+        // of line 0; offset 3 starts line 1; offset 4 sits inside the second break and clamps to
+        // the end of line 1.
         assert_eq!(
-            byte_offset_to_lsp_position(source, 3),
+            byte_offset_to_lsp_position(source, 2),
             Position {
                 line: 0,
                 character: 1
             }
         );
         assert_eq!(
-            byte_offset_to_lsp_position(source, 4),
+            byte_offset_to_lsp_position(source, 3),
             Position {
                 line: 1,
                 character: 0
+            }
+        );
+        assert_eq!(
+            byte_offset_to_lsp_position(source, 4),
+            Position {
+                line: 1,
+                character: 1
             }
         );
         assert_eq!(
