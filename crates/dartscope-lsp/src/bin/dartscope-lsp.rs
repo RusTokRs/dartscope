@@ -253,6 +253,13 @@ fn publish_empty_diagnostics(uri: &Url) -> Value {
 mod tests {
     use super::*;
 
+    /// Drives the spec-required `initialize` handshake so lifecycle-gated
+    /// requests and notifications below are accepted by the server.
+    fn initialize(server: &mut DartLspServer) {
+        let msg = json!({ "jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {} });
+        handle_message(server, &msg);
+    }
+
     #[test]
     fn initialize_response_uses_camel_case_wire_shape() {
         let mut server = DartLspServer::new(".");
@@ -312,6 +319,7 @@ mod tests {
     #[test]
     fn did_close_clears_diagnostics() {
         let mut server = DartLspServer::new(".");
+        initialize(&mut server);
         let open = json!({
             "jsonrpc": "2.0",
             "method": "textDocument/didOpen",
@@ -342,6 +350,7 @@ mod tests {
     #[test]
     fn workspace_symbol_request_filters_open_documents() {
         let mut server = DartLspServer::new(".");
+        initialize(&mut server);
         let open = json!({
             "jsonrpc": "2.0",
             "method": "textDocument/didOpen",
@@ -376,6 +385,7 @@ mod tests {
     #[test]
     fn unsupported_request_returns_null_result() {
         let mut server = DartLspServer::new(".");
+        initialize(&mut server);
         let msg = json!({
             "jsonrpc": "2.0",
             "id": 9,
