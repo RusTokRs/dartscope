@@ -1000,8 +1000,9 @@ fn file_rebuild_plan(
     let library_membership_changed = old.library != new.library || old.part_of != new.part_of;
     let namespace_changed =
         import_export_changed || part_directives_changed || library_membership_changed;
-    let top_level_declarations_changed =
-        top_level_declaration_facts(old) != top_level_declaration_facts(new);
+    let declaration_facts_changed = (top_level_declaration_facts(old)
+        != top_level_declaration_facts(new))
+        || member_declaration_facts(old) != member_declaration_facts(new);
     let graphql_operations_changed = old.graphql_operations != new.graphql_operations;
 
     RebuildPlan {
@@ -1011,11 +1012,9 @@ fn file_rebuild_plan(
         graphql_contracts: namespace_changed
             || graphql_operations_changed
             || old.graphql_operation_uses != new.graphql_operation_uses,
-        identifier_references: namespace_changed
-            || top_level_declarations_changed
-            || references_changed,
+        identifier_references: namespace_changed || declaration_facts_changed || references_changed,
         propagate_dependents: namespace_changed
-            || top_level_declarations_changed
+            || declaration_facts_changed
             || graphql_operations_changed,
     }
 }
