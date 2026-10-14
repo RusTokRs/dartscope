@@ -2,17 +2,23 @@
 
 use std::collections::HashMap;
 
-use dartscope_core::{DartFileInput, DartProjectInput};
-use dartscope_index::{DartDefinitionQuery, DartWorkspaceIndex, DartWorkspaceResolutionContext};
+use dartscope_core::{
+    DartDeclarationKind, DartFileInput, DartProjectInput, DartSymbolCandidate,
+    DartSymbolResolutionBasis,
+};
+use dartscope_index::{
+    DartDefinitionQuery, DartDefinitionTarget, DartWorkspaceIndex, DartWorkspaceResolutionContext,
+    DartWorkspaceSnapshot,
+};
 use thiserror::Error;
 
 use crate::coordinates::{lsp_position_to_byte_offset, source_span_to_lsp_range};
 use crate::types::{
-    Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DocumentSymbol, Hover, HoverContents, InitializeParams,
-    InitializeResult, LanguageString, Location, MarkedString, NumberOrString, Position, Range,
-    ServerCapabilities, SymbolInformation, SymbolKind, TextDocumentSyncCapability,
-    TextDocumentSyncKind, Url, WorkspaceSymbolParams,
+    Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    DocumentSymbol, Hover, HoverContents, InitializeParams, InitializeResult, LanguageString,
+    Location, MarkedString, NumberOrString, Position, Range, ServerCapabilities, SymbolInformation,
+    SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkspaceSymbolParams,
 };
 
 /// Maximum number of entries returned by `workspace/symbol`.
@@ -52,11 +58,15 @@ pub struct DartLspServer {
     index: Option<DartWorkspaceIndex>,
     initialized: bool,
     shutdown: bool,
+    #[cfg(feature = "lints")]
+    lint_cache: Option<dartscope_lints::DartIncrementalLintCache>,
+    #[cfg(feature = "lints")]
+    last_workspace_update: Option<dartscope_index::DartWorkspaceUpdate>,
 }
 
 impl DartLspServer {
     pub fn new(root: impl Into<String>) -> Self {
-        Self {
+        let mut server = Self {
             root: root.into(),
             root_url: None,
             documents: HashMap::new(),
@@ -65,7 +75,13 @@ impl DartLspServer {
             index: None,
             initialized: false,
             shutdown: false,
+        };
+        #[cfg(feature = "lints")]
+        {
+            server.lint_cache = None;
+            server.last_workspace_update = None;
         }
+        server
     }
 
     pub fn initialize(&mut self, params: InitializeParams) -> Result<InitializeResult, LspError> {
@@ -179,8 +195,9 @@ impl DartLspServer {
                 new_text = change.text;
             }
         }
-        self.document_versions
-            .insert(uri.clone(), params.text_document.version);
+        if let Some(version) = params.text_document.version {
+            self.document_versions.insert(uri.clone(), version);
+        }
         self.documents.insert(uri.clone(), new_text.clone());
         if self.index.is_some() {
             self.upsert_document(&uri, &new_text);
@@ -198,7 +215,35 @@ impl DartLspServer {
         if self.documents.is_empty() {
             self.index = None;
         } else if let Some(index) = &mut self.index {
-            index.remove_file(&path);
+            let update = index.remove_file(&path);
+            #[cfg(feature = "lints")]
+            {
+                self.last_workspace_update = Some(update);
+            }
+            #[cfg(not(feature = "lints"))]
+            {
+                let _ = update;
+            }
+        }
+    }
+
+    /// LSP `textDocument/didSave`: when the client registered `includeText`,
+    /// the saved content replaces the document as a full change. Saves without
+    /// text are accepted but cannot update content (the server never reads the
+    /// filesystem).
+    pub fn did_save(&mut self, params: DidSaveTextDocumentParams) {
+        let uri = params.text_document.uri;
+        let Some(text) = params.text else {
+            return;
+        };
+        if !self.documents.contains_key(&uri) {
+            return;
+        }
+        self.documents.insert(uri.clone(), text.clone());
+        if self.index.is_some() {
+            self.upsert_document(&uri, &text);
+        } else {
+            self.rebuild_index();
         }
     }
 
@@ -247,17 +292,24 @@ impl DartLspServer {
         };
         let snapshot = index.snapshot();
         let path = document_path(uri);
-        let query = DartDefinitionQuery::new(path, offset);
+        let query = DartDefinitionQuery::new(path.clone(), offset);
         let ctx = DartWorkspaceResolutionContext::from_snapshot(&snapshot);
         let batch = ctx.find_definitions(&[query]);
-        let Some(resolution) = batch.resolutions.first() else {
-            return Ok(None);
-        };
-        if resolution.targets.is_empty() {
+        let mut targets = batch
+            .resolutions
+            .first()
+            .map(|resolution| resolution.targets.clone())
+            .unwrap_or_default();
+        if targets.is_empty() {
+            // The query sits on a declaration identifier: declarations are not
+            // reference facts, so resolve them directly onto their own spans.
+            targets = declaration_targets_at(&snapshot, &path, offset);
+        }
+        if targets.is_empty() {
             return Ok(None);
         }
         let mut locations = Vec::new();
-        for target in &resolution.targets {
+        for target in &targets {
             let (target_path, span) = match target {
                 dartscope_index::DartDefinitionTarget::Namespace(candidate) => {
                     (&candidate.declaration_path, &candidate.declaration_span)
@@ -286,6 +338,19 @@ impl DartLspServer {
         uri: &Url,
         position: Position,
     ) -> Result<Option<Vec<Location>>, LspError> {
+        self.references_at(uri, position, false)
+    }
+
+    /// LSP `textDocument/references`. When `include_declaration` is set the
+    /// declaration span of every resolved target joins the result, matching the
+    /// `ReferenceContext.includeDeclaration` semantics; querying from the
+    /// declaration identifier itself resolves through the declaration fallback.
+    pub fn references_at(
+        &self,
+        uri: &Url,
+        position: Position,
+        include_declaration: bool,
+    ) -> Result<Option<Vec<Location>>, LspError> {
         let Some(content) = self.documents.get(uri) else {
             return Err(LspError::DocumentNotOpen(uri.to_string()));
         };
@@ -297,16 +362,21 @@ impl DartLspServer {
         };
         let snapshot = index.snapshot();
         let path = document_path(uri);
-        let query = DartDefinitionQuery::new(path, offset);
+        let query = DartDefinitionQuery::new(path.clone(), offset);
         let ctx = DartWorkspaceResolutionContext::from_snapshot(&snapshot);
         let batch = ctx.find_definitions(&[query]);
-        let Some(resolution) = batch.resolutions.first() else {
-            return Ok(None);
-        };
-        if resolution.targets.is_empty() {
+        let mut targets = batch
+            .resolutions
+            .first()
+            .map(|resolution| resolution.targets.clone())
+            .unwrap_or_default();
+        if targets.is_empty() {
+            targets = declaration_targets_at(&snapshot, &path, offset);
+        }
+        if targets.is_empty() {
             return Ok(None);
         }
-        let refs = ctx.find_references(&resolution.targets);
+        let refs = ctx.find_references(&targets);
         let mut locations = Vec::new();
         for result in refs.results {
             for reference in result.references {
@@ -323,6 +393,28 @@ impl DartLspServer {
                 });
             }
         }
+        if include_declaration {
+            for target in &targets {
+                let (target_path, span) = match target {
+                    DartDefinitionTarget::Namespace(candidate) => {
+                        (&candidate.declaration_path, &candidate.declaration_span)
+                    }
+                    DartDefinitionTarget::Lexical(binding) => {
+                        (&binding.source_path, &binding.declaration_span)
+                    }
+                };
+                let decl_uri = path_to_uri(target_path);
+                let decl_content = self
+                    .documents
+                    .get(&decl_uri)
+                    .map(String::as_str)
+                    .unwrap_or(content.as_str());
+                locations.push(Location {
+                    uri: decl_uri,
+                    range: source_span_to_lsp_range(decl_content, span),
+                });
+            }
+        }
         locations.sort_by(|a, b| {
             a.uri
                 .as_str()
@@ -331,6 +423,9 @@ impl DartLspServer {
                 .then_with(|| a.range.start.character.cmp(&b.range.start.character))
         });
         locations.dedup_by(|a, b| a.uri == b.uri && a.range == b.range);
+        if locations.is_empty() {
+            return Ok(None);
+        }
         Ok(Some(locations))
     }
 
@@ -346,21 +441,27 @@ impl DartLspServer {
         };
         let snapshot = index.snapshot();
         let path = document_path(uri);
-        let query = DartDefinitionQuery::new(path, offset);
+        let query = DartDefinitionQuery::new(path.clone(), offset);
         let ctx = DartWorkspaceResolutionContext::from_snapshot(&snapshot);
         let batch = ctx.find_definitions(&[query]);
-        let Some(resolution) = batch.resolutions.first() else {
-            return Ok(None);
-        };
-        if resolution.targets.is_empty() {
+        let mut targets = batch
+            .resolutions
+            .first()
+            .map(|resolution| resolution.targets.clone())
+            .unwrap_or_default();
+        if targets.is_empty() {
+            targets = declaration_targets_at(&snapshot, &path, offset);
+        }
+        if targets.is_empty() {
             return Ok(None);
         }
         let mut contents = Vec::new();
-        for target in &resolution.targets {
+        for target in &targets {
             let (name, kind) = match target {
-                dartscope_index::DartDefinitionTarget::Namespace(candidate) => {
-                    (candidate.name.as_str(), format!("{:?}", candidate.kind))
-                }
+                dartscope_index::DartDefinitionTarget::Namespace(candidate) => (
+                    candidate.name.as_str(),
+                    declaration_kind_label(candidate.kind).to_string(),
+                ),
                 dartscope_index::DartDefinitionTarget::Lexical(binding) => {
                     (binding.name.as_str(), format!("{:?}", binding.kind))
                 }
@@ -370,9 +471,10 @@ impl DartLspServer {
                 value: format!("{kind} {name}"),
             }));
         }
-        let range = resolution
-            .references
+        let range = batch
+            .resolutions
             .first()
+            .and_then(|resolution| resolution.references.first())
             .map(|reference| source_span_to_lsp_range(content, &reference.span));
         Ok(Some(Hover {
             contents: HoverContents::Array(contents),
@@ -403,39 +505,42 @@ impl DartLspServer {
                 decl.declaration_span.as_ref().unwrap_or(&decl.span),
             );
             let selection_range = source_span_to_lsp_range(content, &decl.span);
+            let children = file
+                .declarations
+                .iter()
+                .filter(|member| member.parent_symbol_id.as_deref() == decl.symbol_id.as_deref())
+                .map(|member| {
+                    let r = source_span_to_lsp_range(
+                        content,
+                        member.declaration_span.as_ref().unwrap_or(&member.span),
+                    );
+                    let sel = source_span_to_lsp_range(content, &member.span);
+                    let kind = if decl.kind == DartDeclarationKind::Enum {
+                        SymbolKind::EnumMember
+                    } else {
+                        member_symbol_kind(member.kind)
+                    };
+                    DocumentSymbol {
+                        name: member.name.clone(),
+                        detail: Some(declaration_kind_label(member.kind).to_string()),
+                        kind,
+                        tags: None,
+                        deprecated: None,
+                        range: r,
+                        selection_range: sel,
+                        children: None,
+                    }
+                })
+                .collect();
             symbols.push(DocumentSymbol {
                 name: decl.name.clone(),
-                detail: None,
+                detail: Some(declaration_kind_label(decl.kind).to_string()),
                 kind: top_level_symbol_kind(decl.kind),
                 tags: None,
                 deprecated: None,
                 range,
                 selection_range,
-                children: Some(
-                    file.declarations
-                        .iter()
-                        .filter(|member| {
-                            member.parent_symbol_id.as_deref() == decl.symbol_id.as_deref()
-                        })
-                        .map(|member| {
-                            let r = source_span_to_lsp_range(
-                                content,
-                                member.declaration_span.as_ref().unwrap_or(&member.span),
-                            );
-                            let sel = source_span_to_lsp_range(content, &member.span);
-                            DocumentSymbol {
-                                name: member.name.clone(),
-                                detail: None,
-                                kind: member_symbol_kind(member.kind),
-                                tags: None,
-                                deprecated: None,
-                                range: r,
-                                selection_range: sel,
-                                children: None,
-                            }
-                        })
-                        .collect(),
-                ),
+                children: Some(children),
             });
         }
         Ok(Some(symbols))
@@ -548,6 +653,7 @@ impl DartLspServer {
                             }
                         };
                         Diagnostic {
+                            related_information: None,
                             range,
                             severity: Some(severity),
                             code: Some(NumberOrString::String(diag.code.clone())),
@@ -596,11 +702,24 @@ impl DartLspServer {
                 document_path(uri),
                 text.to_string(),
             ));
-            index.upsert_file_with_references(analysis);
+            let update = index.upsert_file_with_references(analysis);
+            #[cfg(feature = "lints")]
+            {
+                self.last_workspace_update = Some(update);
+            }
+            #[cfg(not(feature = "lints"))]
+            {
+                let _ = update;
+            }
         }
     }
 
     fn rebuild_index(&mut self) {
+        #[cfg(feature = "lints")]
+        {
+            self.lint_cache = None;
+            self.last_workspace_update = None;
+        }
         if self.documents.is_empty() {
             self.index = None;
             return;
@@ -627,43 +746,99 @@ impl DartLspServer {
     /// diagnostics port, exactly as the downstream adapter contract expects.
     /// Documents without findings are explicitly cleared.
     pub fn refresh_lint_diagnostics(&mut self, config: &dartscope_lints::DartLintConfig) {
-        let mut per_uri: HashMap<Url, Vec<Diagnostic>> = HashMap::new();
-        if let Some(index) = &self.index {
-            let snapshot = index.snapshot();
-            let analysis = dartscope_lints::lint_workspace_snapshot(&snapshot, config);
-            for finding in analysis.diagnostics {
-                let uri = path_to_uri(&finding.path);
-                let content = self.documents.get(&uri).map(String::as_str).unwrap_or("");
-                let range = finding
-                    .span
+        let Self {
+            index,
+            documents,
+            supplemental,
+            lint_cache,
+            last_workspace_update,
+            ..
+        } = self;
+        let Some(index) = index.as_ref() else {
+            *lint_cache = None;
+            *last_workspace_update = None;
+            supplemental.clear();
+            return;
+        };
+        let snapshot = index.snapshot();
+        let analysis = match (lint_cache, last_workspace_update.take()) {
+            (cache @ None, _) => {
+                *cache = Some(dartscope_lints::DartIncrementalLintCache::new(
+                    &snapshot,
+                    config.clone(),
+                ));
+                cache
                     .as_ref()
-                    .map(|span| source_span_to_lsp_range(content, span))
-                    .unwrap_or_else(|| Range {
-                        start: Position {
-                            line: 0,
-                            character: 0,
-                        },
-                        end: Position {
-                            line: 0,
-                            character: 0,
-                        },
-                    });
-                let severity = match finding.severity {
-                    dartscope_core::DiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
-                    dartscope_core::DiagnosticSeverity::Warning => DiagnosticSeverity::WARNING,
-                    dartscope_core::DiagnosticSeverity::Info => DiagnosticSeverity::INFORMATION,
-                };
-                per_uri.entry(uri).or_default().push(Diagnostic {
-                    range,
-                    severity: Some(severity),
-                    code: Some(NumberOrString::String(finding.rule_id.as_str().to_string())),
-                    source: Some("dartscope-lints".to_string()),
-                    message: finding.message,
-                });
+                    .expect("cache was just installed")
+                    .analysis()
+                    .clone()
             }
+            (Some(cache), Some(update)) => {
+                cache.update(&snapshot, &update, config);
+                cache.analysis().clone()
+            }
+            (Some(cache), None) => cache.analysis().clone(),
+        };
+        let mut per_uri: HashMap<Url, Vec<Diagnostic>> = HashMap::new();
+        for finding in analysis.diagnostics {
+            let uri = path_to_uri(&finding.path);
+            let content = documents.get(&uri).map(String::as_str).unwrap_or("");
+            let range = finding
+                .span
+                .as_ref()
+                .map(|span| source_span_to_lsp_range(content, span))
+                .unwrap_or_else(|| Range {
+                    start: Position {
+                        line: 0,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: 0,
+                        character: 0,
+                    },
+                });
+            let severity = match finding.severity {
+                dartscope_core::DiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
+                dartscope_core::DiagnosticSeverity::Warning => DiagnosticSeverity::WARNING,
+                dartscope_core::DiagnosticSeverity::Info => DiagnosticSeverity::INFORMATION,
+            };
+            let related: Vec<DiagnosticRelatedInformation> = finding
+                .related_paths
+                .iter()
+                .map(|related_path| DiagnosticRelatedInformation {
+                    location: Location {
+                        uri: path_to_uri(related_path),
+                        range: Range {
+                            start: Position {
+                                line: 0,
+                                character: 0,
+                            },
+                            end: Position {
+                                line: 0,
+                                character: 0,
+                            },
+                        },
+                    },
+                    message: format!("related file `{related_path}`"),
+                })
+                .collect();
+            per_uri.entry(uri).or_default().push(Diagnostic {
+                related_information: (!related.is_empty()).then_some(related),
+                range,
+                severity: Some(severity),
+                code: Some(NumberOrString::String(finding.rule_id.as_str().to_string())),
+                source: Some("dartscope-lints".to_string()),
+                message: finding.message,
+            });
         }
-        for uri in self.open_document_uris() {
-            self.set_supplemental_diagnostics(&uri, per_uri.remove(&uri).unwrap_or_default());
+        let uris: Vec<Url> = documents.keys().cloned().collect();
+        for uri in uris {
+            let entries = per_uri.remove(&uri).unwrap_or_default();
+            if entries.is_empty() {
+                supplemental.remove(&uri);
+            } else {
+                supplemental.insert(uri, entries);
+            }
         }
     }
 }
@@ -671,10 +846,11 @@ impl DartLspServer {
 fn top_level_symbol_kind(kind: dartscope_core::DartDeclarationKind) -> SymbolKind {
     use dartscope_core::DartDeclarationKind as D;
     match kind {
-        D::Class | D::Mixin => SymbolKind::Class,
+        D::Class | D::Mixin | D::Typedef => SymbolKind::Class,
         D::Enum => SymbolKind::Enum,
         D::Extension | D::ExtensionType => SymbolKind::Interface,
         D::Function => SymbolKind::Function,
+        D::Getter | D::Setter => SymbolKind::Property,
         _ => SymbolKind::Variable,
     }
 }
@@ -685,6 +861,7 @@ fn member_symbol_kind(kind: dartscope_core::DartDeclarationKind) -> SymbolKind {
         D::Method => SymbolKind::Method,
         D::Field => SymbolKind::Field,
         D::Constructor => SymbolKind::Constructor,
+        D::Operator => SymbolKind::Operator,
         _ => SymbolKind::Property,
     }
 }
@@ -780,6 +957,7 @@ mod tests {
         server.set_supplemental_diagnostics(
             &uri,
             vec![Diagnostic {
+                related_information: None,
                 range: Range {
                     start: Position {
                         line: 0,
@@ -931,7 +1109,7 @@ mod tests {
                 server.did_change(DidChangeTextDocumentParams {
                     text_document: crate::types::VersionedTextDocumentIdentifier {
                         uri: uri.clone(),
-                        version: i,
+                        version: Some(i),
                     },
                     content_changes: vec![crate::types::TextDocumentContentChangeEvent {
                         range: None,
@@ -989,7 +1167,7 @@ mod tests {
         server.did_change(DidChangeTextDocumentParams {
             text_document: crate::types::VersionedTextDocumentIdentifier {
                 uri: uri.clone(),
-                version: 5,
+                version: Some(5),
             },
             content_changes: vec![crate::types::TextDocumentContentChangeEvent {
                 range: None,
@@ -1059,5 +1237,102 @@ mod tests {
                 .iter()
                 .any(|symbol| symbol.name == "useB")
         );
+    }
+
+    #[test]
+    fn did_change_without_version_still_updates_the_document() {
+        let (mut server, uri) = open_server("file:///lib/v.dart", "class A {}\n");
+        server.did_change(DidChangeTextDocumentParams {
+            text_document: crate::types::VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: None,
+            },
+            content_changes: vec![crate::types::TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "class A { int m = 1; }\n".to_string(),
+            }],
+        });
+        let symbols = server.document_symbols(&uri).unwrap().unwrap();
+        assert!(symbols.iter().any(|s| {
+            s.children
+                .as_ref()
+                .is_some_and(|kids| kids.iter().any(|k| k.name == "m"))
+        }));
+        // The previously known version survives an unversioned change.
+        assert_eq!(server.document_version(&uri), Some(1));
+    }
+
+    #[test]
+    fn did_save_with_text_replaces_content() {
+        let (mut server, uri) = open_server("file:///lib/s.dart", "class Old {}\n");
+        server.did_save(DidSaveTextDocumentParams {
+            text_document: crate::types::TextDocumentIdentifier { uri: uri.clone() },
+            text: Some("class Saved {}\n".to_string()),
+        });
+        let symbols = server.document_symbols(&uri).unwrap().unwrap();
+        assert!(symbols.iter().any(|s| s.name == "Saved"));
+        assert!(!symbols.iter().any(|s| s.name == "Old"));
+        // A text-less save cannot update content but never errors.
+        server.did_save(DidSaveTextDocumentParams {
+            text_document: crate::types::TextDocumentIdentifier { uri: uri.clone() },
+            text: None,
+        });
+        let symbols = server.document_symbols(&uri).unwrap().unwrap();
+        assert!(symbols.iter().any(|s| s.name == "Saved"));
+    }
+
+    #[test]
+    fn declaration_identifier_resolves_to_itself() {
+        let content = "class Beta { void run() {} }\nvoid main() { Beta(); }\n";
+        let (server, uri) = open_server("file:///lib/d.dart", content);
+        let decl_pos = Position {
+            line: 0,
+            character: 7,
+        };
+        let hover = server.hover(&uri, decl_pos).unwrap().unwrap();
+        let HoverContents::Array(contents) = &hover.contents else {
+            panic!("expected array");
+        };
+        let MarkedString::LanguageString(block) = &contents[0] else {
+            panic!("expected code block");
+        };
+        assert_eq!(block.value, "class Beta");
+        let locs = server.definition(&uri, decl_pos).unwrap().unwrap();
+        assert_eq!(locs[0].uri.as_str(), "file:///lib/d.dart");
+        assert_eq!(locs[0].range.start.line, 0);
+        let with_decl = server.references_at(&uri, decl_pos, true).unwrap().unwrap();
+        let without = server
+            .references_at(&uri, decl_pos, false)
+            .unwrap()
+            .unwrap();
+        assert!(
+            with_decl
+                .iter()
+                .any(|l| l.range.start.line == 0 && l.range.start.character == 6)
+        );
+        assert!(without.iter().all(|l| l.range.start.line == 1));
+        assert_eq!(with_decl.len(), without.len() + 1);
+    }
+
+    #[test]
+    fn document_symbols_carry_detail_and_kind_refinements() {
+        let content = "typedef Fn = void Function(int x);\nenum Color { red, green }\n";
+        let (server, uri) = open_server("file:///lib/k.dart", content);
+        let symbols = server.document_symbols(&uri).unwrap().unwrap();
+        let typedef = symbols
+            .iter()
+            .find(|s| s.name == "Fn")
+            .expect("typedef symbol");
+        assert_eq!(typedef.detail.as_deref(), Some("typedef"));
+        assert_eq!(typedef.kind, SymbolKind::Class);
+        let color = symbols
+            .iter()
+            .find(|s| s.name == "Color")
+            .expect("enum symbol");
+        assert_eq!(color.kind, SymbolKind::Enum);
+        for kid in color.children.as_deref().unwrap_or(&[]) {
+            assert_eq!(kid.kind, SymbolKind::EnumMember);
+        }
     }
 }

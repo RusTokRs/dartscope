@@ -54,3 +54,10 @@ a possible regression by reproducing it on a controlled machine, reducing the af
 checking deterministic counters before introducing any timing threshold. Promotion to a blocking gate
 requires a workload-specific stable metric or a reviewed dedicated runner; shared hosted-runner wall
 clock values are never sufficient.
+
+## Baseline Recovery
+
+A PR that reshapes the workspace or the workload inputs can make the report job fail structurally
+(the candidate cannot be compared against the stored baseline) while every functional gate is green.
+That state is report-only and self-heals: the baseline regenerates from the next `main` run after the
+PR merges. Reviewers should treat a structural red on a pull request as expected, not as a regression.

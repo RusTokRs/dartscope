@@ -1137,7 +1137,16 @@ Implemented (2026-10-14, follow-up slice):
     after every sync event and republishes the merged set, with a dedicated feature test and explicit
     CI steps (`cargo clippy -p dartscope-lsp --features lints`, `cargo test -p dartscope-lsp
     --features lints`).
-15. Verified on the exact hosted toolchain (2026-10-14 pull-request runs): the Ubuntu/Windows quality gates
+15. Editor-correctness round (2026-10-15): `didChange.version` is optional per LSP 3.17 (unversioned
+    edits no longer drop); queries landing on a declaration identifier resolve onto that declaration
+    in `definition`, `hover`, and `references` (the parser's reference facts deliberately exclude
+    declarations, the snapshot's declaration inventory answers them); `references_at` honors
+    `includeDeclaration` with the old `references` kept as the `false` alias; `didSave` revalidates
+    and applies `includeText`; document symbols carry kind labels in `detail`, `typedef` maps to the
+    Class kind, and enum children to `EnumMember`; the lint adapter preserves `relatedPaths` as
+    `relatedInformation` and, in feature builds, re-lints through `DartIncrementalLintCache` fed by
+    the index's per-event `DartWorkspaceUpdate` instead of re-running every rule over the snapshot.
+16. Verified on the exact hosted toolchain (2026-10-14 pull-request runs): the Ubuntu/Windows quality gates
     (rustfmt style-edition 2024, repository consistency, `cargo clippy --workspace --all-targets -- -D
     warnings`, rustdoc), both workspace test matrices, the full edition matrix, the macOS arm64 portability
     signal including the release-crate archive count, and the bounded fuzz corpus are green. Repairs along the

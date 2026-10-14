@@ -54,6 +54,24 @@ pre-1.0.
 
 ### Added
 
+- `dartscope-lsp` editor round: `didSave` is handled (revalidates and applies `includeText`
+  content), `DartLspServer::references_at` implements `includeDeclaration`, declaration
+  identifiers now resolve in `definition`/`hover`/`references` (querying `class Foo` from the
+  word `Foo` works), document symbols gained `detail` kind labels plus refined `Class`/
+  `EnumMember` kinds, and `publishDiagnostics` lint entries carry `relatedInformation` links
+  for rules with `relatedPaths`. README and the support matrix now include an editor
+  quick-start and a per-method LSP table.
+- `dartscope-lsp --features lints` re-lints incrementally through `dartscope_lints::DartIncrementalLintCache`
+  fed by the index's per-event update instead of re-running all rules after every keystroke.
+
+### Fixed
+
+- `dartscope-lsp` accepts `textDocument/didChange` without a `version`: the field is optional in
+  LSP 3.17, and dropping such whole notifications silently desynchronized the server from the
+  editor. The last known version (e.g. from `didOpen`) is preserved and republished.
+
+### Added (previous round)
+
 - `dartscope-lsp` `lints` cargo feature: building with it and starting the stdio binary as
   `dartscope-lsp [root] --lints` runs the all-rules `dartscope-lints` configuration over the
   server's own workspace snapshot after every `didOpen`/`didChange` and routes the findings

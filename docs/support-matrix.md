@@ -87,7 +87,23 @@ and an `exit` without a preceding `shutdown` exits non-zero — full and increme
 synchronization over the open document set, UTF-16 positions for LF, CRLF, and surrogate pairs, and
 index-backed `definition`, `references`, `hover` (rendered as `dart` code blocks), `documentSymbol`,
 and bounded `workspace/symbol` results, plus `textDocument/publishDiagnostics` for parser
-diagnostics that echoes the client's document version. Index maintenance is per-file: opening or
+diagnostics that echoes the client's document version. Queries landing on a declaration identifier
+resolve onto the declaration itself (definition, hover, and references all work from the definition
+site), `references` honors `ReferenceContext.includeDeclaration`, `didChange.version` is optional
+per the 3.17 spec, and `didSave` revalidates and applies `includeText` payloads.
+
+| LSP method | `0.1` status |
+| --- | --- |
+| `initialize` / `initialized` / `shutdown` / `exit` | lifecycle enforced: `-32002` before initialize, `-32600` after shutdown, exit status 0 clean / 1 abrupt |
+| `didOpen` / `didChange` / `didClose` | supported; per-file index upsert; published diagnostics echo the last known `version` |
+| `didSave` | revalidates; `includeText` content is applied as a full change |
+| `publishDiagnostics` | pushed after every sync event; parser facts first, supplemental lint findings merged in range order |
+| `definition` | supported; resolves from usage and from the declaration identifier (self) |
+| `references` | supported; respects `includeDeclaration` |
+| `hover` | `dart` code blocks per resolved target; declaration fallback included |
+| `documentSymbol` | one nesting level; `detail` carries the declaration-kind label; enum children are `EnumMember` |
+| `workspace/symbol` | open documents only, top-level names, bounded to 100 |
+| anything else | honest `null` results; completion, formatting, semantic tokens, and rename are outside the contract | Index maintenance is per-file: opening or
 changing a document upserts only that file, closing removes it, and unaffected open documents keep
 their parse and resolution caches.
 

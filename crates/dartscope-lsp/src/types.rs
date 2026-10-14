@@ -222,6 +222,12 @@ pub enum NumberOrString {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Diagnostic {
+    #[serde(
+        rename = "relatedInformation",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub related_information: Option<Vec<DiagnosticRelatedInformation>>,
     pub range: Range,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub severity: Option<DiagnosticSeverity>,
@@ -229,6 +235,12 @@ pub struct Diagnostic {
     pub code: Option<NumberOrString>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiagnosticRelatedInformation {
+    pub location: Location,
     pub message: String,
 }
 
@@ -568,7 +580,10 @@ pub struct DidOpenTextDocumentParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersionedTextDocumentIdentifier {
     pub uri: Url,
-    pub version: i32,
+    /// LSP 3.17 makes the version optional on change events; omitting it keeps
+    /// the previously known version instead of rejecting the whole update.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -597,6 +612,15 @@ pub struct TextDocumentIdentifier {
 pub struct DidCloseTextDocumentParams {
     #[serde(rename = "textDocument")]
     pub text_document: TextDocumentIdentifier,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DidSaveTextDocumentParams {
+    #[serde(rename = "textDocument")]
+    pub text_document: TextDocumentIdentifier,
+    /// Only present when the client registered `save: { includeText: true }`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

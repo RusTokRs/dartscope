@@ -87,7 +87,26 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
   `workspace/symbol` matches top-level declaration names by case-insensitive substring against a bounded
   result list, completion/formatting/semantic-token requests return honest empty results, and lint
   findings reach the editor only through a downstream adapter that calls
-  `DartLspServer::set_supplemental_diagnostics`.
+  `DartLspServer::set_supplemental_diagnostics` (the binary's `--lints` mode is that adapter).
+  Definition, hover, and references resolve from declaration identifiers too, and `references` honors
+  `includeDeclaration`.
+
+To connect an editor, point the client at the stdio binary; the optional first argument overrides the
+workspace root:
+
+```lua
+-- Neovim 0.10+
+vim.lsp.config('dartscope', {
+  cmd = { 'target/release/dartscope-lsp', vim.fn.getcwd() },
+  filetypes = { 'dart' },
+  root_markers = { 'pubspec.yaml', '.dart_tool' },
+})
+vim.lsp.enable('dartscope')
+```
+
+Any VS Code generic-LSP client works with `target/release/dartscope-lsp` as the server command. Build
+with `cargo build --release -p dartscope-lsp --features lints` and add `--lints` to merge `dartscope-lints`
+findings (with `relatedInformation`) into the same versioned `publishDiagnostics` stream.
 
 `dartscope-parse` also exposes an object-safe `DartParser` contract for callers that
 need a different source-only parser backend. The built-in `HeuristicDartParser` remains

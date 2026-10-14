@@ -15,8 +15,8 @@ use std::io::{self, BufRead, Read, Write};
 use dartscope_lsp::DartLspServer;
 use dartscope_lsp::types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentSymbolParams, HoverParams, InitializeParams, ReferenceParams,
-    TextDocumentPositionParams, Url, WorkspaceSymbolParams,
+    DidSaveTextDocumentParams, DocumentSymbolParams, HoverParams, InitializeParams,
+    ReferenceParams, TextDocumentPositionParams, Url, WorkspaceSymbolParams,
 };
 use serde_json::{Value, json};
 
@@ -174,6 +174,17 @@ fn handle_message_with_options(
             }
             outgoing
         }
+        "textDocument/didSave" => {
+            let mut outgoing = Vec::new();
+            if let Ok(params) = serde_json::from_value::<DidSaveTextDocumentParams>(params) {
+                let uri = params.text_document.uri.clone();
+                server.did_save(params);
+                // Revalidate on save even without `includeText`: the published
+                // set is idempotent, and clients that do send text get it applied.
+                outgoing.push(publish_diagnostics(server, &uri));
+            }
+            outgoing
+        }
         "textDocument/definition" => {
             let result = serde_json::from_value::<TextDocumentPositionParams>(params)
                 .ok()
@@ -190,10 +201,12 @@ fn handle_message_with_options(
             let result = serde_json::from_value::<ReferenceParams>(params)
                 .ok()
                 .and_then(|params| {
+                    let include_declaration = params.context.include_declaration;
                     server
-                        .references(
+                        .references_at(
                             &params.text_document_position.text_document.uri,
                             params.text_document_position.position,
+                            include_declaration,
                         )
                         .ok()
                         .flatten()
@@ -261,7 +274,12 @@ fn apply_lints_hook(
     let _ = (&server, msg, method, with_lints);
     #[cfg(feature = "lints")]
     {
-        if with_lints && matches!(method, "textDocument/didOpen" | "textDocument/didChange") {
+        if with_lints
+            && matches!(
+                method,
+                "textDocument/didOpen" | "textDocument/didChange" | "textDocument/didSave"
+            )
+        {
             server.refresh_lint_diagnostics(&dartscope_lints::DartLintConfig::all_rules());
             if let Some(uri) = synced_uri(msg) {
                 return outgoing
@@ -560,6 +578,14 @@ mod tests {
             "expected the lint finding in the published set: {diags:?}"
         );
         assert_eq!(outgoing[0]["params"]["version"], json!(3));
+        let entry = diags
+            .iter()
+            .find(|d| d["source"] == json!("dartscope-lints"))
+            .expect("lint entry present");
+        assert_eq!(
+            entry["relatedInformation"][0]["location"]["uri"],
+            json!("file:///lib/missing.dart")
+        );
         // Fixing the file clears the supplemental entry on the next publish.
         let change = json!({
             "jsonrpc": "2.0",
@@ -603,5 +629,80 @@ mod tests {
             json!("textDocument/publishDiagnostics")
         );
         assert_eq!(outgoing[0]["params"]["version"], json!(7));
+    }
+
+    #[test]
+    fn did_save_publishes_again_and_can_replace_content() {
+        let mut server = DartLspServer::new(".");
+        initialize(&mut server);
+        handle_message(
+            &mut server,
+            &json!({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{
+                "textDocument": {
+                    "uri": "file:///lib/save.dart",
+                    "languageId": "dart",
+                    "version": 1,
+                    "text": "class Old {}\n"
+                }
+            }}),
+        );
+        let outgoing = handle_message(
+            &mut server,
+            &json!({"jsonrpc":"2.0","method":"textDocument/didSave","params":{
+                "textDocument": { "uri": "file:///lib/save.dart" },
+                "text": "class Saved {}\n"
+            }}),
+        );
+        assert_eq!(outgoing.len(), 1);
+        assert_eq!(
+            outgoing[0]["method"],
+            json!("textDocument/publishDiagnostics")
+        );
+        let symbols = handle_message(
+            &mut server,
+            &json!({"jsonrpc":"2.0","id":9,"method":"textDocument/documentSymbol","params":{
+                "textDocument": { "uri": "file:///lib/save.dart" }
+            }}),
+        );
+        assert_eq!(symbols[0]["result"][0]["name"], json!("Saved"));
+    }
+
+    #[test]
+    fn references_wire_honors_include_declaration() {
+        let mut server = DartLspServer::new(".");
+        initialize(&mut server);
+        handle_message(
+            &mut server,
+            &json!({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{
+                "textDocument": {
+                    "uri": "file:///lib/ref.dart",
+                    "languageId": "dart",
+                    "version": 1,
+                    "text": "class Beta {}\nclass A { void m() { Beta(); } }\n"
+                }
+            }}),
+        );
+        let query = |include: bool| {
+            handle_message(
+                &mut server,
+                &json!({"jsonrpc":"2.0","id":3,"method":"textDocument/references","params":{
+                    "textDocument": { "uri": "file:///lib/ref.dart" },
+                    "position": { "line": 0, "character": 7 },
+                    "context": { "includeDeclaration": include }
+                }}),
+            )
+        };
+        let with = query(true);
+        let without = query(false);
+        let lines = |out: &[Value]| {
+            out[0]["result"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|l| l["range"]["start"]["line"].as_u64().unwrap())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(lines(&without), vec![1]);
+        assert_eq!(lines(&with), vec![0, 1]);
     }
 }
