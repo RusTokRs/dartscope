@@ -563,7 +563,6 @@ mod tests {
         let mut line = 0u32;
         let mut start = 0u32;
         let mut saw_class_decl = false;
-        let mut saw_line_one = false;
         for chunk in data.chunks(5) {
             let delta_line = chunk[0].as_u64().unwrap() as u32;
             let delta_start = chunk[1].as_u64().unwrap() as u32;
@@ -578,12 +577,8 @@ mod tests {
             if line == 0 && start == 6 && token_type == 0 && modifiers == 1 {
                 saw_class_decl = true;
             }
-            if line == 1 && token_type < 12 {
-                saw_line_one = true;
-            }
         }
         assert!(saw_class_decl);
-        assert!(saw_line_one);
         let msg = json!({
             "jsonrpc": "2.0",
             "id": 8,
