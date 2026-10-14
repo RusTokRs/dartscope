@@ -1077,7 +1077,7 @@ mod tests {
         server.did_change(DidChangeTextDocumentParams {
             text_document: crate::types::VersionedTextDocumentIdentifier {
                 uri: uri.clone(),
-                version: 2,
+                version: Some(2),
             },
             content_changes: vec![crate::types::TextDocumentContentChangeEvent {
                 range: None,
@@ -1099,7 +1099,7 @@ mod tests {
         let change = DidChangeTextDocumentParams {
             text_document: crate::types::VersionedTextDocumentIdentifier {
                 uri: uri.clone(),
-                version: 2,
+                version: Some(2),
             },
             content_changes: vec![crate::types::TextDocumentContentChangeEvent {
                 range: Some(Range {
@@ -1127,7 +1127,7 @@ mod tests {
         let change = DidChangeTextDocumentParams {
             text_document: crate::types::VersionedTextDocumentIdentifier {
                 uri: uri.clone(),
-                version: 2,
+                version: Some(2),
             },
             content_changes: vec![crate::types::TextDocumentContentChangeEvent {
                 range: Some(Range {
