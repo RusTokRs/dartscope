@@ -244,10 +244,22 @@ mod tests {
 
     #[test]
     fn single_literal_handles_raw_and_escapes() {
-        assert_eq!(single_string_literal_value(r"'/home'"), Some("/home".to_string()));
-        assert_eq!(single_string_literal_value(r"r'/raw'"), Some("/raw".to_string()));
-        assert_eq!(single_string_literal_value(r"'it\'s'"), Some("it's".to_string()));
-        assert_eq!(single_string_literal_value("\"/a\""), Some("/a".to_string()));
+        assert_eq!(
+            single_string_literal_value(r"'/home'"),
+            Some("/home".to_string())
+        );
+        assert_eq!(
+            single_string_literal_value(r"r'/raw'"),
+            Some("/raw".to_string())
+        );
+        assert_eq!(
+            single_string_literal_value(r"'it\'s'"),
+            Some("it's".to_string())
+        );
+        assert_eq!(
+            single_string_literal_value("\"/a\""),
+            Some("/a".to_string())
+        );
         assert_eq!(single_string_literal_value("'a' 'b'"), None); // adjacent not single
     }
 
@@ -256,13 +268,19 @@ mod tests {
         let (value, end) = string_literals_value("'/a' '/b'", 0).unwrap();
         assert_eq!(value, "/a/b");
         assert_eq!(end, "'/a' '/b'".len());
-        assert_eq!(string_literal_range("r'''a\nb'''", 0).unwrap().content_start, 4);
+        assert_eq!(
+            string_literal_range("r'''a\nb'''", 0)
+                .unwrap()
+                .content_start,
+            4
+        );
     }
 
     #[test]
     fn dollar_in_identifier_does_not_break_raw_detection() {
-        // `foo$r'bar'` should NOT be a raw string because `$` is identifier continue
-        assert!(find_string_literal_start("foo$r'bar'", 0).is_none());
+        // `$` continues the identifier, so the glued `r` is not a raw prefix; the quote at index 5
+        // still opens an ordinary literal.
+        assert_eq!(find_string_literal_start("foo$r'bar'", 0), Some(5));
         // `foo r'bar'` after space IS a raw string
         assert_eq!(find_string_literal_start("foo r'bar'", 3), Some(4));
     }

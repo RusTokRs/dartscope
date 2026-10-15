@@ -96,7 +96,7 @@ cross-platform audit.
 
 | Area | Status | Evidence in repository |
 | --- | --- | --- |
-| Rust workspace and nine crates | verified | root `Cargo.toml`; exact Rust 1.95.0 Linux/Windows quality, test, edition, and feature matrix passed |
+| Rust workspace and ten crates | verified | root `Cargo.toml`; exact Rust 1.95.0 Linux/Windows quality, test, edition, and feature matrix, macOS arm64 portability signal, and bounded fuzz corpus passed |
 | Core normalized model | implemented | declarations, generic invocations, spans, diagnostics, and compatibility projections; pre-1.0 migration work remains |
 | File and pubspec analysis | in_progress | heuristic declarations and generic invocations plus marked `yaml-rust2` pubspec backend; unit and project fixtures |
 | Package config v2 and package URI resolution | in_progress | `dartscope-resolve`, resolver fixtures, and project URI integration tests |
@@ -107,7 +107,7 @@ cross-platform audit.
 | Hosted CI | verified | Rust 1.95.0 quality, Linux/Windows tests, edition-2024, and umbrella feature matrix publish granular and aggregate statuses |
 | Contributor and agent workflow | verified | `AGENTS.md`, `CONTRIBUTING.md`, Rust code standard |
 | Lint/rule engine | verified | optional `dartscope-lints`, five deterministic rules, stable IDs, severity overrides, and focused fixtures |
-| Release packaging | verified with audit corrections | nine `.crate` archives, publish topology, release policy, and protected manual publishing path |
+| Release packaging | verified with audit corrections | ten `.crate` archives, publish topology, release policy, and protected manual publishing path |
 | Parser backend port | verified | `DartParser` capability contract, default heuristic backend, injection path, and backend documentation |
 
 Current verified behaviors include:
@@ -137,7 +137,7 @@ Audit scope:
 
 - exact Rust 1.95.0 formatting, workspace/all-feature checks, all-target tests, Clippy, and rustdoc;
 - isolated umbrella features plus the normal Ubuntu and Windows hosted matrices;
-- all nine release archives, normalized packaged manifests, README inclusion, and publish topology;
+- all ten release archives, normalized packaged manifests, README inclusion, and publish topology;
 - RustSec advisory and unused-dependency scans, duplicate dependency reporting, script syntax, and
   repository metadata consistency;
 - release tag/changelog state, executable file modes, workflow invocation behavior, and third-party
@@ -971,6 +971,13 @@ Foundation implemented (2026-07-17):
 17. **P1 fixed:** the corrected apply diagnostic wrote the reviewed baseline patcher into the repository
     as an untracked file, and `git reset --hard` did not remove it. Final cleanup now removes generated
     diagnostic helpers explicitly before staging and verifies the resulting workflow/tool inventory.
+18. **P2 completion (2026-10-14):** the deferred editor capabilities landed — full-document semantic
+    tokens from index facts with the published legend, `prepareRename`/`rename` over the open workspace
+    (identifier-span edits, reserved-word and collision validation), and receiver-type-aware member
+    resolution for lexically typed receiver bindings in `definition`, `hover`, and `references`. Dart
+    environment defines reached the deterministic lint layer as `dartscope.undefined_define` with
+    `--env`/`[environment]` provisioning; index-level receiver inference (field receivers, extension
+    selection, implicit constructors) remains an explicit DS-INDEX-006 follow-up.
 
 Verification completed (2026-07-18):
 
@@ -1093,7 +1100,7 @@ See `docs/development/reference-scope-resolution.md`.
 
 ### DS-LSP-001: Language Server Foundation
 
-Status: implemented. Priority: P2. Prerequisites: DS-INDEX-005, DS-INDEX-006, DS-CLI-003.
+Status: verified. Priority: P2. Prerequisites: DS-INDEX-005, DS-INDEX-006, DS-CLI-003.
 
 Implemented (2026-09-25):
 
@@ -1103,7 +1110,65 @@ Implemented (2026-09-25):
 4. Added stdio binary `crates/dartscope-lsp/src/bin/dartscope-lsp.rs` with `Content-Length` framing, `initialize`/`initialized`/`shutdown`/`exit`/`$/cancelRequest` and honest `null` for unsupported methods.
 5. Added tests for LF/CRLF/emoji, rapid file replacement (10 full replaces), hover and `unsupported_concise_constructor` diagnostics.
 
-Remaining (follow-up): workspace symbols, lint-diagnostic integration, stale-snapshot surfacing and full editor smoke. Foundation slice is `implemented`; full `verified` requires the remaining acceptance items.
+Implemented (2026-10-14, follow-up slice):
+
+6. Registered `dartscope-lsp` in `Cargo.lock` (package entry and umbrella dependency edge) so every `--locked`
+   gate and `tools/check-release-packages.py` accept the tenth crate.
+7. Corrected the server compilation/wire issues found in review: `DartWorkspaceResolutionContext::from_snapshot`
+   receives a borrowed snapshot (the merged version passed an `Arc` by value), the LSP `Diagnostic` is built field
+   by field instead of relying on a non-existent `Default`, the `crate::types` import list is used entirely, the
+   capability/parameter envelopes serialize in the `lsp-types` 0.97 camelCase shape (`rootUri`, `serverInfo`,
+   `textDocumentSync`, `workDoneProgressOptions`), and every code line fits rustfmt's 100-column width.
+8. `didChange` now treats inverted or out-of-bounds incremental ranges as a full-content replacement, so a
+   malformed client event can no longer panic `String::replace_range`.
+9. Added `workspace/symbol` (`workspaceSymbolProvider` capability, flat `SymbolInformation` results over open
+   documents, case-insensitive substring query, deterministic name/path/range ordering, bounded to 100 entries).
+10. The stdio binary pushes `textDocument/publishDiagnostics` after `didOpen`/`didChange` and clears the set on
+    `didClose`; every request arm answers (null on malformed params) instead of leaving the client hanging.
+11. Added `DartLspServer::set_supplemental_diagnostics` as the explicit downstream lint port; the crate keeps
+    zero dependency on `dartscope-lints` and merged diagnostics stay deterministic (parser facts first,
+    supplemental entries merged in range order, cleared when the document closes).
+12. Added `snapshot_generation()` as the stale-snapshot signal, `root()`/`root_url()` accessors, and sorted
+    document input so the rebuilt index snapshot does not depend on `HashMap` iteration order.
+13. Review round (same date): sync events now drive the workspace index as per-file upserts/removals
+    (first open builds it, last close clears it) instead of a full rebuild on every keystroke;
+    `publishDiagnostics` echoes the client-reported document version; the stdio transport enforces
+    the LSP lifecycle (`-32002` before `initialize`, `-32600` for requests after `shutdown`, a
+    non-zero exit status for `exit` without `shutdown`); and hover presents each target as a `dart`
+    code block instead of a bare string.
+14. Contract follow-ups closed (2026-10-15): a process-level smoke suite
+    (`crates/dartscope-lsp/tests/stdio.rs`) spawns the real binary over `Content-Length` framing and
+    asserts the full initialize→sync→hover→shutdown→exit conversation, exit-status semantics, and
+    the pre-initialize rejection; the optional `lints` cargo feature wires the stdio binary's
+    `--lints` mode to an all-rules `dartscope-lints` adapter that feeds `set_supplemental_diagnostics`
+    after every sync event and republishes the merged set, with a dedicated feature test and explicit
+    CI steps (`cargo clippy -p dartscope-lsp --features lints`, `cargo test -p dartscope-lsp
+    --features lints`).
+15. Editor-correctness round (2026-10-15): `didChange.version` is optional per LSP 3.17 (unversioned
+    edits no longer drop); queries landing on a declaration identifier resolve onto that declaration
+    in `definition`, `hover`, and `references` (the parser's reference facts deliberately exclude
+    declarations, the snapshot's declaration inventory answers them); `references_at` honors
+    `includeDeclaration` with the old `references` kept as the `false` alias; `didSave` revalidates
+    and applies `includeText`; document symbols carry kind labels in `detail`, `typedef` maps to the
+    Class kind, and enum children to `EnumMember`; the lint adapter preserves `relatedPaths` as
+    `relatedInformation` and, in feature builds, re-lints through `DartIncrementalLintCache` fed by
+    the index's per-event `DartWorkspaceUpdate` instead of re-running every rule over the snapshot.
+16. Verified on the exact hosted toolchain (2026-10-14 pull-request runs): the Ubuntu/Windows quality gates
+    (rustfmt style-edition 2024, repository consistency, `cargo clippy --workspace --all-targets -- -D
+    warnings`, rustdoc), both workspace test matrices, the full edition matrix, the macOS arm64 portability
+    signal including the release-crate archive count, and the bounded fuzz corpus are green. Repairs along the
+    way: the `dartscope-parse` mapping branch the merge had committed with stray escapes and an
+    out-of-loop `continue` (which had made `main` red for compile, lint, doc, and format gates), the missing
+    `PartialEq`/`Eq` derivations on `SymbolTag`/`NumberOrString`, a workspace-wide formatting normalization,
+    member-declaration facts now part of the span-invariant invalidation fingerprint (so member changes
+    rebuild dependent reference caches while formatting-only edits stay no-ops), and never-run unit-test
+    expectations re-based onto the ported semantics.
+
+Semantic tokens, rename, and binding-typed receiver resolution shipped as item 18; receiver-type-aware
+extension selection and field-receiver inference stay outside the `0.1` contract; the process-level
+stdio smoke and the lint adapter shipped as item 14.
+The foundation and the follow-up list above are complete; the hosted-toolchain runs listed under
+item 15 carry the `verified` status.
 
 Acceptance:
 
@@ -1417,16 +1482,25 @@ Do not resolve these conditions by silently expanding scope.
 
 ## Current Recommended Next Step
 
-Continue `DS-INDEX-006` with the next evidence-gated slice. Unqualified same-owner member calls, reads,
-and writes, explicit-`this` operator targets, constructor/direct-member navigation, and lexical
-variable read/write/update facts are now implemented and covered. The remaining bounded slices are
-inherited-member traversal, extension selection, implicit constructor selection, and receiver-type
-inference; each one requires its own fixtures and compatibility note before it enters public output.
-`DS-COMPAT-001` remains research.
+`DS-LSP-001` is implemented through the 2026-10-14 follow-up slice (workspace/symbol,
+`publishDiagnostics`, the supplemental-diagnostics lint port, snapshot-generation staleness evidence, and
+the `Cargo.lock`/wire-shape corrections). The next bounded LSP work is a process-level editor smoke over the
+real stdio framing on a fixture project and the `dartscope-cli` adapter that feeds configured `dartscope-lints`
+findings into `DartLspServer::set_supplemental_diagnostics`.
 
-The 2026-09-25 review (see `docs/development/audit-findings-2026-09-25.md`) also identified the
-conservative backend's hand-written lexical scanning as the largest architectural risk: independent
-character classes had drifted from the Dart grammar and silently truncated every name containing `$`
-until `crates/dartscope-parse/src/identifiers.rs` became the single source of identifier rules. The
-same consolidation remains open for numbers, string escapes, and annotation/metadata handling, and is
-the prerequisite for language-version-aware parsing.
+Continue `DS-INDEX-006` in parallel. Unqualified same-owner member calls, reads, and writes, explicit-`this`
+operator targets, constructor/direct-member navigation, lexical variable read/write/update facts, direct
+inherited instance members via `extends`/`with`/`mixin on`, and extension member fallback without receiver
+inference are now implemented and covered. The remaining bounded slices are on-type-aware extension selection,
+implicit constructor selection, receiver-type inference, and local-function lexical bindings; each one requires
+its own fixtures and compatibility note before it enters public output. Since 2026-10-14 the LSP bridge
+additionally resolves `receiver.member` accesses for lexically visible, explicitly typed parameter and local
+bindings (open-workspace only); that projection consumes existing facts and adds none. `DS-COMPAT-001` remains research.
+
+The 2026-09-25 review (see `docs/development/audit-findings-2026-09-25.md`) identified the conservative
+backend's hand-written lexical scanning as the largest architectural risk: independent character classes had
+drifted from the Dart grammar and silently truncated every name containing `$` until
+`crates/dartscope-parse/src/identifiers.rs` became the single source of identifier rules. Literal and
+annotation handling have since been consolidated into `literals.rs` and `metadata.rs` and are shared by the
+lexical masker and invocation argument scans. Language-version-aware parsing remains the follow-on slice that
+benefits directly from that consolidation.

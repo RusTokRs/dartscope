@@ -2,6 +2,7 @@ pub(crate) mod forbidden_imports;
 pub(crate) mod layer_boundaries;
 pub(crate) mod naming;
 pub(crate) mod orphan_files;
+pub(crate) mod undefined_defines;
 pub(crate) mod unresolved_parts;
 
 use dartscope_core::{DiagnosticSeverity, SourceSpan};

@@ -77,3 +77,50 @@ Eight CLI command families use named v1 JSON envelopes, including `dartscope.lin
 The lint command can alternatively emit SARIF 2.1.0. These are pre-1.0 contracts: incompatible changes
 require a new schema major and a migration note. Library-only reference outputs are not command-facing
 schemas until separately registered.
+
+## LSP Bridge
+
+`dartscope-lsp` is an optional, feature-gated editor bridge, not part of the default umbrella features.
+The `0.1` contract covers the initialize/initialized/shutdown/exit lifecycle — requests arriving
+before `initialize` answer `ServerNotInitialized`, requests after `shutdown` answer `InvalidRequest`,
+and an `exit` without a preceding `shutdown` exits non-zero — full and incremental `didChange`
+synchronization over the open document set, UTF-16 positions for LF, CRLF, and surrogate pairs, and
+index-backed `definition`, `references`, `hover` (rendered as `dart` code blocks), `documentSymbol`,
+and bounded `workspace/symbol` results, plus `textDocument/publishDiagnostics` for parser
+diagnostics that echoes the client's document version. Queries landing on a declaration identifier
+resolve onto the declaration itself (definition, hover, and references all work from the definition
+site), `references` honors `ReferenceContext.includeDeclaration`, `didChange.version` is optional
+per the 3.17 spec, and `didSave` revalidates and applies `includeText` payloads.
+
+| LSP method | `0.1` status |
+| --- | --- |
+| `initialize` / `initialized` / `shutdown` / `exit` | lifecycle enforced: `-32002` before initialize, `-32600` after shutdown, exit status 0 clean / 1 abrupt |
+| `didOpen` / `didChange` / `didClose` | supported; per-file index upsert; published diagnostics echo the last known `version` |
+| `didSave` | revalidates; `includeText` content is applied as a full change |
+| `publishDiagnostics` | pushed after every sync event; parser facts first, supplemental lint findings merged in range order |
+| `definition` | supported; resolves from usage and from the declaration identifier (self) |
+| `references` | supported; respects `includeDeclaration` |
+| `hover` | `dart` code blocks per resolved target; declaration fallback included |
+| `documentSymbol` | one nesting level; `detail` carries the declaration-kind label; enum children are `EnumMember` |
+| `workspace/symbol` | open documents only, top-level names, bounded to 100 |
+| `semanticTokens/full` | full-document identifier tokens derived from index facts (declarations, reference facts, lexical bindings); the legend in `initialize` defines types `class`..`constructor` and modifiers `declaration`/`static`; multi-line ranges are omitted and `range` requests answer `null` |
+| `prepareRename` / `rename` | open-workspace rename: every resolved usage plus the declaration identifier is edited across open documents; edits only ever replace the name span; the new name must be a non-reserved Dart identifier and must not collide with existing declarations in the affected scopes; a rename is complete exactly when all referencing files are open |
+| anything else | honest `null` results; completion and formatting are outside the contract | Index maintenance is per-file: opening or
+changing a document upserts only that file, closing removes it, and unaffected open documents keep
+their parse and resolution caches.
+
+Qualified member accesses resolve from `definition`, `hover`, and `references` when the receiver is a
+lexically visible parameter or local binding whose declared type names exactly one class-like
+declaration in the open workspace; anything weaker (field receivers, inferred types, ambiguous names)
+stays unresolved.
+
+Built with the optional `lints` feature and started as `dartscope-lsp [root] --lints`, the stdio
+binary drives the adapter itself: after each `didOpen`/`didChange` it runs the all-rules
+`dartscope-lints` configuration over its own index snapshot and publishes the merged set. With
+default features the library keeps its zero-dependency property and the port stays manual.
+
+The bridge never scans the filesystem, never runs `dart` or `flutter`, and does not depend on
+`dartscope-lints`. Lint findings reach the server only through `set_supplemental_diagnostics`, which a
+downstream adapter fills. Completion, formatting, semantic tokens, inlay hints, and workspace-wide
+background indexing are outside the `0.1` LSP contract, and every unhandled request returns an honest
+empty result.

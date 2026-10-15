@@ -9,9 +9,23 @@ pre-1.0.
 
 ### Added
 
-- Nine publishable Rust crates covering normalized Dart analysis, parsing, package and URI
+- `dartscope-lsp` full-document `textDocument/semanticTokens`: identifier tokens derived from the same
+  index facts navigation uses (declarations, reference facts, lexical bindings), delta-encoded against
+  the advertised legend, with `declaration`/`static` modifiers unioned at shared positions.
+- `dartscope-lsp` `textDocument/prepareRename` and `textDocument/rename`: renames rewrite the resolved
+  declaration name and every proven usage across the open documents, emit identifier-only edits, and
+  validate the new name against reserved words and in-scope declaration collisions.
+- `dartscope-lsp` receiver-type-aware resolution: qualified member accesses in `definition`, `hover`,
+  and `references` resolve when the receiver is a lexically visible typed parameter or local binding
+  and the declared type names exactly one class-like declaration in the open workspace.
+- `dartscope.undefined_define` lint rule plus the `dartscope lint --env <key=value>` flag and the
+  TOML `[environment]` table: `X.fromEnvironment("name")` reads without a `defaultValue` are reported
+  when the name is not in the provided compilation environment; the rule is inert while no entries are
+  configured.
+
+- Ten publishable Rust crates covering normalized Dart analysis, parsing, package and URI
   resolution, project indexing, optional lint rules, Flutter conventions, versioned JSON contracts,
-  a thin umbrella API, and the `dartscope` CLI.
+  an optional LSP bridge, a thin umbrella API, and the `dartscope` CLI.
 - Conservative source-only Dart and Flutter analysis with exact spans, diagnostics, capability
   metadata, namespace and reference resolution, GraphQL contract linking, and package-aware Flutter
   catalogs.
@@ -41,6 +55,8 @@ pre-1.0.
 - `extension on T` declarations now retain their `on` type in `DartDeclaration.extends` for future on-type-aware extension selection.
 - Populated v1 golden fixtures (`file-analysis-populated-v1.json` / `project-analysis-populated-v1.json`) with one file, one import and one declaration to catch regressions inside entry objects.
 - New optional crate `dartscope-lsp` with UTF-16 ↔ UTF-8 coordinate conversion (LF, CRLF, surrogate pairs), incremental `DartLspServer` (initialize, didOpen/didChange/didClose, definition, references, hover, documentSymbol, diagnostics) and a minimal stdio binary `dartscope-lsp`.
+- `dartscope-lsp` `workspace/symbol` (bounded, deterministic `SymbolInformation` block over open documents), `textDocument/publishDiagnostics` pushed by the stdio binary after every sync event and cleared on close, `set_supplemental_diagnostics` as the explicit downstream lint port (the crate keeps zero dependency on `dartscope-lints`), and `snapshot_generation` staleness evidence with `root`/`root_url` accessors.
+- LSP wire JSON now uses the `lsp-types` 0.97 camelCase shape (`rootUri`, `serverInfo`, `textDocumentSync`, `workDoneProgressOptions`, …) for the capabilities and parameter envelopes.
 
 ### Changed
 
@@ -50,8 +66,91 @@ pre-1.0.
   inputs, deep directory trees, platform path separators, and supported symlink cases.
 - `dartscope-cli` project traversal now uses a `VecDeque` breadth-first queue with per-directory sorted `entries` so `max_pending_directories` and `max_directory_entries` diagnostics are lexicographically deterministic.
 
+### Added
+
+- `dartscope-lsp` editor round: `didSave` is handled (revalidates and applies `includeText`
+  content), `DartLspServer::references_at` implements `includeDeclaration`, declaration
+  identifiers now resolve in `definition`/`hover`/`references` (querying `class Foo` from the
+  word `Foo` works), document symbols gained `detail` kind labels plus refined `Class`/
+  `EnumMember` kinds, and `publishDiagnostics` lint entries carry `relatedInformation` links
+  for rules with `relatedPaths`. README and the support matrix now include an editor
+  quick-start and a per-method LSP table.
+- `dartscope-lsp --features lints` re-lints incrementally through `dartscope_lints::DartIncrementalLintCache`
+  fed by the index's per-event update instead of re-running all rules after every keystroke.
+
 ### Fixed
 
+- `dartscope-lsp` accepts `textDocument/didChange` without a `version`: the field is optional in
+  LSP 3.17, and dropping such whole notifications silently desynchronized the server from the
+  editor. The last known version (e.g. from `didOpen`) is preserved and republished.
+
+### Added (previous round)
+
+- `dartscope-lsp` `lints` cargo feature: building with it and starting the stdio binary as
+  `dartscope-lsp [root] --lints` runs the all-rules `dartscope-lints` configuration over the
+  server's own workspace snapshot after every `didOpen`/`didChange` and routes the findings
+  through the supplemental-diagnostics port, so published diagnostics merge parser and lint
+  facts in one coherent, versioned set. Default builds keep the zero-dependency property and
+  print a notice when `--lints` is requested without the feature. The binary also accepts an
+  optional positional workspace root.
+- Process-level stdio smoke tests for `dartscope-lsp`: a spawned binary driven over real
+  `Content-Length` framing asserts the initialize→sync→hover→shutdown→exit conversation,
+  exit-status semantics, and pre-initialize request rejection.
+
+### Changed
+
+- `DartLspServer` gained public `index()` and `open_document_uris()` accessors for downstream
+  adapters; DS-LSP-001 is marked verified in the library plan.
+
+### Added (previous round)
+
+- `dartscope-lsp` functional round: per-file incremental index sync (open/change upsert, close
+  remove; the first open builds the index and the last close clears it) replaces the full rebuild
+  on every keystroke; `publishDiagnostics` now echoes the client's document `version`; hover
+  renders resolved targets as `dart` code blocks (`LanguageString`) instead of bare text; and the
+  stdio transport enforces the LSP lifecycle: requests before `initialize` answer
+  `ServerNotInitialized` (`-32002`), requests after `shutdown` answer `InvalidRequest` (`-32600`),
+  an `exit` without `shutdown` terminates with a non-zero status, and `initialize` clears the
+  shutdown flag so the server instance can be restarted in-process.
+
+### Fixed
+
+- Completed the `dartscope-lsp` slice: `Cargo.lock` now carries the `dartscope-lsp` package and the
+  umbrella's `lsp` dependency edge, so `--locked` and `check-release-packages.py` accept the workspace.
+  `DartWorkspaceResolutionContext::from_snapshot` now receives a borrowed snapshot (it previously
+  passed an `Arc` by value), `DartLspServer` no longer relies on a non-existent `Default` impl for the
+  LSP `Diagnostic`, unused `crate::types` imports were removed, and the whole workspace was
+  normalized with rustfmt style-edition 2024, which also clears the pre-existing red
+  `Check formatting` gate on `main`. `Url::path` no longer relies on `[char; N]` string patterns.
+- `crates/dartscope-parse/src/pubspec_yaml_marked.rs`: repaired the mapping-entry branch that the
+  merge introduced with stray backslash escapes around two string literals and a `continue` outside
+  any loop, which made `dartscope-parse` (and therefore the whole workspace) fail to compile and
+  `rustfmt` fail to parse. The defensive path is now an `else if let`/`else` chain and the error
+  diagnostic flows through the shared deduplicating flush at the end of `push_node`.
+- `NumberOrString` and `SymbolTag` now derive `PartialEq`/`Eq` (and `Copy`), so
+  `SymbolInformation`/`DocumentSymbol` comparisons compile; the `dartscope-lsp` library and its unit
+  tests build cleanly (`E0277`/`E0369`).
+- Index upserts invalidate dependent reference caches when member declarations change: the span-
+  invariant per-file fingerprint now covers member facts in addition to top-level declarations, so
+  adding a member to a class rebuilds importers that reference the owner while formatting-only edits
+  still no-op (`per_file_caches_rebuild_only_relevant_sources`).
+- Aligned the never-run `dartscope-lsp` unit tests with the ported semantics: `definition`/`hover`
+  queries now sit on the resolvable unqualified `Foo` occurrence (member accesses stay unresolved
+  without receiver inference), the unsupported-syntax diagnostics use the `new();` concise form that
+  the declaration inventory reports, and `handles_crlf` re-bases its offset arithmetic (the `\r`
+  and `\n` bytes of `a\r\nb\r\nc` map to the clamped end of the preceding line).
+- The never-executed `dollar_in_identifier_does_not_break_raw_detection` test asserted no literal
+  start for `foo$r'bar'`; the scanner contract (and pre-merge behavior) is that the glued `r` loses
+  its raw-prefix status while the following quote still opens an ordinary literal, so the test now
+  pins `Some(5)` and the raw form `Some(4)` (the `r` byte).
+- Removed the dead `is_identifier_byte` shim and the unused `StringLiteralRange` re-export from
+  `dartscope-parse`'s `lexical.rs`, and collapsed a nested `if` in `dartscope-index` member
+  resolution, satisfying `cargo clippy --workspace --all-targets -- -D warnings`.
+- `DartLspServer::did_change` rejects inverted or out-of-range incremental edit ranges and falls back
+  to a full-content replace instead of panicking in `String::replace_range`.
+- The macOS portability job now derives its expected `.crate` archive count from
+  `tools/release-crates.txt` instead of a hardcoded nine, so adding a release crate no longer
+  requires editing the workflow.
 - Removed an unused direct `serde` dependency and stale lock edge from `dartscope-parse` instead of
   suppressing the unused-dependency gate.
 - Incremental reference caches now invalidate same-name `NotVisible` evidence and sibling-part

@@ -21,6 +21,7 @@ lints = ["dep:dartscope-lints"]
 json = ["dep:dartscope-json"]
 flutter = ["dep:dartscope-flutter"]
 lsp = ["dep:dartscope-lsp"]
+lsp-lints = ["lsp", "dartscope-lsp/lints"]
 
 [dependencies]
 dartscope-core.workspace = true

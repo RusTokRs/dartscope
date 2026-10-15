@@ -26,8 +26,7 @@ pub(crate) fn annotations_end(source: &str, start: usize, limit: usize) -> usize
         let mut next = at + 1;
         let identifier_start = next;
         while next < limit
-            && (bytes[next].is_ascii_alphanumeric()
-                || matches!(bytes[next], b'_' | b'$' | b'.'))
+            && (bytes[next].is_ascii_alphanumeric() || matches!(bytes[next], b'_' | b'$' | b'.'))
         {
             next += 1;
         }

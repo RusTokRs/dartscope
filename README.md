@@ -43,6 +43,16 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
 - `dartscope-cli` exposes the stable process boundary with help, version output, documented exit
   codes, deterministic discovery, versioned JSON for every analysis command, and a configured lint
   command with SARIF 2.1.0 output.
+- `dartscope-lsp` is the optional Language Server Protocol bridge: UTF-16 ↔ UTF-8 coordinate
+  conversion, incremental document sync backed by per-file index upserts, definition/references/
+  hover/`documentSymbol`/`workspace/symbol` over the workspace index, a spec-shaped
+  initialize/shutdown/exit lifecycle, and a minimal stdio binary that echoes the client's document
+  version in `publishDiagnostics`. It performs no filesystem or `dart`/`flutter` process I/O, does
+  not depend on `dartscope-lints` by default, and exposes an explicit supplemental-diagnostics port
+  for downstream lint adapters plus a snapshot-generation staleness signal. The stdio binary takes an
+  optional workspace root argument and a `--lints` flag; built with the crate's optional `lints`
+  feature, that flag wires the all-rules `dartscope-lints` configuration into the port after every
+  sync event.
 - `dartscope` is a thin umbrella crate with feature-gated re-exports.
 
 ## Non-Goals
@@ -73,6 +83,33 @@ file, project-index, package-resolution, JSON, CLI, and Flutter-inventory slices
   currently produce explicit diagnostics instead of heuristic symbols.
 - CLI JSON uses named v1 envelopes and deterministic golden fixtures. Payload fields remain
   pre-1.0 contracts, so breaking changes require a new schema major and a migration note.
+- `dartscope-lsp` serves only the open editor buffer set: there is no workspace-wide filesystem scan,
+  `workspace/symbol` matches top-level declaration names by case-insensitive substring against a bounded
+  result list, completion and formatting requests return honest empty results, and lint
+  findings reach the editor only through a downstream adapter that calls
+  `DartLspServer::set_supplemental_diagnostics` (the binary's `--lints` mode is that adapter).
+  Definition, hover, and references resolve from declaration identifiers too, and `references` honors
+  `includeDeclaration`. Full-document semantic tokens and `prepareRename`/`rename` are supported: the
+  rename rewrites the declaration name and every resolved usage across the open documents, validating
+  the new name conservatively. Qualified member accesses resolve when the receiver is a typed local
+  binding.
+
+To connect an editor, point the client at the stdio binary; the optional first argument overrides the
+workspace root:
+
+```lua
+-- Neovim 0.10+
+vim.lsp.config('dartscope', {
+  cmd = { 'target/release/dartscope-lsp', vim.fn.getcwd() },
+  filetypes = { 'dart' },
+  root_markers = { 'pubspec.yaml', '.dart_tool' },
+})
+vim.lsp.enable('dartscope')
+```
+
+Any VS Code generic-LSP client works with `target/release/dartscope-lsp` as the server command. Build
+with `cargo build --release -p dartscope-lsp --features lints` and add `--lints` to merge `dartscope-lints`
+findings (with `relatedInformation`) into the same versioned `publishDiagnostics` stream.
 
 `dartscope-parse` also exposes an object-safe `DartParser` contract for callers that
 need a different source-only parser backend. The built-in `HeuristicDartParser` remains
@@ -117,7 +154,7 @@ with all features. See
 
 ## Release And Support
 
-All nine crates carry crates.io-ready metadata and versioned internal dependencies. The release gate
+All ten crates carry crates.io-ready metadata and versioned internal dependencies. The release gate
 builds every `.crate` archive in dependency order without publishing it. Development now follows the
 audited `0.2` roadmap, while workspace manifests remain on unreleased `0.1.0` until the exact release
 tag is created. See the [0.1 support matrix](docs/support-matrix.md),

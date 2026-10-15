@@ -220,6 +220,61 @@ fn full_toml_surface_maps_to_the_existing_lint_engine() {
     assert!(json.contains("\"enabled_rules\": 5"), "stdout: {json}");
 }
 
+#[test]
+fn environment_flags_enable_the_undefined_define_check() {
+    let project = sample_project("define checks");
+    write_file(
+        &project.path().join("lib/main.dart"),
+        "const greeting = String.fromEnvironment('app.greeting');\n",
+    );
+    let run = |extra: &[&str]| {
+        let mut args: Vec<OsString> = vec![
+            OsString::from("lint"),
+            project.path().as_os_str().to_owned(),
+        ];
+        args.extend(extra.iter().map(|value| OsString::from(*value)));
+        run_os(args)
+    };
+
+    // No environment provided: the check is inert and the run is clean.
+    let output = run(&[]);
+    assert_structured_output(&output, 0, "dartscope.lint-analysis");
+    assert!(
+        !stdout(&output).contains("undefined_define"),
+        "stdout: {}",
+        stdout(&output)
+    );
+
+    // Any --env entry turns the check on for the remaining names.
+    let output = run(&["--env", "app.other=1"]);
+    let json = stdout(&output);
+    assert!(json.contains("undefined_define"), "stdout: {json}");
+    assert!(json.contains("app.greeting"), "stdout: {json}");
+
+    // Providing the exact name clears the finding.
+    let output = run(&["--env", "app.greeting=hi"]);
+    let json = stdout(&output);
+    assert!(!json.contains("undefined_define"), "stdout: {json}");
+
+    // The check appears in the help and the config accepts an environment table.
+    let help = run_os([OsString::from("lint"), OsString::from("--help")]);
+    assert_text_success(&help, "dartscope lint <project>");
+    assert!(stdout(&help).contains("--env <key=value>"));
+    let config = project.path().join("dartscope-lint.toml");
+    write_file(
+        &config,
+        concat!(
+            "version = 1\n",
+            "enabled_rules = [\"dartscope.undefined_define\"]\n",
+            "\n[environment]\n",
+            "\"app.other\" = \"1\"\n",
+        ),
+    );
+    let output = run(&["--config", config.to_str().expect("utf-8 path")]);
+    let json = stdout(&output);
+    assert!(json.contains("undefined_define"), "stdout: {json}");
+}
+
 fn sample_project(label: &str) -> TempDirectory {
     let project = TempDirectory::new(label);
     write_file(&project.path().join("lib/main.dart"), "void main() {}\n");

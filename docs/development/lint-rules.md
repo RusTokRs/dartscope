@@ -34,6 +34,9 @@ status: active
   ASCII casing for supported top-level declarations.
 - `dartscope.unresolved_part` converts non-matched normalized part-link outcomes into lint
   diagnostics.
+- `dartscope.undefined_define` reports `bool`/`int`/`double`/`String.fromEnvironment` reads whose
+  literal name is neither protected by a `defaultValue` nor present in the configured compilation
+  environment (`DartLintConfig::environment`).
 - `dartscope.orphan_file` computes reachability through resolved import/export/part edges from
   explicitly configured entry points.
 
@@ -43,7 +46,9 @@ rule ID, message, and related evidence, then deduplicated.
 ## Conservative Boundaries
 
 Forbidden import, layer, and orphan behavior is inert until the caller supplies patterns or entry
-points. Naming ignores non-ASCII identifiers rather than claiming Unicode casing completeness.
+points. The undefined-define rule is inert while no environment entries are configured: without a
+provided define set, every `fromEnvironment` read is the runtime's own default and flagging it would
+be fabricated. Dynamic (non-literal) define names are never guessed. Naming ignores non-ASCII identifiers rather than claiming Unicode casing completeness.
 Orphan analysis returns no findings when none of the configured entry points exist in the loaded
 project. External packages absent from the project index are not treated as internal layer targets.
 

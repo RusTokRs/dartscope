@@ -12,7 +12,7 @@ use std::path::PathBuf;
 // Url (file://)
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Url(pub String);
 
 impl Hash for Url {
@@ -98,17 +98,17 @@ impl Url {
         }
     }
 
-    pub fn to_file_path(&self) -> Result<PathBuf, ()> {
+    pub fn to_file_path(&self) -> Option<PathBuf> {
         // Only for file://
         if !self.0.starts_with("file://") {
-            return Err(());
+            return None;
         }
         let raw = self.path();
         let decoded = percent_decode(raw);
         // On windows, file:///C:/a -> C:/a, file:///C%3A/... etc. We normalize to unix for tests.
         // Strip leading '/' for windows drive letter case? Keep as-is for unix.
         // For unix, decoded already like "/lib/main.dart"
-        Ok(PathBuf::from(decoded))
+        Some(PathBuf::from(decoded))
     }
 }
 
@@ -121,11 +121,11 @@ fn percent_decode(input: &str) -> String {
             let lo = bytes.next();
             if let (Some(hi), Some(lo)) = (hi, lo) {
                 let hex = [hi, lo];
-                if let Ok(hex_str) = std::str::from_utf8(&hex) {
-                    if let Ok(byte) = u8::from_str_radix(hex_str, 16) {
-                        out.push(byte as char);
-                        continue;
-                    }
+                if let Ok(hex_str) = std::str::from_utf8(&hex)
+                    && let Ok(byte) = u8::from_str_radix(hex_str, 16)
+                {
+                    out.push(byte as char);
+                    continue;
                 }
                 // Invalid encoding, keep literally
                 out.push('%');
@@ -206,12 +206,14 @@ impl<'de> Deserialize<'de> for DiagnosticSeverity {
             2 => Ok(DiagnosticSeverity::WARNING),
             3 => Ok(DiagnosticSeverity::INFORMATION),
             4 => Ok(DiagnosticSeverity::HINT),
-            _ => Err(serde::de::Error::custom(format!("invalid DiagnosticSeverity {v}"))),
+            _ => Err(serde::de::Error::custom(format!(
+                "invalid DiagnosticSeverity {v}"
+            ))),
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum NumberOrString {
     Number(i32),
@@ -220,6 +222,12 @@ pub enum NumberOrString {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Diagnostic {
+    #[serde(
+        rename = "relatedInformation",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub related_information: Option<Vec<DiagnosticRelatedInformation>>,
     pub range: Range,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub severity: Option<DiagnosticSeverity>,
@@ -227,6 +235,12 @@ pub struct Diagnostic {
     pub code: Option<NumberOrString>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiagnosticRelatedInformation {
+    pub location: Location,
     pub message: String,
 }
 
@@ -374,7 +388,7 @@ pub struct DocumentSymbol {
     pub children: Option<Vec<DocumentSymbol>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum SymbolTag {
     Deprecated = 1,
@@ -411,7 +425,9 @@ impl<'de> Deserialize<'de> for TextDocumentSyncKind {
             0 => Ok(TextDocumentSyncKind::None),
             1 => Ok(TextDocumentSyncKind::Full),
             2 => Ok(TextDocumentSyncKind::Incremental),
-            _ => Err(serde::de::Error::custom(format!("invalid TextDocumentSyncKind {v}"))),
+            _ => Err(serde::de::Error::custom(format!(
+                "invalid TextDocumentSyncKind {v}"
+            ))),
         }
     }
 }
@@ -423,14 +439,6 @@ pub enum TextDocumentSyncCapability {
     Options(TextDocumentSyncOptions),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct TextDocumentSyncOptions {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub open_close: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub change: Option<TextDocumentSyncKind>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum OneOf<L, R> {
@@ -439,18 +447,21 @@ pub enum OneOf<L, R> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct DefinitionOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work_done_progress_options: Option<WorkDoneProgressOptions>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct ReferenceOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work_done_progress_options: Option<WorkDoneProgressOptions>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct DocumentSymbolOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work_done_progress_options: Option<WorkDoneProgressOptions>,
@@ -459,9 +470,28 @@ pub struct DocumentSymbolOptions {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkDoneProgressOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work_done_progress: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TextDocumentSyncOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub open_close: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub change: Option<TextDocumentSyncKind>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceSymbolOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub work_done_progress_options: Option<WorkDoneProgressOptions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolve_provider: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -472,12 +502,14 @@ pub enum HoverProviderCapability {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct HoverOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work_done_progress_options: Option<WorkDoneProgressOptions>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct ServerCapabilities {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_document_sync: Option<TextDocumentSyncCapability>,
@@ -489,6 +521,12 @@ pub struct ServerCapabilities {
     pub hover_provider: Option<HoverProviderCapability>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub document_symbol_provider: Option<OneOf<bool, DocumentSymbolOptions>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_symbol_provider: Option<OneOf<bool, WorkspaceSymbolOptions>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub semantic_tokens_provider: Option<SemanticTokensOptions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rename_provider: Option<OneOf<bool, RenameOptions>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -499,6 +537,7 @@ pub struct ServerInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InitializeResult {
     pub capabilities: ServerCapabilities,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -510,6 +549,7 @@ pub struct InitializeResult {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InitializeParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub root_uri: Option<Url>,
@@ -544,7 +584,10 @@ pub struct DidOpenTextDocumentParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersionedTextDocumentIdentifier {
     pub uri: Url,
-    pub version: i32,
+    /// LSP 3.17 makes the version optional on change events; omitting it keeps
+    /// the previously known version instead of rejecting the whole update.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -573,6 +616,15 @@ pub struct TextDocumentIdentifier {
 pub struct DidCloseTextDocumentParams {
     #[serde(rename = "textDocument")]
     pub text_document: TextDocumentIdentifier,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DidSaveTextDocumentParams {
+    #[serde(rename = "textDocument")]
+    pub text_document: TextDocumentIdentifier,
+    /// Only present when the client registered `save: { includeText: true }`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -627,4 +679,120 @@ pub struct DocumentSymbolParams {
     pub work_done_progress_params: WorkDoneProgressParams,
     #[serde(flatten)]
     pub partial_result_params: PartialResultParams,
+}
+
+// ---------------------------------------------------------------------------
+// Workspace symbols
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SymbolInformation {
+    pub name: String,
+    pub kind: SymbolKind,
+    pub location: Location,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub container_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<SymbolTag>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deprecated: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceSymbolParams {
+    pub query: String,
+    #[serde(flatten)]
+    pub work_done_progress_params: WorkDoneProgressParams,
+    #[serde(flatten)]
+    pub partial_result_params: PartialResultParams,
+}
+
+// ---------------------------------------------------------------------------
+// Semantic tokens
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticTokensLegend {
+    pub token_types: Vec<String>,
+    pub token_modifiers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticTokensOptions {
+    pub legend: SemanticTokensLegend,
+    /// Full document tokens only; `range` requests are answered with `null`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range: Option<bool>,
+    pub full: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub work_done_progress_options: Option<WorkDoneProgressOptions>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SemanticTokensParams {
+    #[serde(rename = "textDocument")]
+    pub text_document: TextDocumentIdentifier,
+    #[serde(flatten)]
+    pub work_done_progress_params: WorkDoneProgressParams,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticTokens {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_id: Option<String>,
+    pub data: Vec<u32>,
+}
+
+// ---------------------------------------------------------------------------
+// Rename
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prepare_provider: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub work_done_progress_options: Option<WorkDoneProgressOptions>,
+}
+
+/// `prepareRename` result: the exact word range plus the current name so
+/// editors can preselect it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareRenameResult {
+    pub range: Range,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameParams {
+    #[serde(flatten)]
+    pub text_document_position: TextDocumentPositionParams,
+    #[serde(flatten)]
+    pub work_done_progress_params: WorkDoneProgressParams,
+    pub new_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextEdit {
+    pub range: Range,
+    pub new_text: String,
+}
+
+/// Rename edits cover open documents only — the index never scans the
+/// filesystem, so closed files cannot be rewritten honestly.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceEdit {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changes: Option<std::collections::BTreeMap<Url, Vec<TextEdit>>>,
 }

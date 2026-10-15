@@ -650,7 +650,7 @@ impl CliCommand {
             Self::GraphqlContracts => "dartscope graphql-contracts <path> [--env <key=value>]...",
             Self::UriGraph => "dartscope uri-graph <path> [--env <key=value>]...",
             Self::FlutterInventory => "dartscope flutter-inventory <path>",
-            Self::Lint => "dartscope lint <project>",
+            Self::Lint => "dartscope lint <project> [--env <key=value>]...",
         }
     }
 
@@ -660,7 +660,7 @@ impl CliCommand {
                 "\nOPTIONS:\n  --env <key=value>  Add a Dart compilation-environment entry; repeatable\n  -h, --help         Print command help"
             }
             Self::Lint => {
-                "\nOPTIONS:\n  --config <path>        Read versioned TOML lint configuration\n  --format <json|sarif>  Select structured output; default: json\n  --deny-warnings        Fail when warning findings are present\n  -h, --help             Print command help"
+                "\nOPTIONS:\n  --config <path>        Read versioned TOML lint configuration\n  --format <json|sarif>  Select structured output; default: json\n  --deny-warnings        Fail when warning findings are present\n  --env <key=value>      Provide a Dart compilation-environment entry; enables the undefined-define check; repeatable\n  -h, --help             Print command help"
             }
             _ => "\nOPTIONS:\n  -h, --help  Print command help",
         };

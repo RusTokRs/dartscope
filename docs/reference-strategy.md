@@ -165,3 +165,15 @@ Theme construction and application support is normative and follows the official
 `MaterialApp`, `Theme`, and `AnimatedTheme` API documentation. The supported subset and explicit
 non-evaluation boundary are recorded in `docs/development/flutter-themes.md`. Ecosystem theme
 packages are not implied by this official support.
+
+## LSP Bridge Boundary
+
+The `dartscope-lsp` crate follows the published Language Server Protocol 3.17 specification for wire
+framing, `Content-Length` headers, request/notification split, incremental `didChange` semantics, and
+UTF-16 `Position` columns; the `lsp-types` 0.97 camelCase JSON shape is mirrored for every handled method.
+Local heuristics inside the bridge are labeled as such: `workspace/symbol` performs a case-insensitive
+substring match over top-level declaration names of open documents only, ordered by name/path/range and
+truncated to a bounded result size, and a malformed or inverted incremental edit range degrades to a
+full-content replace instead of inventing a per-character reconciliation. No completion, formatting, or
+semantic-token capability is claimed, and lint findings enter only through the explicit
+`set_supplemental_diagnostics` port that a downstream `dartscope-lints` adapter fills.

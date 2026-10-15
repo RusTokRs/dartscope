@@ -197,3 +197,58 @@ fn naming_convention_still_reports_a_snake_case_declaration() {
         DartLintRuleId::NamingConvention
     );
 }
+
+#[test]
+fn undefined_define_check_is_inert_without_a_provided_environment() {
+    let project = analyze_project(DartProjectInput::new(
+        ".",
+        vec![DartFileInput::new(
+            "lib/main.dart",
+            "const flag = bool.fromEnvironment('feature.enabled');\n\
+const greeting = String.fromEnvironment('app.greeting');\n\
+const name = String.fromEnvironment('app.name', defaultValue: 'd');\n\
+void main() { print(flag); print(greeting); print(name); }\n",
+        )],
+        vec![],
+    ));
+
+    // Rule enabled but no environment provided: every read stays quiet.
+    let analysis = lint_project(
+        &project,
+        &DartLintConfig::new([DartLintRuleId::UndefinedDefine]),
+    );
+    assert!(
+        analysis.diagnostics.is_empty(),
+        "{:?}",
+        analysis.diagnostics
+    );
+
+    // Providing one entry enables the check for the others.
+    let mut config = DartLintConfig::new([DartLintRuleId::UndefinedDefine]);
+    config
+        .environment
+        .insert("feature.enabled".to_string(), "true".to_string());
+    let analysis = lint_project(&project, &config);
+    let diagnostics = analysis.diagnostics;
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].rule_id, DartLintRuleId::UndefinedDefine);
+    assert_eq!(diagnostics[0].path, "lib/main.dart");
+    assert!(
+        diagnostics[0].message.contains("\"app.greeting\""),
+        "{}",
+        diagnostics[0].message
+    );
+    assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Warning);
+
+    // A default value neutralizes the finding even without provisioning.
+    let mut config = config.clone();
+    config
+        .environment
+        .insert("app.greeting".to_string(), "hello".to_string());
+    let analysis = lint_project(&project, &config);
+    assert!(
+        analysis.diagnostics.is_empty(),
+        "{:?}",
+        analysis.diagnostics
+    );
+}
